@@ -1,0 +1,60 @@
+{
+  "version": "1.2.0-dev.1",
+  "commit": "8df831f121b5e15eccfb2e365b087c4d93e4ecfb",
+  "site": "https://chenzhihao-dev.github.io/AgriVision-system/",
+  "checked_at_utc": "2026-11-17T10:56:01.110811+00:00",
+  "workflow_run": "https://github.com/ChenZHIHAO-dev/AgriVision-system/actions/runs/44067977101",
+  "html_http_status": 200,
+  "html_asset_references_match": true,
+  "assets": [
+    {
+      "path": "assets/index-BKNiTj0J.css",
+      "http_status": 200,
+      "sha256": "5a321ca439d31c94f24579313a43f91663ba9cf23969dcaa39c8279d977a029d",
+      "matches_local_build": true
+    },
+    {
+      "path": "assets/index-BR7oTMmn.js",
+      "http_status": 200,
+      "sha256": "87ab8397afeea59b27db892e77080a50acd4219fa37b581defd36363a7a26121",
+      "matches_local_build": true
+    },
+    {
+      "path": "assets/index-DzgOgqR-.css",
+      "http_status": 200,
+      "sha256": "1cc3fea2db8d62a0d070aa2ecfb0d84209bab3b04e6f8480ed1d79f08e1a980d",
+      "matches_local_build": true
+    },
+    {
+      "path": "assets/pages-index-index.BOC6hvay.js",
+      "http_status": 200,
+      "sha256": "d5a48a3a9fd2e318e11ca7abbeed618281563314a9f2af0f3b6f9816d87641af",
+      "matches_local_build": true
+    },
+    {
+      "path": "assets/uni.153239f0.css",
+      "http_status": 200,
+      "sha256": "153239f0083121b6a01a411a5cb145cebde6b928cb5c207d6971876da2ca9261",
+      "matches_local_build": true
+    },
+    {
+      "path": "static/crops/wheat.png",
+      "http_status": 200,
+      "sha256": "be11f0c072d553c8f9b5122bcce45f58016c4b6ed5907ff17cbf20a1b8305bad",
+      "matches_local_build": true
+    },
+    {
+      "path": "static/field-art.png",
+      "http_status": 200,
+      "sha256": "c67407c1f10c57d93e922959c84e1183bb713fd1f402b0c0af15cb1ed349e36d",
+      "matches_local_build": true
+    },
+    {
+      "path": "static/icons/leaf.png",
+      "http_status": 200,
+      "sha256": "1f2f50f0e1f2eae17f12b4c415749f89bafb372ccc62ef0e14a0c0cc4cd0b1ee",
+      "matches_local_build": true
+    }
+  ],
+  "browser_visual_verified": false
+}

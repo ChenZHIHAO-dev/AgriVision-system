@@ -18,7 +18,7 @@
 
 报告：[普通与 Flash 思考调用](validation/deepseek-live-1.2.json)、[图片与 Pro 思考资料问答](validation/backend-pipeline-1.2.json)、[模型说明](model-card-wheat-v1.md)、[1.2 验收待办](backend-1.2.md)。
 
-本轮 GitHub Pages 发布结果待核对。后端与权重只在本机运行，未公开部署。
+本轮 [GitHub Actions 44067977101](https://github.com/ChenZHIHAO-dev/AgriVision-system/actions/runs/44067977101) 构建、检查与部署成功，构建提交为 `8df831f`。线上 HTML、全部 JS / CSS 和关键图片共 8 项资源检查通过，并与本机 Pages 构建 SHA-256 一致；[资源报告](validation/pages-1.2.json)明确记录未做浏览器视觉验证。首次比较发现本机源码 CRLF 影响 Vue 作用域哈希，按已有 .gitattributes 的 LF 规则规范本机换行后，未改变 Git 源码内容，重新构建即与线上一致。后端与权重只在本机运行，未公开部署。
 
 ## 1.1 前端验证补充（2026-11-17）
 

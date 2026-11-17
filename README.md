@@ -2,7 +2,7 @@
 
 服务河南南阳及周边小麦、玉米、花生种植场景的植保问诊软件。当前为 **1.2.0-dev.1 开发测试版**：网页与微信小程序共用前端，小麦 CNN 和 DeepSeek 对话已在本机联调。
 
-**网页体验：** [打开 AgriVision](https://chenzhihao-dev.github.io/AgriVision-system/)。本轮 Pages 发布待验证；Pages 仅托管前端体验，真实识别与对话在本机 Python 后端运行。
+**网页体验：** [打开 AgriVision](https://chenzhihao-dev.github.io/AgriVision-system/)。**1.2 已发布**；Pages 仅托管前端体验，真实识别与对话在本机 Python 后端运行。
 
 ## 开发记录 · 2026-11-17
 
@@ -19,9 +19,12 @@
 | 聊天 UI | 代码与构建完成 | 原生有界多行输入区、框内滚动、附件、模型与思考控制；深色改为中性灰黑并补齐文字颜色 |
 | 手动试图 | 完成 | 单独保留 10 张实拍照片及来源、许可、参考说明和空白记录表；已查重、人工复核，未预先跑识别 |
 | 自动化验证 | 通过 | 前端 12 项、后端 29 项；类型检查、网页、小程序和 Pages 构建通过 |
+| GitHub 发布 | 完成 | 构建提交 8df831f；Actions 构建与部署成功，线上 8 项资源与本机 Pages 构建哈希一致 |
 | 视觉与真机验收 | 待完成 | 本轮浏览器控制不可用，1.2 实际多行粘贴观感、手机软键盘和微信真机待人工检查 |
 
 1.0 完成业务与训练框架；1.1 完成访客、测试登录、主题和固定聊天布局。本轮详细记录见[验证记录](docs/validation.md)、[1.2 功能与待办](docs/backend-1.2.md)、[模型说明](docs/model-card-wheat-v1.md)。
+
+发布证据：[GitHub Actions](https://github.com/ChenZHIHAO-dev/AgriVision-system/actions/runs/44067977101)、[线上资源检查](docs/validation/pages-1.2.json)。本轮未完成真实浏览器视觉与手机键盘复核，不能将资源检查当作交互验收。
 
 ## 本机试用
 
