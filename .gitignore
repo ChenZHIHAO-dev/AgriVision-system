@@ -1,4 +1,7 @@
 # Credentials and local environment
+/secrets/
+*.key
+*.pem
 .env
 .env.*
 !.env.example
