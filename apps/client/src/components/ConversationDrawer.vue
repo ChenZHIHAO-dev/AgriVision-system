@@ -9,7 +9,7 @@ const emit = defineEmits<{
   open: [id: string]
   new: []
   login: []
-  navigate: [value: 'identify' | 'knowledge' | 'profile']
+  navigate: [value: 'home' | 'identify' | 'profile']
 }>()
 let previous: HTMLElement | null = null
 function key(event: KeyboardEvent) {
@@ -64,7 +64,7 @@ onUnmounted(() => {
           ×
         </button></view
       ><view class="drawer-navigation"
-        ><button @click="emit('navigate', 'identify')">首页</button
+        ><button @click="emit('navigate', 'home')">首页</button
         ><button @click="emit('navigate', 'profile')">我的</button></view
       ><ConversationHistory
         :records="records"

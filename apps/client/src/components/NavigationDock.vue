@@ -2,9 +2,7 @@
 import AppIcon from './AppIcon.vue'
 defineProps<{ active: string; keyboardOpen?: boolean }>()
 const emit = defineEmits<{
-  navigate: [value: 'identify' | 'knowledge' | 'profile']
-  chat: []
-  capture: []
+  navigate: [value: 'home' | 'identify' | 'profile']
 }>()
 </script>
 <template>
@@ -16,16 +14,14 @@ const emit = defineEmits<{
   >
     <button
       class="dock-home"
-      :class="{ active: active === 'identify' }"
-      @click="emit('navigate', 'identify')"
+      :class="{ active: active === 'home' }"
+      @click="emit('navigate', 'home')"
     >
       <AppIcon name="home" :size="21" /><text>首页</text>
     </button>
-    <button class="dock-chat" :class="{ active: active === 'chat' }" @click="emit('chat')">
-      <AppIcon name="chat" :size="21" /><text>咨询</text>
-    </button>
-    <button class="dock-camera" aria-label="拍照识别" @click="emit('capture')">
-      <view class="camera-core"><AppIcon name="camera" white :size="26" /></view><text>拍照</text>
+
+    <button class="dock-camera" aria-label="拍照识别" @click="emit('navigate', 'identify')">
+      <view class="camera-core"><AppIcon name="camera" white :size="24" /></view><text>拍照</text>
     </button>
     <button
       class="dock-profile"
@@ -43,13 +39,13 @@ const emit = defineEmits<{
 @media (max-width: 760px) {
   .av-dock {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    align-items: end;
-    gap: 2px;
-    min-height: 72px;
-    max-height: 112px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 0;
+    min-height: 68px;
+    max-height: 105px;
     flex-shrink: 0;
-    padding: 5px 10px calc(6px + env(safe-area-inset-bottom));
+    padding: 6px 12px calc(6px + env(safe-area-inset-bottom));
     background: var(--glass);
     border-top: 1px solid var(--line);
     backdrop-filter: blur(16px);
@@ -62,48 +58,34 @@ const emit = defineEmits<{
       transform 0.18s ease;
   }
   .av-dock > button {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 48px;
-    gap: 5px;
-    font-size: 10px;
-    color: var(--muted);
-    border-radius: 11px;
+    display: grid;
+    grid-template-rows: 38px 14px;
+    place-items: center;
+    gap: 2px;
+    min-height: 54px;
+    width: 100%;
     min-width: 0;
+    border-radius: 11px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 400;
   }
   .av-dock > button.active {
     color: var(--accent);
   }
-  .dock-home {
-    grid-column: 1;
-  }
-  .dock-chat {
-    grid-column: 2;
-  }
   .av-dock > .dock-camera {
-    grid-column: 3;
     color: var(--ink);
-    gap: 4px;
-    min-height: 64px;
-    font-size: 10px;
-    font-weight: 550;
+    font-weight: 500;
   }
   .camera-core {
-    width: 44px;
-    height: 44px;
+    width: 36px;
+    height: 36px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 16px;
+    border-radius: 12px;
     background: var(--accent);
-    box-shadow: 0 3px 9px #00000014;
-  }
-  .av-dock > .dock-profile {
-    grid-column: 4/6;
-    justify-self: center;
-    width: 70px;
+    box-shadow: 0 2px 6px #00000012;
   }
   .person-mark {
     position: relative;
@@ -131,7 +113,7 @@ const emit = defineEmits<{
     border-radius: 9px 9px 3px 3px;
     box-sizing: border-box;
   }
-  .keyboard-hidden {
+  .av-dock.keyboard-hidden {
     min-height: 0;
     max-height: 0;
     padding-top: 0;

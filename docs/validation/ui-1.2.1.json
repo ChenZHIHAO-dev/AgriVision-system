@@ -1,0 +1,79 @@
+{
+  "version": "1.2.1-dev.1",
+  "date": "2026-11-17",
+  "scope": "Desktop browser plus responsive viewports; not physical iOS/Android or WeChat testing",
+  "navigation": {
+    "items": [
+      "首页",
+      "拍照",
+      "我的"
+    ],
+    "default_page": "拍照",
+    "consultation_entry": "拍照页面顶部；历史与新建在侧栏",
+    "checks": [
+      {
+        "viewport_width": 390,
+        "cell_widths": [
+          122,
+          122,
+          122
+        ],
+        "centers": [
+          73,
+          195,
+          317
+        ],
+        "labels_same_baseline": true,
+        "camera_centered": true
+      },
+      {
+        "viewport_width": 760,
+        "cell_widths": [
+          245.33334350585935,
+          245.33334350585935,
+          245.33334350585935
+        ],
+        "centers": [
+          134.6666717529297,
+          380.00001525878906,
+          625.3333587646484
+        ],
+        "labels_same_baseline": true,
+        "camera_centered": true
+      }
+    ]
+  },
+  "verified": [
+    "Photo capture page and dashboard have separate roles",
+    "Consultation resumes existing server account case",
+    "Local photo transcript is present before dialogue",
+    "Context selection does not auto-submit a dialogue request",
+    "Markdown headings, emphasis, lists and tables render",
+    "60-line paste remains in a bounded textarea",
+    "Simulated 390x480 keyboard viewport keeps login footer and chat input visible",
+    "Theme light, dark and system selections work",
+    "Mobile drawer focus and Escape restore correctly",
+    "Model picker arrow keys and Escape work",
+    "Desktop sidebar collapses and breadcrumb opens dashboard"
+  ],
+  "keyboard": {
+    "simulation_only": true,
+    "textarea_height": 134.39584350585938,
+    "textarea_bottom": 308.8958435058594,
+    "viewport_height": 480,
+    "nav_inert": true,
+    "login_footer_bottom": 480.00001525878906
+  },
+  "screenshots": {
+    "location": "Local visualization workspace; screenshots are not stored in Git",
+    "files": [
+      "phone-light.jpg",
+      "phone-dark.jpg",
+      "desktop-light.jpg",
+      "desktop-home.jpg"
+    ]
+  },
+  "pending": [
+    "Physical mobile keyboard, camera permission and WeChat device acceptance"
+  ]
+}

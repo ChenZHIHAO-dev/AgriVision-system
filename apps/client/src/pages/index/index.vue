@@ -6,7 +6,8 @@ import AuthDialog from '../../components/AuthDialog.vue'
 import SelectField from '../../components/SelectField.vue'
 import ChatComposer from '../../components/ChatComposer.vue'
 import ScanProgress from '../../components/ScanProgress.vue'
-import IdentifyHome from '../../components/IdentifyHome.vue'
+import PhotoCapture from '../../components/PhotoCapture.vue'
+import DashboardHome from '../../components/DashboardHome.vue'
 import NavigationDock from '../../components/NavigationDock.vue'
 import KnowledgeLibrary from '../../components/KnowledgeLibrary.vue'
 import { createDraftStore } from '../../lib/drafts'
@@ -41,7 +42,7 @@ import { asset } from '../../lib/assets'
 import { resolvedTheme, observeSystemTheme } from '../../lib/theme'
 import type { ChatModel, DocumentAttachment, FollowUp } from '../../lib/api'
 
-type Tab = 'identify' | 'history' | 'knowledge' | 'profile' | 'settings'
+type Tab = 'home' | 'identify' | 'history' | 'knowledge' | 'profile' | 'settings'
 const tab = ref<Tab>('identify'),
   crop = ref<Crop>('wheat'),
   stage = ref('不清楚'),
@@ -154,7 +155,8 @@ const title = computed(() =>
         : '新咨询'
       : '识别结果'
     : {
-        identify: '首页',
+        home: '首页',
+        identify: '拍照问诊',
         history: '问诊记录',
         knowledge: '植保知识',
         profile: '我的',
@@ -867,7 +869,7 @@ function newFromDrawer() {
     :style="appStyle"
   >
     <view class="sidebar">
-      <button class="brand" @click="navigate('identify')">
+      <button class="brand" @click="navigate('home')">
         <view class="brand-mark"><AppIcon name="leaf" :size="27" white /></view
         ><view
           ><text class="brand-name">AgriVision</text
@@ -877,8 +879,8 @@ function newFromDrawer() {
       <text class="nav-caption">工作台</text>
       <button
         class="nav-item"
-        :class="{ active: tab === 'identify' && !current }"
-        @click="navigate('identify')"
+        :class="{ active: tab === 'home' && !current }"
+        @click="navigate('home')"
       >
         <AppIcon name="home" /><text>首页</text>
       </button>
@@ -887,8 +889,8 @@ function newFromDrawer() {
       </button>
       <button
         class="nav-item"
-        :class="{ active: current && !chatMode }"
-        @click="openPhotoSources('identify')"
+        :class="{ active: (tab === 'identify' && !current) || (current && !chatMode) }"
+        @click="navigate('identify')"
       >
         <AppIcon name="camera" /><text>拍照识别</text>
       </button>
@@ -925,7 +927,7 @@ function newFromDrawer() {
           ☰
         </button>
         <view class="breadcrumb"
-          ><button class="desktop-only breadcrumb-home" @click="navigate('identify')">工作台</button
+          ><button class="desktop-only breadcrumb-home" @click="navigate('home')">工作台</button
           ><text class="desktop-only crumb-divider">/</text
           ><text class="topbar-title">{{ title }}</text></view
         >
@@ -1176,20 +1178,26 @@ function newFromDrawer() {
 
         <scroll-view v-else scroll-y class="page-scroll">
           <view class="page-content">
-            <template v-if="tab === 'identify'"
-              ><IdentifyHome
-                :crop="crop"
+            <template v-if="tab === 'home'"
+              ><DashboardHome
                 :records="records"
                 :logged-in="!!user"
-                :models="meta?.models || []"
-                :busy="busy"
-                @crop="chooseCrop"
-                @capture="choosePhoto"
-                @consult="startConsultation"
+                @capture="navigate('identify')"
                 @open="openCase"
                 @history="navigate('history')"
                 @login="openAuth('登录后，后续问诊会保存到你的账户。')"
             /></template>
+            <template v-else-if="tab === 'identify'"
+              ><PhotoCapture
+                :crop="crop"
+                :models="meta?.models || []"
+                :busy="busy"
+                :loading="refreshing || !meta"
+                @crop="chooseCrop"
+                @capture="choosePhoto"
+                @resume="openConsultation"
+            /></template>
+
             <template v-else-if="tab === 'history'">
               <view class="page-heading"
                 ><view
@@ -1283,9 +1291,6 @@ function newFromDrawer() {
             <template v-else
               ><KnowledgeLibrary :cards="cards" @open="selectedCard = $event" @source="openSource"
             /></template>
-            <view class="page-footer"
-              ><text>AgriVision · 宛农植保助手</text><text>{{ appVersion }} 开发测试版</text></view
-            >
           </view>
         </scroll-view>
       </view>
@@ -1293,8 +1298,6 @@ function newFromDrawer() {
         :active="chatMode ? 'chat' : tab"
         :keyboard-open="keyboardHeight > 0"
         @navigate="navigate"
-        @chat="openConsultation"
-        @capture="openPhotoSources('identify')"
       />
     </view>
 
