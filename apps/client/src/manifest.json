@@ -1,0 +1,17 @@
+{
+  "name": "宛农植保助手",
+  "appid": "__UNI__AGRIVISION",
+  "description": "面向南阳的小麦、玉米、花生植保问诊助手",
+  "versionName": "1.0.0",
+  "versionCode": "100",
+  "transformPx": false,
+  "vueVersion": "3",
+  "uniStatistics": { "enable": false },
+  "h5": { "title": "AgriVision · 宛农植保助手", "router": { "mode": "hash" } },
+  "mp-weixin": {
+    "appid": "touristappid",
+    "setting": { "urlCheck": false, "es6": true, "minified": true },
+    "usingComponents": true,
+    "permission": { "scope.camera": { "desc": "拍摄作物症状照片用于识别与咨询" } }
+  }
+}

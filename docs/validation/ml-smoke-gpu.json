@@ -1,0 +1,13 @@
+{
+  "pipeline": "passed",
+  "architectures_checked": [
+    "efficientnet_b0",
+    "mobilenet_v3_small"
+  ],
+  "torch": "2.7.1+cu126",
+  "cuda_available": true,
+  "device": "cuda",
+  "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+  "synthetic_images": 32,
+  "disease_accuracy": "not evaluated"
+}

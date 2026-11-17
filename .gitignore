@@ -1,0 +1,45 @@
+# Credentials and local environment
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Local images, knowledge sources and private records
+/data/
+/runtime/
+/knowledge/private/
+/uploads/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Model weights and experiment outputs
+/artifacts/
+/runs/
+/checkpoints/
+*.pt
+*.pth
+*.onnx
+*.safetensors
+*.tflite
+
+# Python and frontend build files
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+node_modules/
+dist/
+unpackage/
+
+# Temporary files
+/.cache/
+/.python/
+.coverage
+*.log
+.DS_Store
+Thumbs.db

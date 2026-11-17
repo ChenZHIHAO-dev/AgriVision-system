@@ -1,0 +1,12 @@
+{
+  "name": "agrivision",
+  "version": "1.0.0-dev.1",
+  "private": true,
+  "workspaces": ["apps/client"],
+  "scripts": {
+    "dev": "npm run dev --workspace @agrivision/client",
+    "build": "npm run build --workspace @agrivision/client",
+    "build:mp": "npm run build:mp --workspace @agrivision/client",
+    "typecheck": "npm run typecheck --workspace @agrivision/client"
+  }
+}
