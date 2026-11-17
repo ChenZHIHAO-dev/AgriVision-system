@@ -1,13 +1,14 @@
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from io import BytesIO
 import re
 import uuid
 from threading import Lock
 
-from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .chat import Chat
@@ -15,10 +16,22 @@ from .config import Settings
 from .imaging import prepare_image
 from .knowledge import Knowledge, CROP_NAMES
 from .models import ModelRegistry
-from .schemas import Crop, DemoRequest, MessageRequest, CaseUpdate, ConsultationRequest
+from .schemas import (
+    Crop,
+    DemoRequest,
+    MessageRequest,
+    CaseUpdate,
+    ConsultationRequest,
+    LoginRequest,
+    RegisterRequest,
+    GuestEndRequest,
+)
 from .attachments import extract_document
 from .context import fill_explicit_context, follow_up, STAGES
-from .store import Store
+from .repository import CaseRepository
+from .auth import AuthManager
+from .recognition import recognition_state
+from .evidence import aggregate_images
 
 
 def now():
@@ -27,18 +40,105 @@ def now():
 
 def create_app(settings=None):
     settings = settings or Settings.from_env()
-    store = Store(settings.runtime / "agrivision.sqlite3")
+    store = CaseRepository(settings.runtime / "agrivision.sqlite3")
+    auth = AuthManager()
     knowledge = Knowledge(settings.root)
     registry = ModelRegistry(settings, knowledge)
     chat = Chat(settings, knowledge)
     case_locks = {}
     lock_guard = Lock()
 
-    app = FastAPI(title="AgriVision API", version="1.2.0-dev.1")
-    app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors), allow_methods=["GET", "POST", "PATCH", "DELETE"], allow_headers=["Content-Type", "X-Client-ID"])
+    app = FastAPI(title="AgriVision API", version="1.2.1-dev.1")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(settings.cors),
+        allow_methods=["GET", "POST", "PATCH", "DELETE"],
+        allow_headers=["Content-Type", "X-Client-ID", "Authorization"],
+    )
     app.state.registry = registry
     app.state.store = store
     app.state.chat = chat
+    app.state.auth = auth
+
+    @app.middleware("http")
+    async def account_scope(request: Request, call_next):
+        bearer = request.headers.get("authorization", "")
+        token = bearer[7:] if bearer.startswith("Bearer ") else ""
+        viewer = auth.verify(token) if token else None
+        if token and viewer is None:
+            return JSONResponse(
+                status_code=401, content={"detail": "登录已过期，请重新登录"}
+            )
+        raw = request.headers.get("x-client-id", "")
+        scope = "u_" + viewer["id"] if viewer else "g_" + raw if raw else ""
+        request.state.viewer = viewer
+        request.state.owner = scope
+        request.state.token = token
+        headers = [
+            (key, value)
+            for key, value in request.scope["headers"]
+            if key != b"x-client-id"
+        ]
+        if scope:
+            headers.append((b"x-client-id", scope.encode()))
+        request.scope["headers"] = headers
+        return await call_next(request)
+
+    @app.post("/api/auth/login")
+    def login(request: Request, body: LoginRequest):
+        try:
+            result = auth.login(body.username, body.password, body.remember)
+        except ValueError as exc:
+            raise HTTPException(401, str(exc)) from exc
+        if request.state.owner.startswith("g_"):
+            store.clear_guest(request.state.owner)
+        return result
+
+    @app.post("/api/auth/register", status_code=201)
+    def register(request: Request, body: RegisterRequest):
+        try:
+            result = auth.register(body.name, body.username, body.password)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        if request.state.owner.startswith("g_"):
+            store.clear_guest(request.state.owner)
+        return result
+
+    @app.get("/api/auth/me")
+    def account(request: Request):
+        if not request.state.viewer:
+            raise HTTPException(401, "请先登录")
+        return {"user": request.state.viewer, "account_provider": "development-memory"}
+
+    @app.post("/api/auth/logout", status_code=204)
+    def logout(request: Request):
+        auth.logout(request.state.token)
+
+    @app.post("/api/guest/end", status_code=204)
+    def end_guest(request: Request, body: GuestEndRequest):
+        guest = (
+            request.state.owner
+            if request.state.owner.startswith("g_")
+            else "g_" + body.client_id
+        )
+        if re.fullmatch(r"g_[A-Za-z0-9_-]{8,80}", guest):
+            store.clear_guest(guest)
+
+    @app.get("/api/admin/status")
+    def admin_status(request: Request):
+        if not request.state.viewer:
+            raise HTTPException(401, "请先登录管理员账户")
+        if request.state.viewer["role"] != "admin":
+            raise HTTPException(403, "仅管理员可查看服务配置")
+        return {
+            "version": app.version,
+            "models": registry.status(),
+            "deepseek_configured": bool(settings.get_deepseek_key()),
+            "account_provider": "development-memory",
+            "record_storage": "server",
+            "guest_storage": "volatile-memory",
+            "web_search_models": ["deepseek-flash"],
+        }
 
     @contextmanager
     def mutation(case_id):
@@ -60,20 +160,63 @@ def create_app(settings=None):
         case = store.get(owner(client), case_id)
         if case is None:
             raise HTTPException(404, "问诊记录不存在")
+        case.update(aggregate_images(case))
         return case
 
     def serialize(case):
         result = dict(case)
-        result['documents'] = [{key:value for key,value in document.items() if key!='text'} for document in case.get('documents',[])]
-        result["advice"] = knowledge.advice(case["crop"], case.get("disease_id"), case["is_demo"], case["stage"])
+        record_owner = store.owner_of(case["id"])
+        result["persistence"] = (
+            "temporary" if record_owner and record_owner.startswith("g_") else "account"
+        )
+        result["images"] = [
+            {
+                **image,
+                "url": f"/api/cases/{case['id']}/images/{image['id']}?access_token="
+                + auth.image_token(record_owner, case["id"], image["id"]),
+            }
+            for image in case["images"]
+        ]
+        result["recognition"] = recognition_state(case)
+        result["documents"] = [
+            {key: value for key, value in document.items() if key != "text"}
+            for document in case.get("documents", [])
+        ]
+        result["advice"] = knowledge.advice(
+            case["crop"], case.get("disease_id"), case["is_demo"], case["stage"]
+        )
+        if result["recognition"]["image_received"] and case["status"] != "identified":
+            result["advice"]["summary"] = result["recognition"]["summary"]
+            result["advice"]["actions"] = (
+                result["recognition"]["next_steps"] or result["advice"]["actions"]
+            )
         result["messages"] = store.messages(case["id"])
         return result
 
     def base_case(crop, location="河南省 / 南阳市", stage="不清楚", note=""):
         timestamp = now()
-        return {"id": uuid.uuid4().hex, "crop": crop, "crop_name": CROP_NAMES.get(crop,'作物待补充'), "location": location, "stage": stage, "note": note, "variety":"", "created_at": timestamp, "updated_at": timestamp, "is_demo": False, "images": [], "documents":[], "versions": [], "status": "needs_model", "title": "图片已保存，识别模型准备中", "candidates": [], "disease_id": None, "model_version": None}
+        return {
+            "id": uuid.uuid4().hex,
+            "crop": crop,
+            "crop_name": CROP_NAMES.get(crop, "作物待补充"),
+            "location": location,
+            "stage": stage,
+            "note": note,
+            "variety": "",
+            "created_at": timestamp,
+            "updated_at": timestamp,
+            "is_demo": False,
+            "images": [],
+            "documents": [],
+            "versions": [],
+            "status": "needs_model",
+            "title": "图片已保存，识别模型准备中",
+            "candidates": [],
+            "disease_id": None,
+            "model_version": None,
+        }
 
-    async def apply_upload(case, upload):
+    async def apply_upload(case, upload, client):
         content = await upload.read(settings.max_upload + 1)
         await upload.close()
         if len(content) > settings.max_upload:
@@ -84,17 +227,48 @@ def create_app(settings=None):
             raise HTTPException(422, str(exc)) from exc
         image_id = uuid.uuid4().hex
         folder = settings.runtime / "images" / case["id"]
-        folder.mkdir(parents=True, exist_ok=True)
         path = folder / (image_id + ".jpg")
-        path.write_bytes(normalized)
-        case["images"].append({"id": image_id, "quality": quality, "created_at": now(),"crop":case['crop'],"stage":case['stage']})
+        if store.temporary_owner(client):
+            store.put_image(client, case["id"], image_id, normalized)
+            model_input = BytesIO(normalized)
+        else:
+            folder.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(normalized)
+            model_input = path
+        case["images"].append(
+            {
+                "id": image_id,
+                "quality": quality,
+                "created_at": now(),
+                "crop": case["crop"],
+                "stage": case["stage"],
+            }
+        )
         if quality["issues"]:
-            prediction = {"status": "needs_retake", "title": "需要一张更清晰的症状照片", "candidates": [], "disease_id": None, "model_version": None}
+            prediction = {
+                "status": "needs_retake",
+                "title": "需要一张更清晰的症状照片",
+                "candidates": [],
+                "disease_id": None,
+                "model_version": None,
+            }
         else:
             from starlette.concurrency import run_in_threadpool
-            prediction = await run_in_threadpool(registry.predict, case["crop"], path)
+
+            prediction = await run_in_threadpool(
+                registry.predict, case["crop"], model_input
+            )
         case.update(prediction)
-        case["versions"].append({**prediction, "image_id": image_id, "created_at": now(),"crop":case['crop'],"stage":case['stage']})
+        case["versions"].append(
+            {
+                **prediction,
+                "image_id": image_id,
+                "created_at": now(),
+                "crop": case["crop"],
+                "stage": case["stage"],
+            }
+        )
+        case.update(aggregate_images(case))
         case["updated_at"] = now()
         return case
 
@@ -104,7 +278,19 @@ def create_app(settings=None):
 
     @app.get("/api/meta")
     def meta():
-        return {"version": app.version, "models": registry.status(), "deepseek_configured": bool(settings.get_deepseek_key()), "knowledge_count": len(knowledge.cards), "product_count": len([p for p in knowledge.products if p.approved]), "max_upload_mb": 8, "mode": "local-development",'chat_models':['deepseek-flash','deepseek-v4-pro'],'thinking_supported':True,'document_types':['txt','md','pdf','docx'],'stages':STAGES}
+        return {
+            "version": app.version,
+            "models": registry.status(),
+            "deepseek_configured": bool(settings.get_deepseek_key()),
+            "knowledge_count": len(knowledge.cards),
+            "product_count": len([p for p in knowledge.products if p.approved]),
+            "max_upload_mb": 8,
+            "mode": "local-development",
+            "chat_models": ["deepseek-flash", "deepseek-v4-pro"],
+            "thinking_supported": True,
+            "document_types": ["txt", "md", "pdf", "docx"],
+            "stages": STAGES,
+        }
 
     @app.get("/api/knowledge")
     def list_knowledge(q: str = "", crop: Crop | None = None):
@@ -119,31 +305,59 @@ def create_app(settings=None):
 
     @app.get("/api/cases")
     def cases(x_client_id: str = Header(default="")):
-        return {"items": store.list(owner(x_client_id))}
+        return {"items": [serialize(case) for case in store.list(owner(x_client_id))]}
 
     @app.post("/api/cases/demo", status_code=201)
     def demo(body: DemoRequest, x_client_id: str = Header(default="")):
         client = owner(x_client_id)
-        disease = {"wheat": "wheat_stripe_rust", "maize": "maize_southern_rust", "peanut": "peanut_leaf_spot"}[body.crop]
+        disease = {
+            "wheat": "wheat_stripe_rust",
+            "maize": "maize_southern_rust",
+            "peanut": "peanut_leaf_spot",
+        }[body.crop]
         card = knowledge.get(disease)
-        case = base_case(body.crop, stage="演示阶段", note="此记录为功能演示，不是对用户照片的识别结果")
-        case.update({"is_demo": True, "status": "demo", "title": card["title"] + " · 演示样例", "disease_id": disease})
+        case = base_case(
+            body.crop,
+            stage="演示阶段",
+            note="此记录为功能演示，不是对用户照片的识别结果",
+        )
+        case.update(
+            {
+                "is_demo": True,
+                "status": "demo",
+                "title": card["title"] + " · 演示样例",
+                "disease_id": disease,
+            }
+        )
         store.save(client, case)
         return serialize(case)
 
     @app.post("/api/cases", status_code=201)
-    async def create_case(file: UploadFile = File(...), crop: Crop = Form(...), location: str = Form(default="河南省 / 南阳市", max_length=120), stage: str = Form(default="不清楚", max_length=40), note: str = Form(default="", max_length=2000), x_client_id: str = Header(default="")):
+    async def create_case(
+        file: UploadFile = File(...),
+        crop: Crop = Form(...),
+        location: str = Form(default="河南省 / 南阳市", max_length=120),
+        stage: str = Form(default="不清楚", max_length=40),
+        note: str = Form(default="", max_length=2000),
+        x_client_id: str = Header(default=""),
+    ):
         client = owner(x_client_id)
-        case = await apply_upload(base_case(crop, location, stage, note), file)
+        case = await apply_upload(base_case(crop, location, stage, note), file, client)
         store.save(client, case)
         return serialize(case)
 
-    @app.post('/api/consultations', status_code=201)
-    def consultation(body: ConsultationRequest, x_client_id: str = Header(default='')):
+    @app.post("/api/consultations", status_code=201)
+    def consultation(body: ConsultationRequest, x_client_id: str = Header(default="")):
         client = owner(x_client_id)
-        case = base_case(body.crop,body.location,body.stage)
-        case.update({'status':'awaiting_image','title':CROP_NAMES.get(body.crop,'作物')+'种植咨询','variety':body.variety})
-        store.save(client,case)
+        case = base_case(body.crop, body.location, body.stage)
+        case.update(
+            {
+                "status": "awaiting_image",
+                "title": CROP_NAMES.get(body.crop, "作物") + "种植咨询",
+                "variety": body.variety,
+            }
+        )
+        store.save(client, case)
         return serialize(case)
 
     @app.get("/api/cases/{case_id}")
@@ -151,82 +365,189 @@ def create_app(settings=None):
         return serialize(get_case(x_client_id, case_id))
 
     @app.post("/api/cases/{case_id}/context")
-    def update_case(case_id: str, body: CaseUpdate, x_client_id: str = Header(default="")):
+    def update_case(
+        case_id: str, body: CaseUpdate, x_client_id: str = Header(default="")
+    ):
         with mutation(case_id):
             case = get_case(x_client_id, case_id)
             if body.crop is not None:
-                if case['images'] and case['crop']!=body.crop:
-                    raise HTTPException(409,'更换照片对应作物时，请重新添加图片并识别')
-                case['crop_name'] = CROP_NAMES[body.crop]
-                if not case['images']: case['title'] = CROP_NAMES[body.crop]+'种植咨询'
+                if case["images"] and case["crop"] != body.crop:
+                    raise HTTPException(409, "更换照片对应作物时，请重新添加图片并识别")
+                case["crop_name"] = CROP_NAMES[body.crop]
+                if not case["images"]:
+                    case["title"] = CROP_NAMES[body.crop] + "种植咨询"
             case.update(body.model_dump(exclude_none=True))
             case["updated_at"] = now()
             store.save(x_client_id, case)
             return serialize(case)
 
     @app.post("/api/cases/{case_id}/images")
-    async def supplement(case_id: str, file: UploadFile = File(...), crop: Crop | None = Form(default=None), stage: str | None = Form(default=None,max_length=40), variety: str | None = Form(default=None,max_length=80), x_client_id: str = Header(default="")):
+    async def supplement(
+        case_id: str,
+        file: UploadFile = File(...),
+        crop: Crop | None = Form(default=None),
+        stage: str | None = Form(default=None, max_length=40),
+        variety: str | None = Form(default=None, max_length=80),
+        x_client_id: str = Header(default=""),
+    ):
         with mutation(case_id):
             case = get_case(x_client_id, case_id)
             if case["is_demo"]:
                 raise HTTPException(409, "请新建真实图片问诊，演示记录不接收用户图片")
             if len(case["images"]) >= 6:
                 raise HTTPException(422, "同一问诊最多保存 6 张图片")
-            if crop is not None: case.update({'crop':crop,'crop_name':CROP_NAMES[crop]})
-            if stage is not None: case['stage'] = stage
-            if variety is not None: case['variety'] = variety
-            if not case.get('crop'): raise HTTPException(422,'请先选择照片中的作物')
-            case = await apply_upload(case, file)
+            changed_crop = crop is not None and crop != case.get("crop")
+            if changed_crop and case["images"]:
+                raise HTTPException(
+                    409, "同一次问诊请使用同种作物；识别其他作物请新建问诊"
+                )
+            if crop is not None:
+                case.update({"crop": crop, "crop_name": CROP_NAMES[crop]})
+            if changed_crop:
+                case["stage"] = "不清楚"
+            # An upload's placeholder must not erase a stage already supplied in chat.
+            if stage is not None and (
+                stage not in ("", "不清楚") or case["stage"] in ("", "不清楚")
+            ):
+                case["stage"] = stage
+            if variety is not None:
+                case["variety"] = variety
+            if not case.get("crop"):
+                raise HTTPException(422, "请先选择照片中的作物")
+            case = await apply_upload(case, file, owner(x_client_id))
             store.save(x_client_id, case)
             return serialize(case)
 
-    @app.post('/api/cases/{case_id}/attachments',status_code=201)
-    async def document(case_id: str, file: UploadFile = File(...), filename: str | None = Form(default=None,max_length=160), x_client_id: str = Header(default='')):
+    @app.post("/api/cases/{case_id}/attachments", status_code=201)
+    async def document(
+        case_id: str,
+        file: UploadFile = File(...),
+        filename: str | None = Form(default=None, max_length=160),
+        x_client_id: str = Header(default=""),
+    ):
         with mutation(case_id):
-            case = get_case(x_client_id,case_id)
-            if len(case.get('documents',[]))>=6: raise HTTPException(422,'同一次咨询最多添加 6 份资料')
-            content = await file.read(settings.max_upload+1)
+            case = get_case(x_client_id, case_id)
+            if len(case.get("documents", [])) >= 6:
+                raise HTTPException(422, "同一次咨询最多添加 6 份资料")
+            content = await file.read(settings.max_upload + 1)
             await file.close()
-            try: item = extract_document(filename or file.filename or 'document',content)
-            except ValueError as exc: raise HTTPException(422,str(exc)) from exc
-            item.update({'id':uuid.uuid4().hex,'created_at':now()})
-            case.setdefault('documents',[]).append(item)
-            case['updated_at'] = now()
-            store.save(x_client_id,case)
+            try:
+                item = extract_document(
+                    filename or file.filename or "document", content
+                )
+            except ValueError as exc:
+                raise HTTPException(422, str(exc)) from exc
+            item.update({"id": uuid.uuid4().hex, "created_at": now()})
+            case.setdefault("documents", []).append(item)
+            case["updated_at"] = now()
+            store.save(x_client_id, case)
             return serialize(case)
 
-    @app.delete('/api/cases/{case_id}/attachments/{attachment_id}',status_code=204)
-    def remove_document(case_id: str, attachment_id: str, x_client_id: str = Header(default='')):
+    @app.delete("/api/cases/{case_id}/attachments/{attachment_id}", status_code=204)
+    def remove_document(
+        case_id: str, attachment_id: str, x_client_id: str = Header(default="")
+    ):
         with mutation(case_id):
-            case = get_case(x_client_id,case_id)
-            if not any(document['id']==attachment_id for document in case.get('documents',[])): raise HTTPException(404,'资料附件不存在')
-            case['documents'] = [document for document in case['documents'] if document['id']!=attachment_id]
-            case['updated_at'] = now()
-            store.save(x_client_id,case)
+            case = get_case(x_client_id, case_id)
+            if not any(
+                document["id"] == attachment_id
+                for document in case.get("documents", [])
+            ):
+                raise HTTPException(404, "资料附件不存在")
+            case["documents"] = [
+                document
+                for document in case["documents"]
+                if document["id"] != attachment_id
+            ]
+            case["updated_at"] = now()
+            store.save(x_client_id, case)
 
     @app.get("/api/cases/{case_id}/images/{image_id}")
-    def image(case_id: str, image_id: str, client_id: str):
-        case = get_case(client_id, case_id)
+    def image(case_id: str, image_id: str, access_token: str = ""):
+        image_owner = auth.image_owner(access_token, case_id, image_id)
+        if not image_owner:
+            raise HTTPException(404, "图片链接已失效，请刷新记录")
+        case = get_case(image_owner, case_id)
         if not any(img["id"] == image_id for img in case["images"]):
             raise HTTPException(404, "图片不存在")
-        return FileResponse(settings.runtime / "images" / case_id / (image_id + ".jpg"), media_type="image/jpeg", headers={"Cache-Control": "private, no-store"})
+        if store.temporary_owner(image_owner):
+            content = store.get_image(image_owner, case_id, image_id)
+            if content is None:
+                raise HTTPException(404, "临时图片已过期，请重新上传")
+            return Response(
+                content,
+                media_type="image/jpeg",
+                headers={"Cache-Control": "private, no-store"},
+            )
+        return FileResponse(
+            settings.runtime / "images" / case_id / (image_id + ".jpg"),
+            media_type="image/jpeg",
+            headers={"Cache-Control": "private, no-store"},
+        )
 
     @app.post("/api/cases/{case_id}/messages", status_code=201)
-    async def message(case_id: str, body: MessageRequest, x_client_id: str = Header(default="")):
+    async def message(
+        case_id: str, body: MessageRequest, x_client_id: str = Header(default="")
+    ):
         text = body.text.strip()
         if not text:
             raise HTTPException(422, "请输入问题")
         with mutation(case_id):
             case = get_case(x_client_id, case_id)
-            fill_explicit_context(case,text)
-            documents = [document for document in case.get('documents',[]) if document['id'] in body.attachment_ids]
-            images = [image for image in case['images'] if image['id'] in body.image_ids]
-            if len(documents)!=len(set(body.attachment_ids)) or len(images)!=len(set(body.image_ids)): raise HTTPException(422,'附件不属于这次问诊')
+            fill_explicit_context(case, text)
+            documents = [
+                document
+                for document in case.get("documents", [])
+                if document["id"] in body.attachment_ids
+            ]
+            images = [
+                image for image in case["images"] if image["id"] in body.image_ids
+            ]
+            if len(documents) != len(set(body.attachment_ids)) or len(images) != len(
+                set(body.image_ids)
+            ):
+                raise HTTPException(422, "附件不属于这次问诊")
             history = store.messages(case_id)
-            answer = await chat.answer(case, text, history, body.model, body.thinking)
-            if follow_up(case): answer['follow_up'] = follow_up(case)
-            user_message = {"role": "user", "text": text, "created_at": now(), "sources": [], "provider": "user", "products": []}
-            user_message['attachments'] = [{'id':document['id'],'name':document['name'],'kind':'document'} for document in documents]+[{'id':image['id'],'name':'症状照片','kind':'image'} for image in images]
+            if case.get("stage") in ("", "不清楚"):
+                for previous in reversed(history):
+                    if previous["role"] == "user":
+                        fill_explicit_context(case, previous["text"])
+                    if case.get("stage") not in ("", "不清楚"):
+                        break
+            if (
+                body.web_search
+                and (body.model or settings.deepseek_model) != "deepseek-flash"
+            ):
+                raise HTTPException(422, "联网检索请选择 DeepSeek Flash")
+            answer = await chat.answer(
+                case,
+                text,
+                history,
+                body.model,
+                body.thinking,
+                web_search=body.web_search,
+            )
+            if case.get("images") and (
+                body.image_ids or re.search(r"识别|图片|照片|结果|病害", text)
+            ):
+                answer["recognition"] = recognition_state(case)
+            if follow_up(case):
+                answer["follow_up"] = follow_up(case)
+            user_message = {
+                "role": "user",
+                "text": text,
+                "created_at": now(),
+                "sources": [],
+                "provider": "user",
+                "products": [],
+            }
+            user_message["attachments"] = [
+                {"id": document["id"], "name": document["name"], "kind": "document"}
+                for document in documents
+            ] + [
+                {"id": image["id"], "name": "症状照片", "kind": "image"}
+                for image in images
+            ]
             assistant = {"role": "assistant", "created_at": now(), **answer}
             store.add_exchange(case_id, user_message, assistant)
             case["updated_at"] = now()

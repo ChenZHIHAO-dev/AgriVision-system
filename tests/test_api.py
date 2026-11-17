@@ -40,7 +40,7 @@ def test_upload_persists_real_image_without_fabricating_prediction(client):
     assert case["candidates"] == [] and case["disease_id"] is None
     loaded = client.get("/api/cases/" + case["id"], headers=OWNER).json()
     assert loaded["images"][0]["quality"]["width"] == 500
-    image = client.get(f'/api/cases/{case["id"]}/images/{case["images"][0]["id"]}', params={"client_id": OWNER["X-Client-ID"]})
+    image = client.get(case['images'][0]['url'])
     assert image.status_code == 200 and image.headers["content-type"] == "image/jpeg"
     assert client.get("/api/cases/" + case["id"], headers=OTHER).status_code == 404
     assert client.get(f'/api/cases/{case["id"]}/images/{case["images"][0]["id"]}', params={"client_id": OTHER["X-Client-ID"]}).status_code == 404
@@ -85,7 +85,8 @@ def test_supplement_preserves_original_image_and_prediction_versions(client):
     assert len(response.json()["images"]) == 2
     assert len(response.json()["versions"]) == 2
     image_path = client.app.state.store.path.parent / "images" / case["id"]
-    assert len(list(image_path.glob("*.jpg"))) == 2
+    assert not image_path.exists()
+    assert all(client.get(image['url']).status_code==200 for image in response.json()['images'])
     client.delete(f'/api/cases/{case["id"]}', headers=OWNER)
     assert not image_path.exists()
 
@@ -116,7 +117,7 @@ def test_deletion_cannot_race_an_inflight_chat(client, monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
     from threading import Event
     entered, finish = Event(), Event()
-    async def delayed(*args):
+    async def delayed(*args, **kwargs):
         entered.set()
         while not finish.is_set():
             await asyncio.sleep(.01)

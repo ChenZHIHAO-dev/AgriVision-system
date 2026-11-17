@@ -12,8 +12,23 @@ class MessageRequest(BaseModel):
     text: str = Field(min_length=1, max_length=12000)
     model: Literal["deepseek-flash", "deepseek-v4-pro"] | None = None
     thinking: bool = False
-    attachment_ids: list[str] = Field(default_factory=list,max_length=6)
-    image_ids: list[str] = Field(default_factory=list,max_length=6)
+    web_search: bool = False
+    attachment_ids: list[str] = Field(default_factory=list, max_length=6)
+    image_ids: list[str] = Field(default_factory=list, max_length=6)
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=24)
+    password: str = Field(min_length=1, max_length=64, repr=False)
+    remember: bool = False
+
+
+class RegisterRequest(LoginRequest):
+    name: str = Field(min_length=1, max_length=20)
+
+
+class GuestEndRequest(BaseModel):
+    client_id: str = Field(default="", max_length=80)
 
 
 class ConsultationRequest(BaseModel):

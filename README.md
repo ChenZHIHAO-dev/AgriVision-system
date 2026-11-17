@@ -1,5 +1,7 @@
 # AgriVision 宛农植保助手
 
+> 正在完善 1.2.1：按用户最新要求处理访客临时会话、服务端账户记录、管理员权限、精简问诊、咨询侧栏、我的与设置、三态外观、Markdown 和手机键盘。完整验收清单见 [第一版清单](docs/first-release-checklist.md)。线上 1.2 的历史发布记录保留，新功能验收后再更新完成状态。
+
 服务河南南阳及周边小麦、玉米、花生种植场景的植保问诊软件。当前为 **1.2.0-dev.1 开发测试版**：网页与微信小程序共用前端，小麦 CNN 和 DeepSeek 对话已在本机联调。
 
 **网页体验：** [打开 AgriVision](https://chenzhihao-dev.github.io/AgriVision-system/)。**1.2 已发布**；Pages 仅托管前端体验，真实识别与对话在本机 Python 后端运行。
