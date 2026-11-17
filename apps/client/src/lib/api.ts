@@ -1,3 +1,5 @@
+import { previewRequest, previewUpload, previewImage } from './preview'
+import { asset } from './assets'
 export type Crop = 'wheat' | 'maize' | 'peanut'
 export interface Source { title: string; url: string; date: string }
 export interface KnowledgeCard { id: string; crop: Crop | 'general'; title: string; category: string; summary: string; keywords: string[]; actions: string[]; sources: Source[] }
@@ -8,13 +10,16 @@ export interface CaseRecord {
   created_at: string; updated_at: string; is_demo: boolean; status: string; title: string;
   disease_id: string | null; model_version: string | null;
   candidates: { id: string; name: string; score: number }[];
-  images: { id: string; quality: { issues: string[]; width: number; height: number }; created_at: string }[];
+  images: { id: string; url?: string; quality: { issues: string[]; width: number; height: number }; created_at: string }[];
   messages: Message[]; versions: { title: string; created_at: string }[];
   advice: { summary: string; actions: string[]; sources: Source[]; products: Product[] };
 }
 export interface Meta { version: string; models: { crop: Crop; name: string; ready: boolean; classes: number; version: string | null }[]; deepseek_configured: boolean; knowledge_count: number; product_count: number }
 
 const defaultBase = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
+export type DataMode = 'preview' | 'live'
+export function dataMode(): DataMode { return uni.getStorageSync('agrivision.mode') || import.meta.env.VITE_DATA_MODE || 'preview' }
+export function setDataMode(mode: DataMode) { uni.setStorageSync('agrivision.mode', mode) }
 export function apiBase(): string { return String(uni.getStorageSync('agrivision.api') || defaultBase).replace(/\/$/, '') }
 export function setApiBase(url: string) {
   if (!/^https?:\/\/[^\s/?#]+(?::\d+)?(?:\/[^?#]*)?$/.test(url)) throw new Error('请输入有效的 http 或 https 服务地址')
@@ -30,6 +35,7 @@ function errorText(data: unknown): string {
   return '操作未完成，请检查信息后重试'
 }
 export function request<T>(path: string, method: 'GET' | 'POST' | 'DELETE' = 'GET', data?: unknown): Promise<T> {
+  if (dataMode() === 'preview') return previewRequest(path, method, data) as Promise<T>
   return new Promise((resolve, reject) => uni.request({
     url: apiBase() + path, method, data: data as Record<string, unknown>, timeout: 35000,
     header: { 'X-Client-ID': clientId(), 'Content-Type': 'application/json' },
@@ -38,6 +44,7 @@ export function request<T>(path: string, method: 'GET' | 'POST' | 'DELETE' = 'GE
   }))
 }
 export function upload(path: string, filePath: string, formData: Record<string, string>): Promise<CaseRecord> {
+  if (dataMode() === 'preview') return previewUpload(path, filePath, formData)
   return new Promise((resolve, reject) => uni.uploadFile({
     url: apiBase() + path, filePath, name: 'file', formData,
     header: { 'X-Client-ID': clientId() }, timeout: 60000,
@@ -46,6 +53,7 @@ export function upload(path: string, filePath: string, formData: Record<string, 
   }))
 }
 export function imageUrl(record: CaseRecord, imageId?: string) {
+  if (record.id.startsWith('preview_')) return previewImage(record, imageId)
   const id = imageId || record.images[record.images.length - 1]?.id
-  return id ? apiBase() + '/api/cases/' + record.id + '/images/' + id + '?client_id=' + clientId() : '/static/crops/' + record.crop + '.png'
+  return id ? apiBase() + '/api/cases/' + record.id + '/images/' + id + '?client_id=' + clientId() : asset('crops/' + record.crop + '.png')
 }
