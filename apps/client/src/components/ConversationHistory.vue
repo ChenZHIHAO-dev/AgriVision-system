@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import AppIcon from './AppIcon.vue'
 import type { CaseRecord } from '../lib/api'
 import type { User } from '../lib/auth'
 import { dateLabel } from '../lib/options'
@@ -23,7 +24,8 @@ function title(record: CaseRecord) {
 <template>
   <view class="conversation-history"
     ><view class="history-caption"><text>历史问诊</text></view
-    ><button class="history-new" @click="emit('new')">＋ 新建咨询</button
+    ><button class="history-new" @click="emit('new')">
+      <AppIcon name="new" :size="18" /><text>新建咨询</text></button
     ><view v-if="!user" class="history-guest"
       ><text>登录后，保存后续咨询，随时接着聊。</text
       ><button @click="emit('login')">登录查看咨询记录 ↗</button></view
@@ -122,5 +124,16 @@ function title(record: CaseRecord) {
   color: var(--muted);
   display: block;
   margin-top: 4px;
+}
+.history-new {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--subtle);
+  border-color: transparent;
+  min-height: 44px;
+}
+.conversation-history {
+  margin-top: 24px;
 }
 </style>

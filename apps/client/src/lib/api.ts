@@ -81,7 +81,15 @@ export interface Message {
   web_search_used?: boolean
   attachments?: { id: string; name: string; kind: 'image' | 'document' }[]
 }
+export interface PendingQuestion {
+  id: string
+  text: string
+  model?: ChatModel
+  thinking?: boolean
+  web_search?: boolean
+}
 export interface CaseRecord {
+  pending_question?: PendingQuestion
   id: string
   crop: Crop | null
   crop_name: string
@@ -141,7 +149,7 @@ export function request<T>(
       url: apiBase() + path,
       method,
       data: data as Record<string, unknown>,
-      timeout: path.endsWith('/messages') ? 180000 : 35000,
+      timeout: /\/(messages|resume)$/.test(path) ? 180000 : 35000,
       header: { ...sessionHeaders(), 'Content-Type': 'application/json' },
       success: (res) =>
         res.statusCode >= 200 && res.statusCode < 300
@@ -185,5 +193,5 @@ export function imageUrl(record: CaseRecord, imageId?: string) {
   const provided = record.images.find((image) => image.id === id)?.url
   return provided?.startsWith('/api/')
     ? apiBase() + provided
-    : asset(record.crop ? 'crops/' + record.crop + '.png' : 'icons/leaf.png')
+    : asset(record.crop ? 'crops/' + record.crop + '.png' : 'icons/ui/leaf-light.png')
 }

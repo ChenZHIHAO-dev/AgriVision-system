@@ -1,18 +1,18 @@
 """Exercise the local HTTP API. Does not read provider credential files.
 
 Default checks use local recognition only. --exercise-provider makes two paid
-dialogue requests; --web additionally checks Flash's optional web tool.
+dialogue requests (including intake resume); --web additionally checks Flash's optional web tool.
 """
 
 import argparse
 import csv
-from datetime import datetime, timezone
-from io import BytesIO
 import json
-from pathlib import Path
 import re
 import time
 import uuid
+from datetime import UTC, datetime
+from io import BytesIO
+from pathlib import Path
 
 import httpx
 from PIL import Image
@@ -23,8 +23,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def run(base, exercise_provider=False, web=False):
     headers = {"X-Client-ID": "local-verification-" + uuid.uuid4().hex}
     report = {
-        "version": "1.2.1-dev.1",
-        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "version": "1.2.2-dev.1",
+        "checked_at": datetime.now(UTC).isoformat(),
         "scope": "local functional check; internal held-out image, not a new accuracy evaluation",
         "credential_access": "HTTP API only; no credential-file access",
         "dialogue": [],
@@ -107,11 +107,37 @@ def run(base, exercise_provider=False, web=False):
                 "selection_added_messages": False,
                 "selection_called_dialogue_provider": False,
             }
-            modes = (
-                [("deepseek-flash", False, False), ("deepseek-v4-pro", True, False)]
-                if exercise_provider
-                else []
-            )
+            if exercise_provider:
+                question_id = clarification["pending_question_id"]
+                started = time.perf_counter()
+                answer = post(
+                    path + "/resume",
+                    json={
+                        "question_id": question_id,
+                        "model": "deepseek-flash",
+                        "thinking": False,
+                    },
+                )
+                completed = client.get(path).json()
+                replay = post(path + "/resume", json={"question_id": question_id})
+                assert answer == replay
+                assert len(completed["messages"]) == before + 1
+                assert "pending_question" not in completed
+                assert completed["messages"][-2]["provider"] == "clarification"
+                assert answer["provider"] == "deepseek"
+                assert not re.search(
+                    r"(没有|没|未)收到.{0,8}(图片|照片)", answer["text"]
+                )
+                report["resume"] = {
+                    "original_question_retained": True,
+                    "assistant_messages_added": 1,
+                    "synthetic_user_messages_added": 0,
+                    "idempotent_replay": True,
+                    "provider": answer["provider"],
+                    "model": answer.get("model"),
+                    "seconds": round(time.perf_counter() - started, 2),
+                }
+            modes = [("deepseek-v4-pro", True, False)] if exercise_provider else []
             if web:
                 modes.append(("deepseek-flash", False, True))
             for model, thinking, search in modes:

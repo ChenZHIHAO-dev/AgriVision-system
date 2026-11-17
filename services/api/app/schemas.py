@@ -1,4 +1,5 @@
 from typing import Literal
+
 from pydantic import BaseModel, Field
 
 Crop = Literal["wheat", "maize", "peanut"]
@@ -8,7 +9,15 @@ class DemoRequest(BaseModel):
     crop: Crop = "wheat"
 
 
+class ResumeRequest(BaseModel):
+    question_id: str = Field(min_length=1, max_length=80)
+    model: Literal["deepseek-flash", "deepseek-v4-pro"] | None = None
+    thinking: bool | None = None
+    web_search: bool | None = None
+
+
 class MessageRequest(BaseModel):
+    request_id: str | None = Field(default=None, max_length=80)
     text: str = Field(min_length=1, max_length=12000)
     model: Literal["deepseek-flash", "deepseek-v4-pro"] | None = None
     thinking: bool = False

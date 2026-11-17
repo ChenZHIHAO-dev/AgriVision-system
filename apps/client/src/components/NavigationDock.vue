@@ -28,7 +28,7 @@ const emit = defineEmits<{
       :class="{ active: active === 'profile' || active === 'settings' || active === 'knowledge' }"
       @click="emit('navigate', 'profile')"
     >
-      <view class="person-mark"><view /></view><text>我的</text>
+      <AppIcon name="user" :size="22" /><text>我的</text>
     </button>
   </view>
 </template>

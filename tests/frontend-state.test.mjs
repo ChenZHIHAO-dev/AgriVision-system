@@ -210,3 +210,24 @@ test('system theme updates and manual overrides preserve the selected mode', () 
   dispose()
   assert.equal(app.listeners.size, 0)
 })
+
+test('static preview resumes the original question after selection without a fake user message', async () => {
+  const app = fresh()
+  const record = await app.previewRequest('/api/consultations', 'POST', {})
+  const path = '/api/cases/' + record.id
+  await app.previewRequest(path + '/messages', 'POST', { text: '小麦叶片白斑如何处理？' })
+  let updated = await app.previewRequest(path, 'GET')
+  const question = updated.pending_question.id
+  await app.previewRequest(path + '/context', 'POST', { stage: '苗期' })
+  const answer = await app.previewRequest(path + '/resume', 'POST', { question_id: question })
+  updated = await app.previewRequest(path, 'GET')
+  assert.equal(updated.pending_question, undefined)
+  assert.equal(updated.messages.length, 3)
+  assert.deepEqual(
+    updated.messages.filter((item) => item.role === 'user').map((item) => item.text),
+    ['小麦叶片白斑如何处理？'],
+  )
+  const replay = await app.previewRequest(path + '/resume', 'POST', { question_id: question })
+  assert.deepEqual(replay, answer)
+  assert.equal((await app.previewRequest(path, 'GET')).messages.length, 3)
+})

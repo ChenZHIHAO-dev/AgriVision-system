@@ -1,6 +1,19 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import AppIcon from '../../components/AppIcon.vue'
+import AppearanceSwitch from '../../components/AppearanceSwitch.vue'
+import GlobalNavigation from '../../components/GlobalNavigation.vue'
+import HistorySidebar from '../../components/HistorySidebar.vue'
+import {
+  initialPath,
+  selectPage,
+  showResult,
+  showChat,
+  showInspector,
+  popView,
+  openHistory,
+  type MainPage,
+} from '../../lib/navigation'
 import UiDialog from '../../components/UiDialog.vue'
 import AuthDialog from '../../components/AuthDialog.vue'
 import SelectField from '../../components/SelectField.vue'
@@ -11,7 +24,6 @@ import DashboardHome from '../../components/DashboardHome.vue'
 import NavigationDock from '../../components/NavigationDock.vue'
 import KnowledgeLibrary from '../../components/KnowledgeLibrary.vue'
 import { createDraftStore } from '../../lib/drafts'
-import ConversationHistory from '../../components/ConversationHistory.vue'
 import ConversationDrawer from '../../components/ConversationDrawer.vue'
 import PhotoSourceSheet from '../../components/PhotoSourceSheet.vue'
 import UserCenter from '../../components/UserCenter.vue'
@@ -38,13 +50,18 @@ import {
 import { crops, stages, regions, dateLabel, statusLabel } from '../../lib/options'
 import { auth, user } from '../../lib/auth'
 import { clearGuestRecords } from '../../lib/preview'
-import { asset } from '../../lib/assets'
 import { resolvedTheme, observeSystemTheme } from '../../lib/theme'
 import type { ChatModel, DocumentAttachment, FollowUp } from '../../lib/api'
 
-type Tab = 'home' | 'identify' | 'history' | 'knowledge' | 'profile' | 'settings'
-const tab = ref<Tab>('identify'),
-  crop = ref<Crop>('wheat'),
+type Tab = MainPage
+const viewPath = ref(initialPath())
+const tab = computed({
+  get: () => viewPath.value.page,
+  set: (value: Tab) => {
+    viewPath.value = selectPage(viewPath.value, value)
+  },
+})
+const crop = ref<Crop>('wheat'),
   stage = ref('不清楚'),
   note = ref(''),
   photo = ref('')
@@ -57,8 +74,7 @@ const meta = ref<Meta | null>(null),
 const records = ref<CaseRecord[]>([]),
   cards = ref<KnowledgeCard[]>([]),
   current = ref<CaseRecord | null>(null)
-const resultTab = ref<'advice' | 'chat'>('advice'),
-  chatText = ref(''),
+const chatText = ref(''),
   sending = ref(false),
   pendingMessage = ref(''),
   scrollAnchor = ref('')
@@ -87,6 +103,7 @@ const editStage = ref('不清楚'),
   editLocation = ref(''),
   editNote = ref(''),
   keyboardHeight = ref(0)
+const isMobile = ref(uni.getSystemInfoSync().windowWidth <= 760)
 const historyDrawerOpen = ref(false),
   photoSourceOpen = ref(false),
   photoTarget = ref<'identify' | 'chat' | 'supplement'>('identify')
@@ -122,7 +139,27 @@ watch(chatModel, (value) => {
 const provinces = Object.keys(regions)
 const cities = computed(() => Object.keys(regions[province.value] || {}))
 const districts = computed(() => regions[province.value]?.[city.value] || ['暂不填写区县'])
-const chatMode = computed(() => !!current.value && resultTab.value === 'chat')
+const chatMode = computed(() => !!current.value && viewPath.value.layers.includes('chat'))
+const resultOpen = computed(() =>
+  ['result', 'inspector'].includes(viewPath.value.layers[viewPath.value.layers.length - 1] || ''),
+)
+const inspecting = computed(
+  () => viewPath.value.layers[viewPath.value.layers.length - 1] === 'inspector',
+)
+const backLabel = computed(() =>
+  viewPath.value.layers.includes('result')
+    ? '返回结果'
+    : {
+        home: '返回首页',
+        identify: '返回拍照',
+        profile: '返回我的',
+        settings: '返回设置',
+        history: '返回记录',
+        knowledge: '返回资料',
+      }[tab.value],
+)
+const lastPhotoCase = ref<CaseRecord | null>(null)
+let messageAttempt: { id: string; text: string; caseId: string } | null = null
 const pendingImagePreviews = computed(
   () =>
     current.value?.images
@@ -148,17 +185,15 @@ const contextNeeded = computed<FollowUp | null>(() => {
 })
 const currentReceipt = computed(() => (current.value ? recognitionFor(current.value) : undefined))
 const title = computed(() =>
-  current.value
-    ? chatMode.value
-      ? current.value.crop
-        ? current.value.crop_name + '咨询'
-        : '新咨询'
-      : '识别结果'
+  chatMode.value
+    ? current.value?.crop
+      ? current.value.crop_name + '咨询'
+      : '新咨询'
     : {
         home: '首页',
         identify: '拍照问诊',
         history: '问诊记录',
-        knowledge: '植保知识',
+        knowledge: '参考资料',
         profile: '我的',
         settings: '设置',
       }[tab.value],
@@ -186,6 +221,10 @@ const appStyle = computed(() => {
   return {}
   // #endif
 })
+watch(current, (value) => {
+  if (value?.images.length && (!lastPhotoCase.value || lastPhotoCase.value.id === value.id))
+    lastPhotoCase.value = value
+})
 let stopTheme: (() => void) | undefined
 function nativeKeyboard(event: { height: number }) {
   keyboardHeight.value = event.height
@@ -193,6 +232,7 @@ function nativeKeyboard(event: { height: number }) {
 }
 function resizedChat() {
   // #ifdef H5
+  isMobile.value = window.innerWidth <= 760
   const visible = window.visualViewport?.height || window.innerHeight
   if (viewportWidth !== window.innerWidth) {
     viewportWidth = window.innerWidth
@@ -222,6 +262,7 @@ onMounted(() => {
   window.visualViewport?.addEventListener('resize', resizedChat)
   window.addEventListener('focusin', resizedChat)
   window.addEventListener('focusout', resizedChat)
+  window.addEventListener('keydown', pageKeyboard)
   resizedChat()
   // #endif
 })
@@ -232,6 +273,7 @@ onUnmounted(() => {
   window.visualViewport?.removeEventListener('resize', resizedChat)
   window.removeEventListener('focusin', resizedChat)
   window.removeEventListener('focusout', resizedChat)
+  window.removeEventListener('keydown', pageKeyboard)
   document.documentElement.classList.remove('keyboard-open')
   // #endif
   // #ifndef H5
@@ -268,13 +310,47 @@ async function refresh() {
   }
 }
 function navigate(value: Tab) {
+  const next =
+    chatMode.value && tab.value === value
+      ? { ...viewPath.value, layers: [] }
+      : selectPage(viewPath.value, value)
+  if (next === viewPath.value) return
   rememberDraft()
   if (current.value) retainedCase.value = current.value
-  current.value = null
-  tab.value = value
+  viewPath.value = next
   filter.value = 'all'
   query.value = ''
   error.value = ''
+}
+function backView() {
+  rememberDraft()
+  viewPath.value = popView(viewPath.value)
+}
+function inspectResult() {
+  viewPath.value = showInspector(viewPath.value)
+}
+function restoreResult() {
+  if (!lastPhotoCase.value) return
+  rememberDraft()
+  current.value = lastPhotoCase.value
+  restoreComposer()
+  viewPath.value = showResult(viewPath.value, current.value.id)
+}
+function pageKeyboard(event: KeyboardEvent) {
+  if (event.defaultPrevented) return
+  // #ifdef H5
+  if (
+    event.key !== 'Escape' ||
+    document.querySelector(
+      '[data-modal-id],[data-choice-layer],.conversation-drawer-backdrop,.attachment-menu',
+    )
+  )
+    return
+  if (viewPath.value.layers.length) {
+    event.preventDefault()
+    backView()
+  }
+  // #endif
 }
 function chooseCrop(value: Crop) {
   crop.value = value
@@ -293,6 +369,8 @@ async function signedIn() {
     clearComposer()
     current.value = null
     retainedCase.value = null
+    lastPhotoCase.value = null
+    viewPath.value = initialPath()
     records.value = []
     navigate('profile')
     await refresh()
@@ -308,6 +386,8 @@ async function signOut() {
   clearComposer()
   current.value = null
   retainedCase.value = null
+  lastPhotoCase.value = null
+  viewPath.value = initialPath()
   records.value = []
   navigate('profile')
   photo.value = ''
@@ -370,7 +450,8 @@ async function startCase() {
   try {
     current.value = await upload('/api/cases', photo.value, { crop: crop.value })
     clearComposer()
-    resultTab.value = 'advice'
+    lastPhotoCase.value = current.value
+    viewPath.value = showResult(viewPath.value, current.value.id)
     photo.value = ''
     note.value = ''
     await refresh()
@@ -388,7 +469,8 @@ async function demo() {
   error.value = ''
   try {
     current.value = await request<CaseRecord>('/api/cases/demo', 'POST', { crop: crop.value })
-    resultTab.value = 'advice'
+    lastPhotoCase.value = current.value
+    viewPath.value = showResult(viewPath.value, current.value.id)
     await refresh()
   } catch (value) {
     showError(value)
@@ -404,13 +486,14 @@ async function openCase(id: string) {
   try {
     current.value = await request<CaseRecord>('/api/cases/' + id)
     restoreComposer()
-    resultTab.value =
-      current.value.messages.length || !current.value.images.length ? 'chat' : 'advice'
+    viewPath.value = openHistory(viewPath.value, current.value.id)
   } catch (value) {
     showError(value)
   } finally {
     busy.value = false
   }
+  if (current.value?.id === id && current.value.pending_question && !contextNeeded.value)
+    await resumeQuestion()
 }
 async function retryRecognition() {
   if (!current.value || busy.value) return
@@ -453,7 +536,8 @@ async function scrollChat() {
   scrollAnchor.value = 'chat-end'
 }
 function openChat() {
-  resultTab.value = 'chat'
+  if (!current.value) return
+  viewPath.value = showChat(viewPath.value, current.value.id)
   scrollChat()
 }
 async function startConsultation(selectedCrop: Crop | null = null) {
@@ -469,7 +553,8 @@ async function startConsultation(selectedCrop: Crop | null = null) {
       stage: '不清楚',
     })
     clearComposer()
-    resultTab.value = 'chat'
+    if (!user.value) lastPhotoCase.value = null
+    viewPath.value = openHistory(viewPath.value, current.value.id)
     chatText.value = ''
     pendingDocuments.value = []
     pendingImages.value = []
@@ -481,22 +566,48 @@ async function startConsultation(selectedCrop: Crop | null = null) {
     busy.value = false
   }
 }
-async function chooseContext(value: FollowUp, choice: { value: string; label: string }) {
-  if (!current.value || sending.value) return
+async function resumeQuestion() {
+  const record = current.value
+  if (!record?.pending_question || contextNeeded.value || sending.value) return
+  const id = record.id,
+    question = record.pending_question.id
+  sending.value = true
+  error.value = ''
   try {
-    current.value = await request<CaseRecord>(
-      '/api/cases/' + current.value.id + '/context',
-      'POST',
-      { [value.field]: choice.value },
-    )
-    showToast(
-      value.field === 'crop'
-        ? '作物已更新，请继续补充信息。'
-        : '生育期已更新，发送问题后生成建议。',
-    )
+    await request('/api/cases/' + id + '/resume', 'POST', {
+      question_id: question,
+      model: chatModel.value,
+      thinking: chatThinking.value,
+      web_search: chatWebSearch.value,
+    })
+    const updated = await request<CaseRecord>('/api/cases/' + id)
+    if (current.value?.id === id) current.value = updated
+    await refresh()
   } catch (value) {
     showError(value)
+  } finally {
+    sending.value = false
+    scrollChat()
   }
+}
+async function chooseContext(value: FollowUp, choice: { value: string; label: string }) {
+  if (!current.value || sending.value) return
+  const origin = current.value.id
+  sending.value = true
+  try {
+    const id = current.value.id
+    const updated = await request<CaseRecord>('/api/cases/' + id + '/context', 'POST', {
+      [value.field]: choice.value,
+    })
+    if (current.value?.id === id) current.value = updated
+  } catch (value) {
+    showError(value)
+  } finally {
+    sending.value = false
+  }
+  if (current.value?.id !== origin) return
+  if (current.value?.pending_question && !contextNeeded.value) await resumeQuestion()
+  else if (!current.value?.pending_question) showToast('种植信息已更新')
 }
 function chooseChatPhoto(source: 'album' | 'camera' = 'album') {
   uni.chooseImage({
@@ -545,7 +656,7 @@ async function confirmChatPhoto() {
     ]
     photoDialogOpen.value = false
     chatPhoto.value = ''
-    resultTab.value = 'chat'
+    viewPath.value = showChat(viewPath.value, current.value.id)
     await refresh()
   } catch (value) {
     showError(value)
@@ -574,7 +685,7 @@ async function acceptDocument(path: string, name: string, size: number) {
     pendingDocuments.value.push(
       ...(current.value.documents || []).filter((file) => !previous.has(file.id)),
     )
-    resultTab.value = 'chat'
+    viewPath.value = showChat(viewPath.value, current.value.id)
     showToast('资料已添加，可继续提问')
     await refresh()
   } catch (value) {
@@ -689,6 +800,13 @@ async function sendMessage(raw = chatText.value) {
         : '请阅读刚添加的资料，提取与本次作物咨询相关的信息。'),
     id = current.value.id
   const sentDraft = raw === chatText.value
+  if (!messageAttempt || messageAttempt.text !== text || messageAttempt.caseId !== id)
+    messageAttempt = {
+      id: 'question-' + Date.now() + '-' + Math.random().toString(36).slice(2),
+      text,
+      caseId: id,
+    }
+  const requestId = messageAttempt.id
   sending.value = true
   pendingMessage.value = text
   if (sentDraft) chatText.value = ''
@@ -697,6 +815,7 @@ async function sendMessage(raw = chatText.value) {
   try {
     await request(`/api/cases/${id}/messages`, 'POST', {
       text,
+      request_id: requestId,
       model: chatModel.value,
       thinking: chatThinking.value,
       web_search: chatWebSearch.value,
@@ -704,6 +823,12 @@ async function sendMessage(raw = chatText.value) {
       image_ids: pendingImages.value,
     })
     const updated = await request<CaseRecord>(`/api/cases/${id}`)
+    messageAttempt = null
+    drafts.save(id, {
+      text: current.value?.id === id ? chatText.value : drafts.get(id).text,
+      documents: [],
+      images: [],
+    })
     if (current.value?.id === id) {
       current.value = updated
       pendingDocuments.value = []
@@ -739,6 +864,10 @@ async function saveCase() {
     editOpen.value = false
     await refresh()
     showToast('种植情况已更新')
+    if (current.value?.pending_question && !contextNeeded.value) {
+      busy.value = false
+      await resumeQuestion()
+    }
   } catch (value) {
     showError(value)
   } finally {
@@ -751,7 +880,11 @@ async function confirmDelete() {
   try {
     const id = deleteTarget.value.id
     await request(`/api/cases/${id}`, 'DELETE')
-    if (current.value?.id === id) current.value = null
+    if (current.value?.id === id) {
+      current.value = null
+      viewPath.value = { ...viewPath.value, layers: [] }
+    }
+    if (lastPhotoCase.value?.id === id) lastPhotoCase.value = null
     deleteTarget.value = null
     await refresh()
     showToast('问诊记录已删除')
@@ -818,6 +951,8 @@ async function openConversation(id: string) {
 }
 async function openConsultation() {
   if (current.value) {
+    if (!viewPath.value.layers.length)
+      viewPath.value = openHistory(viewPath.value, current.value.id)
     openChat()
     return
   }
@@ -868,90 +1003,71 @@ function newFromDrawer() {
     ]"
     :style="appStyle"
   >
-    <view class="sidebar">
-      <button class="brand" @click="navigate('home')">
-        <view class="brand-mark"><AppIcon name="leaf" :size="27" white /></view
-        ><view
-          ><text class="brand-name">AgriVision</text
-          ><text class="brand-caption">宛农植保助手</text></view
-        >
-      </button>
-      <text class="nav-caption">工作台</text>
-      <button
-        class="nav-item"
-        :class="{ active: tab === 'home' && !current }"
-        @click="navigate('home')"
-      >
-        <AppIcon name="home" /><text>首页</text>
-      </button>
-      <button class="nav-item" :class="{ active: chatMode }" @click="openConsultation">
-        <AppIcon name="chat" /><text>咨询</text>
-      </button>
-      <button
-        class="nav-item"
-        :class="{ active: (tab === 'identify' && !current) || (current && !chatMode) }"
-        @click="navigate('identify')"
-      >
-        <AppIcon name="camera" /><text>拍照识别</text>
-      </button>
-      <button
-        class="nav-item"
-        :class="{ active: ['profile', 'settings', 'knowledge'].includes(tab) && !current }"
-        @click="navigate('profile')"
-      >
-        <text class="nav-user-avatar">{{ user?.name.slice(0, 1) || '我' }}</text
-        ><text>我的</text>
-      </button>
-      <ConversationHistory
-        :records="records"
-        :user="user"
-        :selected="current?.id"
-        @open="openConversation"
-        @new="startConsultation()"
-        @login="openAuth('登录后，后续咨询会保存到你的账户。')"
-      />
-      <view class="sidebar-bottom"
-        ><button class="nav-settings" @click="openSettings">
-          <AppIcon name="settings" :size="18" /><text>设置</text></button
-        ><text class="fine-print">AgriVision · {{ appVersion }}</text></view
-      >
-    </view>
+    <GlobalNavigation
+      :active="tab"
+      :chat="chatMode"
+      :expanded="sidebarExpanded"
+      @navigate="navigate"
+      @consult="openConsultation"
+      @toggle="sidebarExpanded = !sidebarExpanded"
+    />
+    <HistorySidebar
+      v-if="sidebarExpanded"
+      :records="records"
+      :user="user"
+      :selected="current?.id"
+      @open="openConversation"
+      @new="startConsultation()"
+      @login="openAuth('登录后，后续咨询会保存到你的账户。')"
+      @close="sidebarExpanded = false"
+    />
 
     <view class="main-shell">
       <view class="topbar">
-        <button
-          class="icon-button navigation-toggle"
-          aria-label="打开导航与问诊记录"
-          @click="toggleNavigation"
-        >
-          ☰
-        </button>
-        <view class="breadcrumb"
-          ><button class="desktop-only breadcrumb-home" @click="navigate('home')">工作台</button
-          ><text class="desktop-only crumb-divider">/</text
-          ><text class="topbar-title">{{ title }}</text></view
-        >
-        <view class="topbar-actions"
-          ><button
-            v-if="chatMode && current?.images.length"
-            class="header-result-link"
-            @click="resultTab = 'advice'"
+        <view class="header-leading">
+          <button v-if="chatMode" class="back-button" @click="backView">
+            <AppIcon name="back" :size="18" /><text>{{ backLabel }}</text>
+          </button>
+          <button
+            class="icon-button navigation-toggle"
+            aria-label="打开或收起问诊历史"
+            :aria-expanded="isMobile ? historyDrawerOpen : sidebarExpanded"
+            @click="toggleNavigation"
           >
-            识别结果</button
-          ><button
-            v-if="chatMode"
-            class="icon-button"
-            aria-label="问诊信息"
-            @click="infoOpen = true"
-          >
-            <AppIcon name="info" :size="18" /></button
-          ><button v-if="!user" class="login-button" @click="openAuth()">
-            登录<text class="desktop-only"> / 注册</text></button
-          ><button v-else class="account-button" aria-label="用户中心" @click="navigate('profile')">
+            <AppIcon name="menu" :size="20" />
+          </button>
+          <view class="breadcrumb">
+            <button v-if="!chatMode" class="desktop-only breadcrumb-home" @click="navigate('home')">
+              工作台
+            </button>
+            <text v-if="!chatMode" class="desktop-only crumb-divider">/</text>
+            <text class="topbar-title">{{ title }}</text>
+          </view>
+        </view>
+        <view class="topbar-actions">
+          <AppearanceSwitch />
+          <button v-if="!user" class="login-button" @click="openAuth()">
+            登录<text class="desktop-only"> / 注册</text>
+          </button>
+          <button v-else class="account-button" aria-label="用户中心" @click="navigate('profile')">
             <text class="avatar">{{ user.name.slice(0, 1).toUpperCase() }}</text
             ><text class="account-name">{{ user.name }}</text>
-          </button></view
+          </button>
+        </view>
+      </view>
+      <view v-if="chatMode && current" class="chat-context-bar">
+        <text
+          >{{ current.crop_name
+          }}<text v-if="current.stage !== '不清楚'"> · {{ current.stage }}</text></text
         >
+        <view>
+          <button v-if="current.images.length" class="soft-action" @click="inspectResult">
+            <AppIcon name="image" :size="16" /><text>识别结果</text>
+          </button>
+          <button class="soft-action" aria-label="问诊信息" @click="infoOpen = true">
+            <AppIcon name="info" :size="17" /><text>问诊信息</text>
+          </button>
+        </view>
       </view>
       <view v-if="error" class="error-strip" role="alert"
         ><text class="flex-one">{{ error }}</text
@@ -963,25 +1079,8 @@ function newFromDrawer() {
       >
 
       <view class="workspace">
-        <view v-if="current" class="case-area">
-          <view v-if="!chatMode" class="case-toolbar">
-            <button
-              class="case-back icon-button"
-              aria-label="返回拍照问诊"
-              @click="navigate('identify')"
-            >
-              ←
-            </button>
-            <view class="case-heading flex-one"
-              ><text class="strong">{{ current.crop_name }}</text
-              ><text v-if="current.location" class="muted">{{ current.location }}</text></view
-            >
-            <button class="icon-button" aria-label="查看问诊资料" @click="infoOpen = true">
-              <AppIcon name="info" :size="20" />
-            </button>
-          </view>
-
-          <view v-if="chatMode" class="chat-workspace">
+        <view v-if="chatMode && current" class="case-area">
+          <view class="chat-workspace">
             <view v-if="mode === 'preview'" class="chat-mode-note"
               ><text>🌱 当前提供植保资料参考，智能服务暂未连接</text
               ><button v-if="!user" @click="openAuth('登录后，新的问诊与咨询会保存到你的账户。')">
@@ -1005,9 +1104,8 @@ function newFromDrawer() {
                 />
                 <view v-if="!current.messages.length && !sending" class="chat-welcome"
                   ><view class="welcome-mark">🌱</view
-                  ><text class="welcome-title">这次田间观察，我们一起看看</text
-                  ><text class="muted"
-                    >可以补充症状出现的时间、范围和近期用药情况，或从下面的问题开始。</text
+                  ><text class="welcome-title">咨询作物问题</text
+                  ><text class="muted">描述症状、询问种植管理，或添加照片进行识别。</text
                   ><view class="welcome-topics"
                     ><button
                       v-for="text in [
@@ -1092,13 +1190,15 @@ function newFromDrawer() {
                       v-if="
                         index === current.messages.length - 1 &&
                         message.provider === 'clarification' &&
-                        !contextNeeded
+                        !contextNeeded &&
+                        current.pending_question &&
+                        !sending
                       "
                       class="button secondary continue-question"
                       :disabled="sending"
-                      @click="sendMessage('基础信息已补充，请回答刚才的问题。')"
+                      @click="resumeQuestion"
                     >
-                      继续回答 ↗
+                      重试回答
                     </button>
                     <view
                       v-if="message.role === 'assistant' && message.provider !== 'clarification'"
@@ -1122,7 +1222,7 @@ function newFromDrawer() {
                     }}</text></view
                   >
                 </view>
-                <view v-if="sending" class="message-row user"
+                <view v-if="sending && pendingMessage" class="message-row user"
                   ><text class="message-bubble pending-bubble">{{ pendingMessage }}</text></view
                 >
                 <view v-if="sending" class="responding"
@@ -1151,37 +1251,17 @@ function newFromDrawer() {
                   @keyboard="keyboardHeight = $event" /></view
             ></view>
           </view>
-
-          <scroll-view v-else scroll-y class="page-scroll"
-            ><RecognitionResult
-              :record="current"
-              :receipt="currentReceipt"
-              :busy="busy"
-              @photo="viewPhoto"
-              @source="openSource"
-              @edit="editCase"
-              @retry="retryRecognition"
-          /></scroll-view>
-          <view v-if="!chatMode" class="result-actions"
-            ><button
-              v-if="!current.is_demo"
-              class="button secondary"
-              :disabled="busy || current.images.length >= 6"
-              @click="openPhotoSources('supplement')"
-            >
-              补充照片</button
-            ><button class="button primary" @click="openChat">
-              <AppIcon name="chat" white :size="18" /><text>继续对话</text>
-            </button></view
-          >
         </view>
 
-        <scroll-view v-else scroll-y class="page-scroll">
+        <scroll-view v-show="!chatMode" scroll-y class="page-scroll">
           <view class="page-content">
             <template v-if="tab === 'home'"
               ><DashboardHome
                 :records="records"
+                :cards="cards"
                 :logged-in="!!user"
+                @card="selectedCard = $event"
+                @source="openSource"
                 @capture="navigate('identify')"
                 @open="openCase"
                 @history="navigate('history')"
@@ -1193,6 +1273,8 @@ function newFromDrawer() {
                 :models="meta?.models || []"
                 :busy="busy"
                 :loading="refreshing || !meta"
+                :last-result="lastPhotoCase"
+                @result="restoreResult"
                 @crop="chooseCrop"
                 @capture="choosePhoto"
                 @resume="openConsultation"
@@ -1281,7 +1363,6 @@ function newFromDrawer() {
                 @login="openAuth()"
                 @register="openAuth('', 'register')"
                 @settings="openSettings"
-                @resources="navigate('knowledge')"
                 @admin="openAdmin"
                 @logout="signOut"
             /></template>
@@ -1295,12 +1376,48 @@ function newFromDrawer() {
         </scroll-view>
       </view>
       <NavigationDock
-        :active="chatMode ? 'chat' : tab"
+        v-if="!chatMode"
+        :active="tab"
         :keyboard-open="keyboardHeight > 0"
         @navigate="navigate"
       />
     </view>
 
+    <UiDialog
+      v-if="resultOpen && current"
+      :title="inspecting ? '图片识别结果' : '本次识别'"
+      :subtitle="current.crop_name"
+      wide
+      floating
+      @close="backView"
+    >
+      <RecognitionResult
+        :record="current"
+        :receipt="currentReceipt"
+        :busy="busy"
+        @photo="viewPhoto"
+        @source="openSource"
+        @edit="editCase"
+        @retry="retryRecognition"
+      />
+      <template #footer>
+        <view v-if="!inspecting" class="result-footer">
+          <button
+            class="button secondary"
+            :disabled="busy || current.images.length >= 6"
+            @click="openPhotoSources('supplement')"
+          >
+            <AppIcon name="plus" :size="17" /><text>补充照片</text>
+          </button>
+          <button class="button primary" @click="openChat">
+            <AppIcon name="chat" white :size="18" /><text>继续对话</text>
+          </button>
+        </view>
+        <button v-else class="button secondary full-width" @click="backView">
+          <AppIcon name="back" :size="17" /><text>返回聊天</text>
+        </button>
+      </template>
+    </UiDialog>
     <ScanProgress v-if="busy && scanPhoto" :src="scanPhoto" />
     <ConversationDrawer
       v-if="historyDrawerOpen"
@@ -1505,71 +1622,6 @@ function newFromDrawer() {
 </template>
 
 <style scoped>
-.continue-question {
-  font-size: 12px;
-  margin: 13px 0;
-  min-height: 40px;
-}
-
-.result-actions {
-  display: flex;
-  gap: 11px;
-  justify-content: flex-end;
-  border-top: 1px solid var(--line);
-  padding: 13px 28px;
-  background: var(--surface);
-  flex-shrink: 0;
-}
-.result-actions > .button.primary {
-  min-width: 190px;
-}
-.result-actions > .button {
-  font-size: 12px;
-  min-height: 44px;
-}
-@media (max-width: 760px) {
-  .result-actions {
-    padding: 11px 16px;
-    gap: 10px;
-  }
-  .result-actions > .button.primary {
-    min-width: 0;
-    flex: 1;
-  }
-  .result-actions > .button {
-    font-size: 12px;
-  }
-}
-
-.result-score {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  margin: 0 0 20px;
-}
-.result-score > text {
-  font-size: 31px;
-  line-height: 1.1;
-  font-weight: 600;
-  letter-spacing: -1px;
-}
-.result-score > text > text {
-  font-size: 15px;
-  letter-spacing: 0;
-  margin-left: 2px;
-}
-.result-score > view > text:first-child {
-  display: block;
-  font-size: 11px;
-  color: var(--ink);
-}
-.result-score > view > text:last-child {
-  display: block;
-  font-size: 10px;
-  color: var(--muted);
-  margin-top: 4px;
-}
-
 .breadcrumb-home {
   font-size: 12px;
   color: var(--muted);
@@ -1586,102 +1638,12 @@ function newFromDrawer() {
   flex-shrink: 0;
   font-size: 21px;
 }
-.nav-collapsed .sidebar {
-  display: none;
-}
 .header-result-link {
   font-size: 11px;
   color: var(--accent);
   padding: 7px 9px;
   border-radius: 8px;
   white-space: nowrap;
-}
-.case-toolbar {
-  grid-template-columns: 36px minmax(0, 1fr) 36px !important;
-}
-.case-heading {
-  grid-column: 2 !important;
-  grid-row: 1 !important;
-}
-.case-toolbar > .icon-button:last-child {
-  grid-column: 3 !important;
-  grid-row: 1 !important;
-}
-
-.sidebar {
-  width: 230px;
-  flex-shrink: 0;
-  background: var(--surface);
-  border-right: 1px solid var(--line);
-  display: flex;
-  flex-direction: column;
-  padding: 28px 20px 23px;
-}
-.brand {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  text-align: left;
-  margin: 4px 0 42px;
-}
-.brand-mark {
-  width: 43px;
-  height: 43px;
-  border-radius: 14px;
-  background: #216b4b;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.brand-name {
-  display: block;
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.8px;
-}
-.brand-caption {
-  display: block;
-  font-size: 10px;
-  letter-spacing: 2px;
-  color: var(--muted);
-  margin-top: 1px;
-}
-.nav-caption {
-  font-size: 10px;
-  color: var(--muted);
-  letter-spacing: 1px;
-  margin: 0 13px 12px;
-}
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  padding: 13px 15px;
-  border-radius: 12px;
-  font-size: 14px;
-  margin: 3px 0;
-  color: var(--muted);
-  min-height: 48px;
-}
-.nav-item.active {
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-weight: 550;
-}
-.sidebar-bottom {
-  border-top: 1px solid var(--line);
-  padding: 16px 10px 0;
-}
-.nav-settings {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 12px;
-  min-height: 38px;
-}
-.sidebar-bottom .fine-print {
-  font-size: 9px;
-  margin-top: 8px;
 }
 .main-shell {
   min-width: 0;
@@ -1777,18 +1739,6 @@ function newFromDrawer() {
   max-width: 1320px;
   margin: 0 auto;
   padding: 30px 34px 20px;
-}
-.selected .crop-radio {
-  color: var(--accent);
-}
-.page-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 15px;
-  color: var(--muted);
-  font-size: 9px;
-  padding: 27px 2px 8px;
 }
 .page-heading {
   display: flex;
@@ -1888,109 +1838,6 @@ function newFromDrawer() {
   flex: 1;
   min-height: 0;
   min-width: 0;
-}
-.case-toolbar {
-  display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) auto 40px;
-  align-items: center;
-  gap: 14px;
-  padding: 15px 29px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--line);
-  flex-shrink: 0;
-}
-.case-heading > .strong {
-  display: block;
-  font-size: 13px;
-}
-.case-heading > .muted {
-  display: block;
-  font-size: 11px;
-  margin-top: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.result-content {
-  width: 100%;
-  padding-top: 15px;
-}
-.result-grid {
-  display: grid;
-  grid-template-columns: minmax(220px, 0.65fr) minmax(0, 1.35fr);
-  gap: 23px;
-  align-items: start;
-}
-.photo-panel {
-  padding: 22px;
-}
-.photo-panel .section-title {
-  font-size: 15px;
-}
-.case-photo {
-  display: block;
-  width: 100%;
-  height: 245px;
-  background: var(--subtle);
-  border-radius: 13px;
-  margin: 18px 0;
-}
-.case-photo > image {
-  width: 100%;
-  height: 100%;
-}
-.case-context {
-  margin-top: 21px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.case-note {
-  font-size: 12px;
-  line-height: 1.9;
-}
-.case-context > .text-button {
-  font-size: 11px;
-}
-.result-panel {
-  padding: 28px;
-}
-.result-title {
-  font-size: 25px;
-  font-weight: 650;
-  letter-spacing: -0.4px;
-  line-height: 1.65;
-  display: block;
-  margin: 12px 0;
-}
-.result-summary {
-  display: block;
-  font-size: 14px;
-  line-height: 1.95;
-  color: var(--muted);
-  margin-bottom: 27px;
-}
-.subheading {
-  display: block;
-  font-size: 14px;
-  font-weight: 650;
-  margin: 24px 0 12px;
-}
-.product-section {
-  border-top: 1px solid var(--line);
-  margin-top: 23px;
-}
-.product-section .muted {
-  display: block;
-  line-height: 1.9;
-  font-size: 12px;
-}
-.product-card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 12px;
-  margin: 13px 0;
 }
 .result-sources,
 .candidate-section {
@@ -2235,40 +2082,11 @@ function newFromDrawer() {
   }
 }
 @media (max-width: 1190px) {
-  .sidebar {
-    width: 205px;
-    padding-left: 15px;
-    padding-right: 15px;
-  }
-  .brand-name {
-    font-size: 20px;
-  }
-  .brand-mark {
-    width: 39px;
-    height: 39px;
-  }
-  .brand {
-    gap: 9px;
-  }
   .topbar {
     padding: 0 24px;
   }
   .page-content {
     padding: 25px;
-  }
-  .result-grid {
-    grid-template-columns: 230px minmax(0, 1fr);
-    gap: 18px;
-  }
-  .result-panel {
-    padding: 23px;
-  }
-  .photo-panel {
-    padding: 18px;
-  }
-  .case-toolbar {
-    padding-left: 20px;
-    padding-right: 20px;
   }
   .message-stream {
     padding-left: 30px;
@@ -2276,33 +2094,11 @@ function newFromDrawer() {
   }
 }
 @media (max-width: 1000px) and (min-width: 761px) {
-  .sidebar {
-    width: 78px;
-    padding: 28px 10px;
-  }
-  .brand {
-    justify-content: center;
-    margin-bottom: 35px;
-  }
-  .brand > view:last-child,
-  .nav-caption,
-  .nav-item > text,
-  .sidebar-bottom {
-    display: none;
-  }
-  .nav-item {
-    justify-content: center;
-    padding: 12px;
-  }
   .topbar-actions {
     gap: 9px;
   }
 }
 @media (max-width: 760px) {
-  .desktop-only,
-  .sidebar {
-    display: none !important;
-  }
   .topbar {
     height: 62px;
     min-height: 62px;
@@ -2341,11 +2137,6 @@ function newFromDrawer() {
   }
   .page-content {
     padding: 17px 16px 10px;
-  }
-  .page-footer {
-    font-size: 8px;
-    gap: 8px;
-    padding: 24px 2px 15px;
   }
   .page-heading {
     margin: 5px 0 24px;
@@ -2428,36 +2219,6 @@ function newFromDrawer() {
   .history-row > .icon-button {
     width: 32px;
     min-width: 32px;
-  }
-  .case-toolbar {
-    grid-template-columns: 36px minmax(0, 1fr) 36px;
-    padding: 11px 15px 12px;
-    gap: 8px;
-  }
-  .case-back {
-    grid-column: 1;
-    grid-row: 1;
-    min-width: 36px;
-    width: 36px;
-    height: 36px;
-  }
-  .case-heading {
-    grid-column: 2;
-    grid-row: 1;
-  }
-  .case-heading > .strong {
-    font-size: 12px;
-  }
-  .case-heading > .muted {
-    font-size: 10px;
-    max-width: 240px;
-  }
-  .case-toolbar > .icon-button:last-child {
-    grid-column: 3;
-    grid-row: 1;
-    min-width: 36px;
-    width: 36px;
-    height: 36px;
   }
   .chat-mode-note {
     font-size: 9px;
@@ -2550,58 +2311,12 @@ function newFromDrawer() {
     padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
     border-top-color: var(--line);
   }
-  .result-content {
-    padding-top: 0;
-  }
-  .result-content .inline-alert {
-    margin-top: 15px;
-    margin-bottom: 15px;
-    font-size: 11px;
-  }
-  .result-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 17px;
-  }
-  .photo-panel {
-    order: 2;
-    width: 100%;
-    padding: 21px;
-  }
-  .result-panel {
-    order: 1;
-    width: 100%;
-    padding: 23px 21px;
-  }
-  .result-title {
-    font-size: 23px;
-    line-height: 1.6;
-  }
-  .result-summary {
-    font-size: 13px;
-    line-height: 2;
-  }
-  .subheading {
-    font-size: 14px;
-  }
   .action-row {
     font-size: 13px;
-  }
-  .product-section .muted {
-    font-size: 12px;
   }
   .source-button {
     font-size: 11px;
     line-height: 1.9;
-  }
-  .case-photo {
-    height: 240px;
-  }
-  .case-context {
-    margin-top: 18px;
-  }
-  .case-note {
-    font-size: 13px;
   }
   .guest-save {
     font-size: 12px;
@@ -2756,6 +2471,130 @@ function newFromDrawer() {
   color: #fff;
   text-align: center;
 }
+
+.header-leading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 7px 10px;
+  border-radius: 11px;
+  background: var(--subtle);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.topbar-actions {
+  gap: 10px;
+}
+.breadcrumb-home {
+  padding: 8px;
+  border-radius: 9px;
+}
+.chat-context-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 26px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.chat-context-bar > view {
+  display: flex;
+  gap: 4px;
+}
+.soft-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 7px 9px;
+  border-radius: 9px;
+  font-size: 11px;
+}
+.context-options > button {
+  border-color: transparent;
+  background: var(--subtle);
+}
+.user .message-bubble {
+  border-color: transparent;
+  background: var(--subtle);
+}
+.source-chip {
+  border-color: transparent;
+  background: var(--surface);
+}
+.message-tools .copy-button {
+  border-radius: 8px;
+}
+.is-chat .topbar {
+  backdrop-filter: none;
+  background: var(--bg);
+  border-bottom: 0;
+}
+@media (max-width: 1050px) {
+  .topbar {
+    padding: 0 22px;
+    gap: 12px;
+  }
+  .header-leading {
+    gap: 8px;
+  }
+}
 @media (max-width: 760px) {
+  .desktop-only {
+    display: none;
+  }
+  .topbar {
+    padding: 0 15px;
+    gap: 10px;
+    height: 64px;
+    min-height: 64px;
+  }
+  .topbar-actions {
+    gap: 7px;
+  }
+  .header-leading {
+    gap: 7px;
+  }
+  .back-button {
+    min-height: 36px;
+    gap: 3px;
+    padding: 6px 7px;
+    font-size: 10px;
+  }
+  .is-chat .topbar {
+    padding-left: 10px;
+    padding-right: 12px;
+  }
+  .is-chat .topbar-title {
+    max-width: 85px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 12px;
+  }
+  .is-chat :deep(.appearance-switch > text) {
+    display: none;
+  }
+  .chat-context-bar {
+    padding: 3px 12px 6px 15px;
+    font-size: 10px;
+  }
+  .soft-action {
+    font-size: 10px;
+    gap: 4px;
+    padding: 6px 7px;
+  }
+  .composer-dock {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
 }
 </style>

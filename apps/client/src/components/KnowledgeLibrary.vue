@@ -4,7 +4,7 @@ import AppIcon from './AppIcon.vue'
 import type { KnowledgeCard, Source } from '../lib/api'
 import { crops } from '../lib/options'
 import newsData from '../../../../knowledge/news.json'
-const props = defineProps<{ cards: KnowledgeCard[] }>()
+const props = defineProps<{ cards: KnowledgeCard[]; embedded?: boolean }>()
 const emit = defineEmits<{ open: [card: KnowledgeCard]; source: [source: Source] }>()
 const section = ref<'library' | 'news'>('library'),
   filter = ref('all'),
@@ -30,10 +30,10 @@ const news = computed(() =>
 )
 </script>
 <template>
-  <view class="library">
+  <view class="library" :class="{ embedded }">
     <view class="library-heading"
       ><view
-        ><text class="library-title">植保知识</text
+        ><text class="library-title">{{ embedded ? '参考资料' : '植保知识' }}</text
         ><text class="library-subtitle">病虫害资料、种植管理与公开资讯</text></view
       ><view class="layout-switch" aria-label="资料显示方式"
         ><button
@@ -42,14 +42,14 @@ const news = computed(() =>
           :class="{ active: layout === 'grid' }"
           @click="setLayout('grid')"
         >
-          <view class="grid-symbol"><view v-for="n in 4" :key="n" /></view></button
+          <AppIcon name="grid" :size="17" /></button
         ><button
           aria-label="列表视图"
           :aria-pressed="layout === 'list'"
           :class="{ active: layout === 'list' }"
           @click="setLayout('list')"
         >
-          <view class="list-symbol"><view v-for="n in 3" :key="n" /></view></button></view
+          <AppIcon name="list" :size="17" /></button></view
     ></view>
     <view class="library-tabs" role="tablist" aria-label="知识栏目"
       ><button
@@ -497,5 +497,14 @@ const news = computed(() =>
     width: 31px;
     height: 31px;
   }
+}
+.embedded .library-title {
+  font-size: 17px;
+}
+.embedded .library-subtitle {
+  font-size: 11px;
+}
+.embedded {
+  margin-top: 22px;
 }
 </style>

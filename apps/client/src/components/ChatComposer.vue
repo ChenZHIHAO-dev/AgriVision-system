@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import ModelPicker from './ModelPicker.vue'
+import AppIcon from './AppIcon.vue'
 // #ifdef H5
 import NativeChatInput from './NativeChatInput'
 // #endif
@@ -34,6 +35,7 @@ const emit = defineEmits<{
 }>()
 const attachOpen = ref(false)
 function attachmentKeyboard(event: KeyboardEvent) {
+  if (event.defaultPrevented) return
   // #ifdef H5
   if (!attachOpen.value) return
   if (event.key === 'Escape') {
@@ -136,7 +138,7 @@ function input(event: unknown) {
         :disabled="disabled"
         @click="attachOpen = !attachOpen"
       >
-        ＋
+        <AppIcon name="plus" :size="22" />
       </button>
       <view class="composer-model"
         ><ModelPicker
@@ -153,7 +155,7 @@ function input(event: unknown) {
         :disabled="disabled"
         @click="emit('update:thinking', !thinking)"
       >
-        <text>◈</text><text>深度思考</text>
+        <AppIcon name="thinking" :size="16" /><text>深度思考</text>
       </button>
       <text v-if="modelValue.length > 8000" class="input-count">{{ modelValue.length }}/12000</text>
       <button
@@ -162,20 +164,18 @@ function input(event: unknown) {
         :disabled="disabled || (!modelValue.trim() && !attachments.length && !images.length)"
         @click="emit('send')"
       >
-        <text>{{ disabled ? '…' : '↑' }}</text>
+        <text v-if="disabled">…</text><AppIcon v-else name="arrow" white :size="21" />
       </button>
     </view>
     <view v-if="attachOpen" class="attachment-dismiss" @click="attachOpen = false" />
     <view v-if="attachOpen" class="attachment-menu" role="menu"
       ><button role="menuitem" @click="attach('image')">
-        <text>▧</text
-        ><view
+        <AppIcon name="image" :size="21" /><view
           ><text class="strong">添加症状照片</text
           ><text class="file-status">照片先独立识别，再带结果继续咨询</text></view
         ></button
       ><button role="menuitem" @click="attach('document')">
-        <text>▤</text
-        ><view
+        <AppIcon name="file" :size="21" /><view
           ><text class="strong">上传资料文件</text
           ><text class="file-status">TXT、MD、PDF、DOCX · 8MB 以内</text></view
         >

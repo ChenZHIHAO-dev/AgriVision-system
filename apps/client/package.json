@@ -1,6 +1,6 @@
 {
   "name": "@agrivision/client",
-  "version": "1.2.1-dev.1",
+  "version": "1.2.2-dev.1",
   "private": true,
   "scripts": {
     "dev": "uni --host 127.0.0.1 --port 5173",

@@ -187,7 +187,7 @@ export async function previewRequest(
     put(record)
     return { ok: true }
   }
-  const match = path.match(/^\/api\/cases\/([^/]+)(?:\/(context|messages))?$/)
+  const match = path.match(/^\/api\/cases\/([^/]+)(?:\/(context|messages|resume))?$/)
   if (!match) throw new Error('当前服务暂不支持这个操作')
   const record = get(match[1])
   if (method === 'DELETE') {
@@ -202,6 +202,24 @@ export async function previewRequest(
       record.crop_name = cropNames[record.crop]
       record.title = record.crop_name + '种植咨询'
     }
+  }
+  if (match[2] === 'resume') {
+    const completed = record.messages.find(
+      (message) =>
+        (message as unknown as { resolved_question_id?: string }).resolved_question_id ===
+        data.question_id,
+    )
+    if (completed) return completed
+    if (!record.pending_question || record.pending_question.id !== data.question_id)
+      throw new Error('待回答问题已更新')
+    if (clarification(record)) return record
+    const answer = reply(record, record.pending_question.text)
+    Object.assign(answer, { resolved_question_id: record.pending_question.id })
+    record.messages.push(answer)
+    delete record.pending_question
+    record.updated_at = stamp()
+    put(record)
+    return clone(answer)
   }
   if (match[2] === 'messages') {
     if (!data.text?.trim()) throw new Error('请先填写咨询内容')
@@ -229,6 +247,9 @@ export async function previewRequest(
       .filter((image) => rawOptions.image_ids?.includes(image.id))
       .map((image) => ({ id: image.id, name: '症状照片', kind: 'image' as const }))
     const answer = reply(record, data.text)
+    if (answer.provider === 'clarification')
+      record.pending_question = { id: makeId(), text: data.text }
+    else delete record.pending_question
     if (files.length)
       answer.text =
         '已记录附件名称。当前未连接资料解析服务，暂时无法读取文件正文。\n\n' + answer.text
@@ -364,6 +385,6 @@ export function previewImage(record: CaseRecord, id?: string) {
   return (
     record.images.find((image) => image.id === id)?.url ||
     record.images[record.images.length - 1]?.url ||
-    asset(record.crop ? `crops/${record.crop}.png` : 'icons/leaf.png')
+    asset(record.crop ? `crops/${record.crop}.png` : 'icons/ui/leaf-light.png')
   )
 }

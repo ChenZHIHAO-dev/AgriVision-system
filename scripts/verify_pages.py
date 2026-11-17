@@ -19,14 +19,17 @@ def verify(url, expected, sha):
         *sorted((expected / "assets").glob("*.css")),
     ]
     for name in (
-        "static/icons/camera.png",
-        "static/icons/camera-white.png",
-        "static/icons/history.png",
+        "static/icons/ui/camera-light.png",
+        "static/icons/ui/camera-dark.png",
+        "static/icons/ui/camera-inverse.png",
+        "static/icons/ui/menu-dark.png",
+        "static/icons/ui/system-light.png",
         "static/crops/wheat.png",
     ):
         candidate = expected / name
-        if candidate.is_file():
-            files.append(candidate)
+        if not candidate.is_file():
+            raise FileNotFoundError("Expected public asset missing: " + name)
+        files.append(candidate)
     items = []
     with httpx.Client(timeout=30, follow_redirects=True) as client:
         for path in files:

@@ -1,41 +1,42 @@
-from contextlib import contextmanager
-from datetime import datetime, timezone
-from pathlib import Path
-from io import BytesIO
 import re
 import uuid
+from contextlib import contextmanager
+from datetime import UTC, datetime
+from io import BytesIO
 from threading import Lock
 
-from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile, Request
+from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from .attachments import extract_document
+from .auth import AuthManager
 from .chat import Chat
 from .config import Settings
+from .context import STAGES, fill_explicit_context, follow_up
+from .evidence import aggregate_images
 from .imaging import prepare_image
-from .knowledge import Knowledge, CROP_NAMES
+from .intake import context_reply, pending_question
+from .knowledge import CROP_NAMES, Knowledge
 from .models import ModelRegistry
+from .recognition import recognition_state
+from .repository import CaseRepository
 from .schemas import (
-    Crop,
-    DemoRequest,
-    MessageRequest,
     CaseUpdate,
     ConsultationRequest,
-    LoginRequest,
-    RegisterRequest,
+    Crop,
+    DemoRequest,
     GuestEndRequest,
+    LoginRequest,
+    MessageRequest,
+    RegisterRequest,
+    ResumeRequest,
 )
-from .attachments import extract_document
-from .context import fill_explicit_context, follow_up, STAGES
-from .repository import CaseRepository
-from .auth import AuthManager
-from .recognition import recognition_state
-from .evidence import aggregate_images
 
 
 def now():
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def create_app(settings=None):
@@ -48,7 +49,7 @@ def create_app(settings=None):
     case_locks = {}
     lock_guard = Lock()
 
-    app = FastAPI(title="AgriVision API", version="1.2.1-dev.1")
+    app = FastAPI(title="AgriVision API", version="1.2.2-dev.1")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.cors),
@@ -342,7 +343,15 @@ def create_app(settings=None):
 
     @app.get("/api/cases")
     def cases(x_client_id: str = Header(default="")):
-        return {"items": [serialize(case) for case in store.list(owner(x_client_id))]}
+        return {
+            "items": [
+                serialize(case)
+                for case in store.list(owner(x_client_id))
+                if case.get("images")
+                or case.get("is_demo")
+                or store.messages(case["id"])
+            ]
+        }
 
     @app.post("/api/cases/demo", status_code=201)
     def demo(body: DemoRequest, x_client_id: str = Header(default="")):
@@ -617,6 +626,69 @@ def create_app(settings=None):
             headers={"Cache-Control": "private, no-store"},
         )
 
+    def validate_options(model, web_search):
+        if web_search and (model or settings.deepseek_model) != "deepseek-flash":
+            raise HTTPException(422, "联网检索请选择 DeepSeek Flash")
+
+    def add_receipt(answer, case, text, image_ids):
+        if case.get("images") and (
+            image_ids or re.search(r"识别|图片|照片|结果|病害", text)
+        ):
+            answer["recognition"] = recognition_state(case)
+        if follow_up(case) and answer.get("provider") == "clarification":
+            answer["follow_up"] = follow_up(case)
+
+    @app.post("/api/cases/{case_id}/resume")
+    async def resume(
+        case_id: str, body: ResumeRequest, x_client_id: str = Header(default="")
+    ):
+        with mutation(case_id):
+            case = get_case(x_client_id, case_id)
+            history = store.messages(case_id)
+            completed = next(
+                (
+                    message
+                    for message in reversed(history)
+                    if message.get("resolved_question_id") == body.question_id
+                ),
+                None,
+            )
+            if completed:
+                return completed
+            pending = case.get("pending_question")
+            if not pending or pending["id"] != body.question_id:
+                raise HTTPException(409, "待回答问题已更新，请刷新当前咨询")
+            if follow_up(case):
+                return {
+                    "role": "assistant",
+                    "provider": "clarification",
+                    "text": "请继续补充种植信息，完成后会回答刚才的问题。",
+                    "follow_up": follow_up(case),
+                    "sources": [],
+                    "products": [],
+                }
+            options = {
+                key: getattr(body, key)
+                if getattr(body, key) is not None
+                else pending.get(key)
+                for key in ("model", "thinking", "web_search")
+            }
+            validate_options(options["model"], options["web_search"])
+            answer = await chat.answer(case, pending["text"], history, **options)
+            add_receipt(answer, case, pending["text"], pending.get("image_ids", []))
+            assistant = {
+                "role": "assistant",
+                "created_at": now(),
+                "resolved_question_id": pending["id"],
+                **answer,
+            }
+            if answer.get("provider") != "clarification":
+                case.pop("pending_question", None)
+                store.add_message(case_id, assistant)
+            case["updated_at"] = now()
+            store.save(x_client_id, case)
+            return assistant
+
     @app.post("/api/cases/{case_id}/messages", status_code=201)
     async def message(
         case_id: str, body: MessageRequest, x_client_id: str = Header(default="")
@@ -626,6 +698,32 @@ def create_app(settings=None):
             raise HTTPException(422, "请输入问题")
         with mutation(case_id):
             case = get_case(x_client_id, case_id)
+            history = store.messages(case_id)
+            if body.request_id:
+                existing = next(
+                    (
+                        message
+                        for message in reversed(history)
+                        if message.get("request_id") == body.request_id
+                        and message["role"] == "assistant"
+                    ),
+                    None,
+                )
+                if existing:
+                    return existing
+            previous_pending = case.get("pending_question")
+            continuing = bool(
+                previous_pending
+                and context_reply(text)
+                and not body.image_ids
+                and not body.attachment_ids
+            )
+            if (
+                continuing
+                and re.search(r"暂不确定|不确定|不清楚|不知道", text)
+                and case.get("crop")
+            ):
+                case["stage"] = "暂不确定"
             fill_explicit_context(case, text)
             documents = [
                 document
@@ -639,32 +737,31 @@ def create_app(settings=None):
                 set(body.image_ids)
             ):
                 raise HTTPException(422, "附件不属于这次问诊")
-            history = store.messages(case_id)
             if case.get("stage") in ("", "不清楚"):
                 for previous in reversed(history):
                     if previous["role"] == "user":
                         fill_explicit_context(case, previous["text"])
                     if case.get("stage") not in ("", "不清楚"):
                         break
-            if (
-                body.web_search
-                and (body.model or settings.deepseek_model) != "deepseek-flash"
-            ):
-                raise HTTPException(422, "联网检索请选择 DeepSeek Flash")
+            validate_options(body.model, body.web_search)
+            question = previous_pending if continuing else pending_question(text, body)
+            answer_text = question["text"]
             answer = await chat.answer(
                 case,
-                text,
+                answer_text,
                 history,
                 body.model,
                 body.thinking,
                 web_search=body.web_search,
             )
-            if case.get("images") and (
-                body.image_ids or re.search(r"识别|图片|照片|结果|病害", text)
-            ):
-                answer["recognition"] = recognition_state(case)
-            if follow_up(case):
-                answer["follow_up"] = follow_up(case)
+            add_receipt(answer, case, answer_text, question.get("image_ids", []))
+            if answer.get("provider") == "clarification":
+                case["pending_question"] = question
+                answer["pending_question_id"] = question["id"]
+            else:
+                case.pop("pending_question", None)
+                if continuing:
+                    answer["resolved_question_id"] = question["id"]
             user_message = {
                 "role": "user",
                 "text": text,
@@ -672,15 +769,19 @@ def create_app(settings=None):
                 "sources": [],
                 "provider": "user",
                 "products": [],
+                "attachments": [
+                    {"id": document["id"], "name": document["name"], "kind": "document"}
+                    for document in documents
+                ]
+                + [
+                    {"id": image["id"], "name": "症状照片", "kind": "image"}
+                    for image in images
+                ],
             }
-            user_message["attachments"] = [
-                {"id": document["id"], "name": document["name"], "kind": "document"}
-                for document in documents
-            ] + [
-                {"id": image["id"], "name": "症状照片", "kind": "image"}
-                for image in images
-            ]
             assistant = {"role": "assistant", "created_at": now(), **answer}
+            if body.request_id:
+                user_message["request_id"] = body.request_id
+                assistant["request_id"] = body.request_id
             store.add_exchange(case_id, user_message, assistant)
             case["updated_at"] = now()
             store.save(x_client_id, case)
@@ -697,7 +798,7 @@ def create_app(settings=None):
                 (folder / (img["id"] + ".jpg")).unlink(missing_ok=True)
             if folder.is_dir() and not any(folder.iterdir()):
                 folder.rmdir()
-            return None
+            return
 
     web = settings.root / "apps/client/dist/build/h5"
     if web.is_dir():

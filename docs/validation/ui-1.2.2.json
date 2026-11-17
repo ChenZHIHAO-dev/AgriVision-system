@@ -1,0 +1,194 @@
+{
+  "version": "1.2.2-dev.1",
+  "scope": "Browser checks; no physical phone or WeChat device",
+  "checks": [
+    {
+      "name": "phone-dark-capture",
+      "width": 390,
+      "height": 844,
+      "metrics": {
+        "nav": [
+          {
+            "center": 73,
+            "width": 122
+          },
+          {
+            "center": 195,
+            "width": 122
+          },
+          {
+            "center": 317,
+            "width": 122
+          }
+        ],
+        "overflow": false,
+        "theme": "av-app theme-dark"
+      }
+    },
+    {
+      "name": "system-appearance",
+      "label": "跟随系统"
+    },
+    {
+      "name": "home-resources",
+      "tabs": true,
+      "gridAndList": true,
+      "news": true,
+      "articleReturnsToResources": true
+    },
+    {
+      "name": "tablet-boundary",
+      "width": 760,
+      "metrics": {
+        "nav": [
+          {
+            "center": 134.6640625,
+            "width": 245.328125
+          },
+          {
+            "center": 379.9921875,
+            "width": 245.328125
+          },
+          {
+            "center": 625.3203125,
+            "width": 245.328125
+          }
+        ],
+        "overflow": false
+      }
+    },
+    {
+      "name": "chat-inspector-return",
+      "before": "未发送的测试草稿\n第二行保留",
+      "after": "未发送的测试草稿\n第二行保留",
+      "chatVisible": true,
+      "dialogCount": 0,
+      "dockVisible": false
+    },
+    {
+      "name": "nested-escape-single-layer",
+      "remainingDialogs": [
+        2,
+        1,
+        0
+      ],
+      "expected": [
+        2,
+        1,
+        0
+      ]
+    },
+    {
+      "name": "full-parent-chain",
+      "returnedToResult": true,
+      "sameTabPreservesResult": true
+    },
+    {
+      "name": "multiline-keyboard-simulation",
+      "metrics": {
+        "composerBottom": 480,
+        "dock": false,
+        "overflow": false,
+        "textarea": {
+          "bottom": 382,
+          "clientHeight": 134,
+          "height": 134.390625,
+          "scrollHeight": 1469
+        },
+        "viewport": 480
+      }
+    },
+    {
+      "name": "program-intake-shown",
+      "prompt": "目前处于哪个生育期？"
+    },
+    {
+      "name": "automatic-answer-after-selection",
+      "modelLabel": "宛农助手 DeepSeek Flash",
+      "userMessages": [
+        "上传了一张小麦照片",
+        "界面联调测试：请结合已有识别结果，给出下一步田间检查建议，120字以内。"
+      ],
+      "resumeButtonVisible": false
+    },
+    {
+      "name": "desktop-chat",
+      "metrics": {
+        "composerBottom": 720,
+        "dock": false,
+        "historyWidth": 244,
+        "overflow": false,
+        "railWidth": 72,
+        "viewport": 720
+      }
+    },
+    {
+      "name": "desktop-sidebar-collapse",
+      "railRemains": {
+        "history": false,
+        "railWidth": 72
+      }
+    },
+    {
+      "name": "dark-model-picker",
+      "colors": {
+        "panel": "rgb(36, 38, 43)",
+        "selected": "rgb(48, 50, 57)",
+        "text": "rgb(244, 244, 245)"
+      }
+    },
+    {
+      "name": "model-picker-escape",
+      "chatStillVisible": true,
+      "focusedTrigger": "选择对话模型"
+    },
+    {
+      "name": "my-controls",
+      "logoutVisible": true,
+      "referenceRemoved": true
+    },
+    {
+      "name": "settings-appearance",
+      "systemSelected": "true"
+    },
+    {
+      "name": "logout-boundary",
+      "guestVisible": true,
+      "loggedHistoryCleared": true
+    },
+    {
+      "name": "login-keyboard-simulation",
+      "scope": "390x480 simulated browser viewport; not physical keyboard",
+      "footerBottom": 480,
+      "inputBottoms": [
+        239.484375,
+        331.28125
+      ]
+    }
+  ],
+  "checked_at": "2026-11-17T17:30:16.078Z",
+  "regressions": [
+    {
+      "issue": "Escape propagated from nested sheet to chat",
+      "resolution": "Handled keyboard events are ignored by parent views; actual 3→2→1→0 and inspector→chat verified"
+    },
+    {
+      "issue": "Legacy mixed selector removed mobile breadcrumb hiding",
+      "resolution": "Retained mobile desktop-only rule; 390/760 layouts checked"
+    }
+  ],
+  "screenshots": [
+    "phone-dark-1.2.2.jpg",
+    "phone-light-1.2.2.jpg",
+    "phone-chat-1.2.2.jpg",
+    "phone-resources-1.2.2.jpg",
+    "desktop-chat-light-1.2.2.jpg",
+    "desktop-chat-dark-1.2.2.jpg"
+  ],
+  "pending": [
+    "Physical iOS/Android keyboard and camera permissions",
+    "WeChat device testing and native/system back gestures",
+    "Browser native back history remains managed by uni-app; in-app back and Escape tested"
+  ],
+  "passed": true
+}

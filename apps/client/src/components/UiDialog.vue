@@ -1,9 +1,16 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import AppIcon from './AppIcon.vue'
+import { syncModalInert } from '../lib/modal'
 const props = withDefaults(
-  defineProps<{ title: string; subtitle?: string; wide?: boolean; focusTarget?: string }>(),
-  { subtitle: '', wide: false, focusTarget: '' },
+  defineProps<{
+    title: string
+    subtitle?: string
+    wide?: boolean
+    floating?: boolean
+    focusTarget?: string
+  }>(),
+  { subtitle: '', wide: false, floating: false, focusTarget: '' },
 )
 const emit = defineEmits<{ close: [] }>()
 const id = 'dialog-' + Math.random().toString(36).slice(2, 9),
@@ -38,6 +45,7 @@ watch(
   },
 )
 function keyboard(event: KeyboardEvent) {
+  if (event.defaultPrevented) return
   // #ifdef H5
   if (document.querySelector('[data-choice-layer]')) return
   const dialogs = document.querySelectorAll('[data-modal-id]')
@@ -79,6 +87,7 @@ onMounted(async () => {
   document.addEventListener('keydown', keyboard)
   window.visualViewport?.addEventListener('resize', revealFocus)
   await nextTick()
+  syncModalInert()
   document.querySelector<HTMLElement>('[data-modal-id="' + id + '"] .dialog-close')?.focus()
   // #endif
   // #ifndef H5
@@ -89,7 +98,10 @@ onUnmounted(() => {
   // #ifdef H5
   document.removeEventListener('keydown', keyboard)
   window.visualViewport?.removeEventListener('resize', revealFocus)
-  if (previous?.isConnected) previous.focus()
+  nextTick(() => {
+    syncModalInert()
+    if (previous?.isConnected) previous.focus()
+  })
   // #endif
   // #ifndef H5
   uni.offKeyboardHeightChange(nativeReveal)
@@ -97,10 +109,13 @@ onUnmounted(() => {
 })
 </script>
 <template>
-  <view class="dialog-backdrop" @click.self="emit('close')"
+  <view
+    class="dialog-backdrop"
+    :class="{ 'floating-backdrop': floating }"
+    @click.self="emit('close')"
     ><view
       class="dialog-card"
-      :class="{ 'dialog-wide': wide }"
+      :class="{ 'dialog-wide': wide, 'dialog-floating': floating }"
       role="dialog"
       aria-modal="true"
       :aria-labelledby="id"
@@ -115,7 +130,8 @@ onUnmounted(() => {
           :aria-label="'关闭' + title"
           @click="emit('close')"
         >
-          <AppIcon name="close" :size="20" /></button></view
+          <AppIcon name="close" :size="18" /><text>关闭</text>
+        </button></view
       ><scroll-view scroll-y class="dialog-body" :scroll-into-view="scrollTarget"
         ><view class="dialog-body-inner"><slot /></view></scroll-view
       ><view v-if="$slots.footer" class="dialog-footer"><slot name="footer" /></view></view

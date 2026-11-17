@@ -1,0 +1,52 @@
+{
+  "version": "1.2.2-dev.1",
+  "checked_at": "2026-11-17T17:10:26.774036+00:00",
+  "scope": "local functional check; internal held-out image, not a new accuracy evaluation",
+  "credential_access": "HTTP API only; no credential-file access",
+  "dialogue": [
+    {
+      "model": "deepseek-v4-pro",
+      "thinking": true,
+      "web_requested": false,
+      "provider": "deepseek",
+      "characters": 111,
+      "source_count": 3,
+      "web_search_used": false,
+      "notice_code": null,
+      "seconds": 3.72
+    }
+  ],
+  "standalone": {
+    "status": "identified",
+    "disease_id": "wheat_powdery_mildew",
+    "model_version": "20261117-092348",
+    "transcript_provider": "recognition",
+    "dialogue_provider_called": false,
+    "persistence": "temporary"
+  },
+  "multi_image": {
+    "outcome": "partial_support",
+    "per_image_status": [
+      "identified",
+      "needs_retake"
+    ],
+    "aggregate_probability": false,
+    "second_input": "synthetic quality control",
+    "photo_upload_triggered_dialogue": false
+  },
+  "context_collection": {
+    "provider": "program",
+    "selection_added_messages": false,
+    "selection_called_dialogue_provider": false
+  },
+  "resume": {
+    "original_question_retained": true,
+    "assistant_messages_added": 1,
+    "synthetic_user_messages_added": 0,
+    "idempotent_replay": true,
+    "provider": "deepseek",
+    "model": "deepseek-flash",
+    "seconds": 2.13
+  },
+  "passed": true
+}

@@ -52,6 +52,8 @@ async function show() {
       '--accent-ink',
       '--accent-soft',
       '--focus',
+      '--hover',
+      '--pressed',
     ])
       colors[name] = palette.getPropertyValue(name)
     const viewport = window.visualViewport
@@ -85,6 +87,7 @@ function select(value: string) {
   close()
 }
 function keyboard(event: KeyboardEvent) {
+  if (event.defaultPrevented) return
   if (!open.value) return
   if (event.key === 'Escape') {
     event.preventDefault()
@@ -153,8 +156,7 @@ onUnmounted(() => document.removeEventListener('keydown', keyboard))
               ><text class="choice-title">{{ label }}</text
               ><text class="choice-caption">{{ caption }}</text></view
             ><button class="choice-close" tabindex="0" :aria-label="'关闭' + label" @click="close">
-              ×
-            </button></view
+              <AppIcon name="close" :size="18" /></button></view
           ><scroll-view scroll-y class="choice-options" role="listbox" :aria-label="label"
             ><button
               v-for="item in options"
@@ -388,5 +390,22 @@ onUnmounted(() => document.removeEventListener('keydown', keyboard))
   .choice-heading {
     padding: 7px 8px 16px;
   }
+}
+.choice-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--subtle);
+}
+.choice-layer .choice-option:hover,
+.choice-layer .choice-close:hover {
+  background: var(--hover);
+}
+.choice-layer .choice-option:active,
+.choice-layer .choice-close:active,
+.choice-layer .button-hover {
+  background: var(--pressed) !important;
+  color: var(--ink) !important;
 }
 </style>

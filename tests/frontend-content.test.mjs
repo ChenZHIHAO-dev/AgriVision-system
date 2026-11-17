@@ -9,7 +9,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const result = await build({
   stdin: {
     contents:
-      "export * from './apps/client/src/lib/drafts.ts'; export * from './apps/client/src/lib/markdown.ts'; export * from './apps/client/src/lib/bootstrap.ts'; export * from './apps/client/src/lib/recognition.ts'",
+      "export * from './apps/client/src/lib/drafts.ts'; export * from './apps/client/src/lib/markdown.ts'; export * from './apps/client/src/lib/bootstrap.ts'; export * from './apps/client/src/lib/recognition.ts'; export * from './apps/client/src/lib/navigation.ts'",
     resolveDir: root,
     loader: 'ts',
   },
@@ -100,4 +100,40 @@ test('case drafts stay separate in RAM and clear at the account boundary', () =>
   assert.deepEqual(drafts.get('case-one').images, ['photo'])
   drafts.clear()
   assert.equal(drafts.get('case-one').text, '')
+})
+
+test('photo result, chat and inspector pop back one level at a time', () => {
+  const { initialPath, showResult, showChat, showInspector, popView } = module.exports
+  let path = showResult(initialPath(), 'photo-one')
+  path = showChat(path, 'photo-one')
+  path = showInspector(path)
+  assert.deepEqual(path.layers, ['result', 'chat', 'inspector'])
+  path = popView(path)
+  assert.deepEqual(path.layers, ['result', 'chat'])
+  path = popView(path)
+  assert.deepEqual(path.layers, ['result'])
+  path = popView(path)
+  assert.equal(path.page, 'identify')
+  assert.equal(path.caseId, 'photo-one')
+  assert.deepEqual(path.layers, [])
+})
+
+test('same main tab is a no-op and switching pages keeps the case identity', () => {
+  const { initialPath, showResult, selectPage } = module.exports
+  const path = showResult(initialPath(), 'photo-one')
+  assert.equal(selectPage(path, 'identify'), path)
+  const home = selectPage(path, 'home')
+  assert.equal(home.caseId, 'photo-one')
+  assert.deepEqual(home.layers, [])
+})
+
+test('new or historical consultation never inherits another result parent', () => {
+  const { initialPath, showResult, showChat, openHistory, popView } = module.exports
+  const result = showResult(initialPath(), 'old-photo')
+  const next = openHistory(result, 'new-thread')
+  assert.deepEqual(next.layers, ['chat'])
+  assert.deepEqual(popView(next).layers, [])
+  assert.deepEqual(showChat(result, 'different-thread').layers, ['chat'])
+  const chat = showChat(result, 'old-photo')
+  assert.equal(showChat(chat, 'old-photo'), chat)
 })

@@ -1,27 +1,61 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import AppIcon from './AppIcon.vue'
-import { imageUrl, type CaseRecord } from '../lib/api'
+import KnowledgeLibrary from './KnowledgeLibrary.vue'
+import { imageUrl, type CaseRecord, type KnowledgeCard, type Source } from '../lib/api'
 import { dateLabel, statusLabel } from '../lib/options'
-defineProps<{ records: CaseRecord[]; loggedIn: boolean }>()
-const emit = defineEmits<{ capture: []; open: [id: string]; history: []; login: [] }>()
+defineProps<{ records: CaseRecord[]; loggedIn: boolean; cards: KnowledgeCard[] }>()
+const emit = defineEmits<{
+  capture: []
+  open: [id: string]
+  history: []
+  login: []
+  card: [value: KnowledgeCard]
+  source: [value: Source]
+}>()
+const section = ref<'recent' | 'resources'>('recent')
 </script>
 <template>
   <view class="dashboard">
-    <view class="dashboard-heading"><text>工作台</text><text>拍照问诊与最近记录</text></view>
+    <view class="dashboard-heading"
+      ><text>工作台</text><text>拍照问诊、咨询记录与植保资料</text></view
+    >
     <button class="dashboard-capture" @click="emit('capture')">
-      <view class="dashboard-camera"><AppIcon name="camera" :size="30" /></view
-      ><view><text>拍照问诊</text><text>选择作物，拍摄照片并查看初步结果</text></view
-      ><text>→</text>
+      <view class="dashboard-camera"><AppIcon name="camera" :size="29" /></view>
+      <view><text>拍照问诊</text><text>选择作物，拍摄照片并查看初步结果</text></view>
+      <AppIcon name="right" :size="19" />
     </button>
-    <view class="dashboard-recent"
-      ><view class="dashboard-section-heading"
-        ><text>最近问诊</text
-        ><button v-if="loggedIn && records.length" @click="emit('history')">
-          全部记录 ↗
-        </button></view
+    <view class="dashboard-tabs" role="tablist" aria-label="首页栏目">
+      <button
+        role="tab"
+        :aria-selected="section === 'recent'"
+        :class="{ active: section === 'recent' }"
+        @click="section = 'recent'"
       >
-      <template v-if="loggedIn && records.length"
-        ><button
+        <AppIcon name="history" :size="17" /><text>最近问诊</text>
+      </button>
+      <button
+        role="tab"
+        :aria-selected="section === 'resources'"
+        :class="{ active: section === 'resources' }"
+        @click="section = 'resources'"
+      >
+        <AppIcon name="book" :size="17" /><text>参考资料</text>
+      </button>
+    </view>
+    <view
+      v-show="section === 'recent'"
+      class="dashboard-recent"
+      role="tabpanel"
+      aria-label="最近问诊"
+    >
+      <view class="dashboard-section-heading"
+        ><text>{{ loggedIn ? '接着上次的问诊' : '问诊记录' }}</text
+        ><button v-if="loggedIn && records.length" @click="emit('history')">
+          全部记录 <AppIcon name="external" :size="14" /></button
+      ></view>
+      <template v-if="loggedIn && records.length">
+        <button
           v-for="record in records.slice(0, 5)"
           :key="record.id"
           class="dashboard-record"
@@ -30,14 +64,16 @@ const emit = defineEmits<{ capture: []; open: [id: string]; history: []; login: 
           <image v-if="record.images.length" :src="imageUrl(record)" mode="aspectFill" /><view
             v-else
             class="text-record-icon"
-            ><AppIcon name="chat" :size="22" /></view
-          ><view
+            ><AppIcon name="chat" :size="22"
+          /></view>
+          <view
             ><text>{{ record.title }}</text
             ><text>{{ record.crop_name }} · {{ dateLabel(record.updated_at) }}</text></view
-          ><text class="record-state">{{ statusLabel(record.status) }}</text
-          ><text>›</text>
-        </button></template
-      >
+          >
+          <text class="record-state">{{ statusLabel(record.status) }}</text
+          ><AppIcon name="right" :size="17" />
+        </button>
+      </template>
       <view v-else class="dashboard-empty"
         ><view class="empty-record-icon"><AppIcon name="history" :size="25" /></view
         ><text>{{ loggedIn ? '还没有问诊记录' : '登录后保存问诊记录' }}</text
@@ -50,8 +86,15 @@ const emit = defineEmits<{ capture: []; open: [id: string]; history: []; login: 
           登录
         </button></view
       >
-    </view></view
-  >
+    </view>
+    <KnowledgeLibrary
+      v-show="section === 'resources'"
+      embedded
+      :cards="cards"
+      @open="emit('card', $event)"
+      @source="emit('source', $event)"
+    />
+  </view>
 </template>
 <style scoped>
 .dashboard {
@@ -115,7 +158,7 @@ const emit = defineEmits<{ capture: []; open: [id: string]; history: []; login: 
   color: var(--muted);
 }
 .dashboard-recent {
-  margin-top: 32px;
+  margin-top: 22px;
 }
 .dashboard-section-heading {
   display: flex;
@@ -246,7 +289,7 @@ const emit = defineEmits<{ capture: []; open: [id: string]; history: []; login: 
     font-size: 11px;
   }
   .dashboard-recent {
-    margin-top: 27px;
+    margin-top: 20px;
   }
   .dashboard-record {
     gap: 12px;
@@ -274,5 +317,45 @@ const emit = defineEmits<{ capture: []; open: [id: string]; history: []; login: 
   .dashboard-empty > text:nth-child(3) {
     font-size: 11px;
   }
+}
+
+.dashboard-tabs {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--line);
+  margin: 28px 0 21px;
+  padding-bottom: 9px;
+}
+.dashboard-tabs > button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 10px 15px;
+  border-radius: 11px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.dashboard-tabs > button.active {
+  background: var(--subtle);
+  color: var(--ink);
+  font-weight: 550;
+}
+.dashboard-section-heading > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 8px;
+  border-radius: 8px;
+}
+.dashboard-record {
+  padding-left: 10px;
+  padding-right: 10px;
+  border-radius: 12px;
+}
+.dashboard-capture,
+.dashboard-empty {
+  border-color: transparent;
+  box-shadow: 0 2px 12px #00000003;
 }
 </style>

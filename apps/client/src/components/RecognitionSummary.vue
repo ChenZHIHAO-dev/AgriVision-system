@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import AppIcon from './AppIcon.vue'
 import type { RecognitionReceipt } from '../lib/api'
 defineProps<{ result: RecognitionReceipt; compact?: boolean }>()
 const expanded = ref(false)
@@ -21,7 +22,7 @@ function state(status: string) {
 <template>
   <view class="recognition-receipt" :class="{ compact }">
     <view class="receipt-heading"
-      ><text class="receipt-symbol">▧</text><text class="strong">图片识别结果</text
+      ><AppIcon name="image" :size="17" /><text class="strong">图片识别结果</text
       ><text class="receipt-count">{{ result.image_count }} 张照片</text></view
     >
     <text class="receipt-summary">{{ result.summary }}</text>

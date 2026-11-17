@@ -1,13 +1,20 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import AppIcon from './AppIcon.vue'
-import type { Crop, Meta } from '../lib/api'
+import { imageUrl, type Crop, type Meta, type CaseRecord } from '../lib/api'
 import { asset } from '../lib/assets'
-const props = defineProps<{ crop: Crop; models: Meta['models']; busy: boolean; loading: boolean }>()
+const props = defineProps<{
+  crop: Crop
+  models: Meta['models']
+  busy: boolean
+  loading: boolean
+  lastResult?: CaseRecord | null
+}>()
 const emit = defineEmits<{
   crop: [value: Crop]
   capture: [source: 'camera' | 'album']
   resume: []
+  result: []
 }>()
 const choices: [Crop, string][] = [
   ['wheat', '小麦'],
@@ -69,8 +76,16 @@ const scope = computed(() =>
       >
       <view class="recognition-scope"
         ><view class="scope-dot" :class="{ ready }" /><text>{{ scope }}</text></view
-      > </view
-    ><text class="photo-tip">可在同一次问诊中补充叶背和整株照片。单张不超过 8MB。</text>
+      >
+    </view>
+    <button v-if="lastResult" class="recent-result" @click="emit('result')">
+      <image :src="imageUrl(lastResult)" mode="aspectFill" />
+      <view
+        ><text>查看本次识别</text><text>{{ lastResult.title }}</text></view
+      >
+      <AppIcon name="right" :size="18" />
+    </button>
+    <text class="photo-tip">可在同一次问诊中补充叶背和整株照片。单张不超过 8MB。</text>
   </view>
 </template>
 <style scoped>
@@ -278,5 +293,40 @@ const scope = computed(() =>
     font-size: 10px;
     margin-top: 15px;
   }
+}
+.recent-result {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  text-align: left;
+  background: var(--surface);
+  width: 100%;
+  border-radius: 15px;
+  padding: 13px 15px;
+  margin-top: 18px;
+}
+.recent-result > image {
+  width: 46px;
+  height: 46px;
+  border-radius: 11px;
+  flex-shrink: 0;
+}
+.recent-result > view {
+  min-width: 0;
+  flex: 1;
+}
+.recent-result > view > text:first-child {
+  display: block;
+  font-size: 13px;
+  font-weight: 550;
+}
+.recent-result > view > text:last-child {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

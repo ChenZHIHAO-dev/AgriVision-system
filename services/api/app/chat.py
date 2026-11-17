@@ -118,7 +118,7 @@ class Chat:
         missing = follow_up(case)
         if missing:
             return {
-                "text": "请先补充种植信息，也可以选择暂不确定。填写后点击继续回答。",
+                "text": "请补充下面的种植信息，也可以选择暂不确定。完成后会接着回答刚才的问题。",
                 "provider": "clarification",
                 "sources": [],
                 "products": [],

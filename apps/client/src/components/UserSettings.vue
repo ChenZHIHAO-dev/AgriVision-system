@@ -1,16 +1,18 @@
 <script setup lang="ts">
+import AppIcon from './AppIcon.vue'
 import { themeChoice, setTheme } from '../lib/theme'
 import { appVersion } from '../lib/appInfo'
 const emit = defineEmits<{ back: [] }>()
 const themes = [
-  { id: 'light' as const, label: '浅色', icon: '☀' },
-  { id: 'dark' as const, label: '深色', icon: '☾' },
-  { id: 'system' as const, label: '跟随系统', icon: '◐' },
+  { id: 'light' as const, label: '浅色', icon: 'sun' },
+  { id: 'dark' as const, label: '深色', icon: 'moon' },
+  { id: 'system' as const, label: '跟随系统', icon: 'system' },
 ]
 </script>
 <template>
   <view class="user-settings"
-    ><button class="settings-back" @click="emit('back')">← 我的</button
+    ><button class="settings-back" @click="emit('back')">
+      <AppIcon name="back" :size="17" /><text>返回我的</text></button
     ><text class="settings-title">设置</text
     ><view class="panel settings-card"
       ><text class="settings-section-title">外观</text
@@ -23,11 +25,13 @@ const themes = [
           :aria-pressed="themeChoice === theme.id"
           @click="setTheme(theme.id)"
         >
-          <text>{{ theme.icon }}</text
-          ><text>{{ theme.label }}</text
-          ><text v-if="themeChoice === theme.id" class="theme-check">✓</text>
-        </button></view
-      ></view
+          <AppIcon :name="theme.icon" :size="24" /><text>{{ theme.label }}</text
+          ><AppIcon
+            v-if="themeChoice === theme.id"
+            name="check"
+            :size="15"
+            class="theme-check"
+          /></button></view></view
     ><view class="panel settings-card"
       ><text class="settings-section-title">记录与隐私</text
       ><view class="privacy-row"
@@ -154,5 +158,20 @@ const themes = [
   .privacy-row > text:first-child {
     min-width: 65px;
   }
+}
+.settings-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: var(--subtle);
+}
+.settings-themes > button {
+  border-color: transparent;
+  background: var(--subtle);
+}
+.settings-themes > button.selected {
+  border-color: transparent;
 }
 </style>

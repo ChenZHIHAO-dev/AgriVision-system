@@ -1,11 +1,11 @@
 <script setup lang="ts">
+import AppIcon from './AppIcon.vue'
 import type { User } from '../lib/auth'
 import { appVersion } from '../lib/appInfo'
 defineProps<{ user: User | null; admin: boolean }>()
 const emit = defineEmits<{
   login: []
   register: []
-  resources: []
   settings: []
   admin: []
   logout: []
@@ -27,19 +27,18 @@ const emit = defineEmits<{
       ><text v-else class="profile-account">@{{ user.username }}</text></view
     ><view class="panel profile-menu"
       ><button @click="emit('settings')">
-        <view><text>设置</text><text>外观、记录与隐私、关于</text></view
-        ><text>›</text></button
-      ><button @click="emit('resources')">
-        <view><text>参考资料</text><text>植保知识与公开资讯</text></view
-        ><text>›</text></button
+        <AppIcon name="settings" :size="22" /><view
+          ><text>设置</text><text>外观、记录与隐私、关于</text></view
+        ><AppIcon name="right" :size="17" /></button
       ><button v-if="admin" @click="emit('admin')">
-        <view><text>管理员控制台</text><text>服务配置与模型状态</text></view
-        ><text>›</text></button
+        <AppIcon name="shield" :size="22" /><view
+          ><text>管理员控制台</text><text>服务配置与模型状态</text></view
+        ><AppIcon name="right" :size="17" /></button
       ><view class="profile-version"
         ><text>AgriVision</text><text>{{ appVersion }}</text></view
       ></view
     ><button v-if="user" class="button secondary profile-logout" @click="emit('logout')">
-      退出登录</button
+      <AppIcon name="logout" :size="19" /><text>退出登录</text></button
     ><text class="profile-footnote">退出后仍可进行临时问诊和咨询。</text></view
   >
 </template>
@@ -172,5 +171,24 @@ const emit = defineEmits<{
   .profile-menu {
     padding: 4px 19px;
   }
+}
+.profile-menu > button {
+  gap: 14px;
+  border-bottom: 0;
+  border-radius: 12px;
+  padding: 18px 12px;
+  margin: 4px 0;
+}
+.profile-menu > button > view {
+  flex: 1;
+}
+.profile-menu {
+  padding: 7px;
+}
+.profile-logout {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: transparent;
+  min-height: 46px;
 }
 </style>

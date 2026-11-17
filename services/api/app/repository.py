@@ -102,6 +102,14 @@ class CaseRepository:
                 return deepcopy(self.temporary[case_id]["messages"])
         return self.persistent.messages(case_id)
 
+    def add_message(self, case_id, message):
+        with self.lock:
+            if case_id in self.temporary:
+                self.temporary[case_id]["messages"].append(deepcopy(message))
+                return
+        if self.owner_of(case_id) is not None:
+            self.persistent.add_message(case_id, message)
+
     def add_exchange(self, case_id, user, assistant):
         with self.lock:
             if case_id in self.temporary:

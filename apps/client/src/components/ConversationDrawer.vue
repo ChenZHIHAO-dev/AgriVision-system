@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted } from 'vue'
+import AppIcon from './AppIcon.vue'
+import { syncModalInert } from '../lib/modal'
 import ConversationHistory from './ConversationHistory.vue'
 import type { CaseRecord } from '../lib/api'
 import type { User } from '../lib/auth'
@@ -13,6 +15,7 @@ const emit = defineEmits<{
 }>()
 let previous: HTMLElement | null = null
 function key(event: KeyboardEvent) {
+  if (event.defaultPrevented) return
   // #ifdef H5
   if (document.querySelector('[data-modal-id],[data-choice-layer]')) return
   if (event.key === 'Escape') {
@@ -45,13 +48,17 @@ onMounted(async () => {
   previous = document.activeElement as HTMLElement
   document.addEventListener('keydown', key)
   await nextTick()
+  syncModalInert()
   document.querySelector<HTMLElement>('.drawer-close')?.focus()
   // #endif
 })
 onUnmounted(() => {
   // #ifdef H5
   document.removeEventListener('keydown', key)
-  if (previous?.isConnected) previous.focus()
+  nextTick(() => {
+    syncModalInert()
+    if (previous?.isConnected) previous.focus()
+  })
   // #endif
 })
 </script>
@@ -61,11 +68,16 @@ onUnmounted(() => {
       ><view class="drawer-heading"
         ><view><text>AgriVision</text><text>接着上次的咨询</text></view
         ><button class="icon-button drawer-close" aria-label="关闭咨询侧栏" @click="emit('close')">
-          ×
+          <AppIcon name="close" :size="18" /><text>关闭</text>
         </button></view
       ><view class="drawer-navigation"
-        ><button @click="emit('navigate', 'home')">首页</button
-        ><button @click="emit('navigate', 'profile')">我的</button></view
+        ><button @click="emit('navigate', 'home')">
+          <AppIcon name="home" :size="18" /><text>首页</text></button
+        ><button @click="emit('navigate', 'identify')">
+          <AppIcon name="camera" :size="18" /><text>拍照</text></button
+        ><button @click="emit('navigate', 'profile')">
+          <AppIcon name="user" :size="18" /><text>我的</text>
+        </button></view
       ><ConversationHistory
         :records="records"
         :user="user"
@@ -158,5 +170,19 @@ onUnmounted(() => {
   to {
     opacity: 1;
   }
+}
+.drawer-navigation > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+}
+.drawer-close {
+  gap: 4px;
+  font-size: 11px;
+  width: auto;
+  padding: 7px 9px;
+  border-radius: 10px;
+  background: var(--subtle);
 }
 </style>
