@@ -52,8 +52,8 @@
     "60-line paste remains in a bounded textarea",
     "Simulated 390x480 keyboard viewport keeps login footer and chat input visible",
     "Theme light, dark and system selections work",
-    "Mobile drawer focus and Escape restore correctly",
-    "Model picker arrow keys and Escape work",
+    "Mobile drawer focuses its close control when opened",
+    "Model picker Escape closes the panel and restores trigger focus",
     "Desktop sidebar collapses and breadcrumb opens dashboard"
   ],
   "keyboard": {

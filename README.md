@@ -23,13 +23,15 @@
 | 知识与资讯 | 本地知识与上传资料分段检索；可选参考页面支持网格 / 列表与资讯标签；资讯目前为精选来源链接 |
 | 模型 | 已接入本机 EfficientNet-B0 小麦实验模型；本轮未重训或修改阈值 |
 | 验证 | 后端 56 项、前端 18 项通过；类型检查、网页、小程序构建通过；本机完整链路真实验证通过 |
-| 发布 | 本轮前端与开发记录整理后更新 GitHub；Pages 只托管前端，识别和对话运行在本机后端 |
+| 发布 | 1.2.1 已发布：构建、部署成功，10 项线上资源与本机构建一致；Pages 只托管前端 |
 
 真实接口验证包含：单图识别与本地摘要、多图中一张需补拍时仍保留已识别结果、基本信息选择零对话调用、Flash 非思考、Pro 思考、Flash 实际联网。见 [验证报告](docs/validation/local-pipeline-1.2.1.json)。
 
 界面已用实际浏览器检查手机尺寸、桌面尺寸与深浅主题，并模拟缩小可视区域检查键盘布局。**实际 iOS / Android 软键盘、微信真机仍需另验收**，不能用浏览器尺寸模拟代替。
 
-详细规则：[交互流程](docs/interaction-flows.md) · [第一版验收清单](docs/first-release-checklist.md)。
+详细规则：[交互流程](docs/interaction-flows.md) · [第一版验收清单](docs/first-release-checklist.md) · [界面验收](docs/validation/ui-1.2.1.json)。
+
+2026-11-18 发布确认，构建源提交 `a18c312`：[构建与部署](https://github.com/ChenZHIHAO-dev/AgriVision-system/actions/runs/44118457289) · [线上资源校验](docs/validation/pages-1.2.1.json)。
 
 ## 本机使用
 
