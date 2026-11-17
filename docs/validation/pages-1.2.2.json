@@ -1,0 +1,100 @@
+{
+  "checked_at": "2026-11-17T17:35:23.599206+00:00",
+  "commit": "3c085a72756c1f914c543af532db8b216073da62",
+  "url": "https://chenzhihao-dev.github.io/AgriVision-system/",
+  "index_cache_busted": true,
+  "passed": true,
+  "items": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "bytes": 834,
+      "sha256": "f2828fb65ac1260031d85cc777b71de6a88c10df41bb90e531efd4ac27f94e29",
+      "matches": true
+    },
+    {
+      "path": "assets/index-D2SeiOM3.js",
+      "status": 200,
+      "bytes": 208799,
+      "sha256": "a1fb620a741bd4ac8c35a1c54ca4900cf10c3483b0ae0d50bd58d793f002c9f4",
+      "matches": true
+    },
+    {
+      "path": "assets/pages-index-index.DoSd2x-A.js",
+      "status": 200,
+      "bytes": 226819,
+      "sha256": "71db9ccf4fa8e5f192d0a17576be8d70e6c76bf490ede1452435a5417825dc9a",
+      "matches": true
+    },
+    {
+      "path": "assets/index-B3KbM_fo.css",
+      "status": 200,
+      "bytes": 68706,
+      "sha256": "22ee9dd035a96b387571a018bd67e65ad489188e17ae24b88711a05664c0d5a8",
+      "matches": true
+    },
+    {
+      "path": "assets/index-DMUYfpb3.css",
+      "status": 200,
+      "bytes": 19862,
+      "sha256": "5de4d6694631255976131db27e79a3dd86bac738f44a864fc2a96f7c39167d45",
+      "matches": true
+    },
+    {
+      "path": "assets/uni.153239f0.css",
+      "status": 200,
+      "bytes": 13438,
+      "sha256": "153239f0083121b6a01a411a5cb145cebde6b928cb5c207d6971876da2ca9261",
+      "matches": true
+    },
+    {
+      "path": "static/icons/ui/camera-light.png",
+      "status": 200,
+      "bytes": 1907,
+      "sha256": "f8906492f9cef3a3a857a28afefd7c3a9d4e47134014374ce37e70b0e5b956c1",
+      "matches": true
+    },
+    {
+      "path": "static/icons/ui/camera-dark.png",
+      "status": 200,
+      "bytes": 1934,
+      "sha256": "a1d0c3225e9b113b8eb9bd259e8a08002976e01ae5b8feb6f085c53135108f48",
+      "matches": true
+    },
+    {
+      "path": "static/icons/ui/camera-inverse.png",
+      "status": 200,
+      "bytes": 1813,
+      "sha256": "bb1c21c5a78312f6c4fadc9be1aa4ff48d940c0478c439dad8533d9740025255",
+      "matches": true
+    },
+    {
+      "path": "static/icons/ui/menu-dark.png",
+      "status": 200,
+      "bytes": 506,
+      "sha256": "968252c9134bc20a2c17b82b5a63ccdd09ab9e7700b3388bb8bf16954bf782f4",
+      "matches": true
+    },
+    {
+      "path": "static/icons/ui/system-light.png",
+      "status": 200,
+      "bytes": 2911,
+      "sha256": "6981929f8eb4eb5cf549d28d913c3bb6f64457555824e6d2beb267803fb30b00",
+      "matches": true
+    },
+    {
+      "path": "static/crops/wheat.png",
+      "status": 200,
+      "bytes": 46513,
+      "sha256": "be11f0c072d553c8f9b5122bcce45f58016c4b6ed5907ff17cbf20a1b8305bad",
+      "matches": true
+    }
+  ],
+  "workflow": {
+    "id": 44138296758,
+    "url": "https://github.com/ChenZHIHAO-dev/AgriVision-system/actions/runs/44138296758",
+    "head_sha": "3c085a72756c1f914c543af532db8b216073da62",
+    "build": "success",
+    "deploy": "success"
+  }
+}
