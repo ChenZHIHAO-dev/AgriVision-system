@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import random
+import time
 
 import numpy as np
 from PIL import Image
@@ -21,7 +22,7 @@ def metrics(matrix):
     recall = np.divide(tp, matrix.sum(1), out=np.zeros(len(tp), dtype=float), where=matrix.sum(1) != 0)
     precision = np.divide(tp, matrix.sum(0), out=np.zeros(len(tp), dtype=float), where=matrix.sum(0) != 0)
     f1 = np.divide(2 * precision * recall, precision + recall, out=np.zeros(len(tp), dtype=float), where=precision + recall != 0)
-    return {"macro_f1": float(f1.mean()), "recall": recall.tolist(), "counts": matrix.sum(1).tolist(), "confusion_matrix": matrix.tolist()}
+    return {"accuracy":float(tp.sum()/max(1,matrix.sum())),"macro_f1": float(f1.mean()),"balanced_accuracy":float(recall.mean()),"precision":precision.tolist(),"f1":f1.tolist(), "recall": recall.tolist(), "counts": matrix.sum(1).tolist(), "confusion_matrix": matrix.tolist()}
 
 
 def read_manifest(path):
@@ -42,6 +43,7 @@ class Images(Dataset):
     def __init__(self, root, rows, labels, size, training=False):
         self.root, self.rows, self.labels = root.resolve(), rows, labels
         self.transform = preprocessing(size, training)
+        self.verify_each_read = True
 
     def __len__(self):
         return len(self.rows)
@@ -51,7 +53,7 @@ class Images(Dataset):
         path = (self.root / row["path"]).resolve()
         if not path.is_relative_to(self.root):
             raise ValueError("Image path escapes dataset root")
-        if hashlib.sha256(path.read_bytes()).hexdigest() != row["sha256"]:
+        if self.verify_each_read and hashlib.sha256(path.read_bytes()).hexdigest() != row["sha256"]:
             raise ValueError("Dataset image changed after manifest creation")
         with Image.open(path) as image:
             tensor = self.transform(image.convert("RGB"))
@@ -72,6 +74,7 @@ def evaluate_loader(model, loader, device, classes, max_batches=0):
 
 
 def train(args):
+    torch.set_num_threads(4)
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -81,16 +84,32 @@ def train(args):
     rows = read_manifest(args.manifest)
     if set(r["label"] for r in rows) != set(labels):
         raise ValueError("Manifest classes must exactly match the label configuration")
-    loaders = {split: DataLoader(Images(args.data_root, [r for r in rows if r["split"] == split], labels, args.input_size, split == "train"), batch_size=args.batch_size, shuffle=split == "train", num_workers=0, pin_memory=device.type == "cuda") for split in ("train", "val")}
+    # Verify the immutable prepared dataset once, before workers start.
+    for row in rows:
+        path = (args.data_root/row['path']).resolve()
+        if not path.is_relative_to(args.data_root.resolve()) or hashlib.sha256(path.read_bytes()).hexdigest()!=row['sha256']:
+            raise ValueError('Dataset does not match its manifest')
+    loaders = {}
+    for split in ('train','val'):
+        dataset = Images(args.data_root,[row for row in rows if row['split']==split],labels,args.input_size,split=='train')
+        dataset.verify_each_read = False
+        workers = getattr(args,'workers',0)
+        loaders[split] = DataLoader(dataset,batch_size=args.batch_size,shuffle=split=='train',num_workers=workers,pin_memory=device.type=='cuda',persistent_workers=workers>0)
     if any(len(loader.dataset) == 0 for loader in loaders.values()):
         raise ValueError("Both train and val splits require images")
     model = build_model(args.architecture, len(labels), not args.no_pretrained).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=.01)
     scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
+    counts = np.array([sum(row['label']==label and row['split']=='train' for row in rows) for label in labels])
+    if not counts.all(): raise ValueError('Every class needs training images')
+    class_weights = torch.tensor(counts.sum()/(len(labels)*counts),dtype=torch.float32,device=device)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=args.epochs,eta_min=args.lr*.05)
     best, stale, history = -1., 0, []
     args.output.mkdir(parents=True, exist_ok=True)
     metadata = {"schema_version": 1, "crop": config["crop"], "architecture": args.architecture, "labels": labels, "label_names": config["labels"], "input_size": args.input_size, "normalization": "imagenet", "resize": "stretch", "version": datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S"), "threshold": .7, "margin": .12, "validated": False, "development_only": args.development_only or bool(args.max_batches), "manifest_sha256": hashlib.sha256(args.manifest.read_bytes()).hexdigest(), "seed": args.seed}
+    metadata.update({'pretrained':not args.no_pretrained,'temperature':1.0,'release_stage':'training','training_config':{key:str(value) if isinstance(value,Path) else value for key,value in vars(args).items()},'train_counts':counts.tolist(),'torch':torch.__version__,'device':str(device)})
     for epoch in range(args.epochs):
+        started = time.perf_counter()
         for parameter in model.features.parameters():
             parameter.requires_grad = epoch >= args.freeze_epochs
         model.train()
@@ -103,7 +122,7 @@ def train(args):
             optimizer.zero_grad(set_to_none=True)
             with torch.autocast(device_type=device.type, enabled=device.type == "cuda"):
                 logits = model(images.to(device))
-                loss = torch.nn.functional.cross_entropy(logits, target.to(device))
+                loss = torch.nn.functional.cross_entropy(logits, target.to(device),weight=class_weights,label_smoothing=.03)
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -111,7 +130,7 @@ def train(args):
             if args.max_batches and batch + 1 >= args.max_batches:
                 break
         report = evaluate_loader(model, loaders["val"], device, len(labels), args.max_batches)
-        report.update({"epoch": epoch + 1, "loss": float(np.mean(losses)) if losses else None})
+        report.update({"epoch": epoch + 1, "loss": float(np.mean(losses)) if losses else None,'seconds':round(time.perf_counter()-started,2),'lr':optimizer.param_groups[0]['lr']})
         history.append(report)
         print(json.dumps({"epoch": epoch + 1, "loss": report["loss"], "val_macro_f1": report["macro_f1"], "device": str(device)}), flush=True)
         if report["macro_f1"] > best:
@@ -121,6 +140,8 @@ def train(args):
             (args.output / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
         else:
             stale += 1
+        scheduler.step()
+        (args.output / "training.json").write_text(json.dumps(history,indent=2),encoding='utf-8')
         if stale >= args.patience:
             break
     (args.output / "training.json").write_text(json.dumps(history, indent=2), encoding="utf-8")
@@ -142,6 +163,7 @@ def parser():
     result.add_argument("--patience", type=int, default=5)
     result.add_argument("--seed", type=int, default=42)
     result.add_argument("--device", default="auto")
+    result.add_argument('--workers',type=int,default=2)
     result.add_argument("--no-pretrained", action="store_true")
     result.add_argument("--max-batches", type=int, default=0, help="Limit batches for pipeline checks only")
     result.add_argument("--development-only", action="store_true")

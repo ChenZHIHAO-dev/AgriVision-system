@@ -9,10 +9,23 @@ class DemoRequest(BaseModel):
 
 
 class MessageRequest(BaseModel):
-    text: str = Field(min_length=1, max_length=2000)
+    text: str = Field(min_length=1, max_length=12000)
+    model: Literal["deepseek-flash", "deepseek-v4-pro"] | None = None
+    thinking: bool = False
+    attachment_ids: list[str] = Field(default_factory=list,max_length=6)
+    image_ids: list[str] = Field(default_factory=list,max_length=6)
+
+
+class ConsultationRequest(BaseModel):
+    crop: Crop | None = None
+    location: str = Field(default="河南省 / 南阳市", max_length=120)
+    stage: str = Field(default="不清楚", max_length=40)
+    variety: str = Field(default="", max_length=80)
 
 
 class CaseUpdate(BaseModel):
+    crop: Crop | None = None
+    variety: str | None = Field(default=None, max_length=80)
     stage: str | None = Field(default=None, max_length=40)
     location: str | None = Field(default=None, max_length=120)
     note: str | None = Field(default=None, max_length=2000)

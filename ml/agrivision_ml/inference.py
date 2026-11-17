@@ -29,6 +29,6 @@ class Predictor:
     def predict(self, path):
         with Image.open(path) as image:
             tensor = self.transform(image.convert("RGB")).unsqueeze(0).to(self.device)
-        scores = self.model(tensor).softmax(1)[0].cpu().tolist()
+        scores = (self.model(tensor)/float(self.metadata.get('temperature',1.0))).softmax(1)[0].cpu().tolist()
         names = self.metadata["label_names"]
         return sorted([{"id": label, "name": names[label], "score": round(scores[i], 6)} for i, label in enumerate(self.labels)], key=lambda row: row["score"], reverse=True)[:3]

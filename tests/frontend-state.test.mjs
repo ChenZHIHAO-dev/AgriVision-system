@@ -68,6 +68,30 @@ test('medication questions do not invent a product or dose in the frontend previ
 test('asset URLs retain the GitHub Pages repository base path', () => {
   assert.equal(fresh().asset('crops/wheat.png'), '/AgriVision-system/static/crops/wheat.png')
 })
+
+test('text consultation asks for crop, accepts a selected stage and stops repeating the question', async () => {
+  const app = fresh()
+  let record = await app.previewRequest('/api/consultations', 'POST', {})
+  record = await app.previewRequest(`/api/cases/${record.id}/messages`, 'POST', { text: '叶片有斑点，先观察什么？' })
+  assert.equal(record.crop, null)
+  assert.equal(record.messages.at(-1).follow_up.field, 'crop')
+  record = await app.previewRequest(`/api/cases/${record.id}/messages`, 'POST', { text: '这次咨询小麦，目前处于苗期。' })
+  assert.equal(record.crop, 'wheat')
+  assert.equal(record.stage, '苗期')
+  assert.equal(record.messages.at(-1).follow_up, undefined)
+})
+
+test('frontend document preview records the file without pretending to have read its contents', async () => {
+  const app = fresh()
+  let record = await app.previewRequest('/api/consultations', 'POST', { crop: 'wheat', stage: '苗期' })
+  record = await app.previewUpload(`/api/cases/${record.id}/attachments`, 'data:text/plain,local-test-note', { filename: '农事记录.txt' })
+  const attachment = record.documents[0]
+  assert.equal(attachment.extraction, 'requires-backend')
+  assert.equal(attachment.characters, 0)
+  record = await app.previewRequest(`/api/cases/${record.id}/messages`, 'POST', { text: '请概括资料', attachment_ids: [attachment.id] })
+  assert.match(record.messages.at(-1).text, /暂不解析文件正文/)
+  assert.doesNotMatch(JSON.stringify(record), /local-test-note/)
+})
 test('theme follows system changes and manual selection remains stable', () => {
   const app = fresh(), dispose = app.observeSystemTheme()
   assert.equal(app.resolvedTheme.value, 'light')

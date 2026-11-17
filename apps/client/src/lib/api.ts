@@ -1,12 +1,15 @@
 import { previewRequest, previewUpload, previewImage } from './preview'
 import { asset } from './assets'
 export type Crop = 'wheat' | 'maize' | 'peanut'
+export type ChatModel = 'deepseek-flash' | 'deepseek-v4-pro'
+export interface DocumentAttachment { id:string; name:string; size:number; characters:number; kind:'document'; extraction:'ready'|'requires-backend'; created_at:string; truncated?:boolean }
+export interface FollowUp { field:'crop'|'stage'; prompt:string; options:{value:string;label:string}[] }
 export interface Source { title: string; url: string; date: string }
 export interface KnowledgeCard { id: string; crop: Crop | 'general'; title: string; category: string; summary: string; keywords: string[]; actions: string[]; sources: Source[] }
 export interface Product { id: string; name: string; ingredient: string; formulation: string; registration: string; instructions: string; label_url: string }
-export interface Message { role: 'user' | 'assistant'; text: string; created_at: string; provider: string; sources: Source[]; products: Product[]; notice?: string }
+export interface Message { role: 'user' | 'assistant'; text: string; created_at: string; provider: string; sources: Source[]; products: Product[]; notice?: string; model?:ChatModel; thinking?:boolean; follow_up?:FollowUp; attachments?:{id:string;name:string;kind:'image'|'document'}[] }
 export interface CaseRecord {
-  id: string; crop: Crop; crop_name: string; location: string; stage: string; note: string;
+  id: string; crop: Crop | null; crop_name: string; location: string; stage: string; note: string; variety?:string; documents?:DocumentAttachment[]; experimental?:boolean;
   created_at: string; updated_at: string; is_demo: boolean; status: string; title: string;
   disease_id: string | null; model_version: string | null;
   candidates: { id: string; name: string; score: number }[];
@@ -37,7 +40,7 @@ function errorText(data: unknown): string {
 export function request<T>(path: string, method: 'GET' | 'POST' | 'DELETE' = 'GET', data?: unknown): Promise<T> {
   if (dataMode() === 'preview') return previewRequest(path, method, data) as Promise<T>
   return new Promise((resolve, reject) => uni.request({
-    url: apiBase() + path, method, data: data as Record<string, unknown>, timeout: 35000,
+    url: apiBase() + path, method, data: data as Record<string, unknown>, timeout: path.endsWith('/messages') ? 180000 : 35000,
     header: { 'X-Client-ID': clientId(), 'Content-Type': 'application/json' },
     success: res => res.statusCode >= 200 && res.statusCode < 300 ? resolve(res.data as T) : reject(new Error(errorText(res.data))),
     fail: () => reject(new Error('暂时连接不上本地服务，请确认后端已启动，或检查服务地址')),
@@ -49,11 +52,11 @@ export function upload(path: string, filePath: string, formData: Record<string, 
     url: apiBase() + path, filePath, name: 'file', formData,
     header: { 'X-Client-ID': clientId() }, timeout: 60000,
     success: res => { try { const result = JSON.parse(res.data); res.statusCode >= 200 && res.statusCode < 300 ? resolve(result) : reject(new Error(errorText(result))) } catch { reject(new Error('服务响应无法读取，请重试')) } },
-    fail: () => reject(new Error('图片上传失败，请检查网络并重试')),
+    fail: () => reject(new Error('附件上传失败，请检查网络并重试')),
   }))
 }
 export function imageUrl(record: CaseRecord, imageId?: string) {
   if (record.id.startsWith('preview_')) return previewImage(record, imageId)
   const id = imageId || record.images[record.images.length - 1]?.id
-  return id ? apiBase() + '/api/cases/' + record.id + '/images/' + id + '?client_id=' + clientId() : asset('crops/' + record.crop + '.png')
+  return id ? apiBase() + '/api/cases/' + record.id + '/images/' + id + '?client_id=' + clientId() : asset(record.crop ? 'crops/' + record.crop + '.png' : 'icons/leaf.png')
 }

@@ -1,6 +1,6 @@
 {
   "name": "agrivision",
-  "version": "1.1.0-dev.1",
+  "version": "1.2.0-dev.1",
   "private": true,
   "workspaces": [
     "apps/client"
@@ -11,9 +11,10 @@
     "build:mp": "npm run build:mp --workspace @agrivision/client",
     "typecheck": "npm run typecheck --workspace @agrivision/client",
     "build:pages": "node scripts/build-pages.mjs",
-    "test:frontend": "node --test tests/frontend-state.test.mjs"
+    "test:frontend": "node --test tests/frontend-state.test.mjs tests/frontend-composer.test.mjs"
   },
   "devDependencies": {
-    "esbuild": "^0.20.2"
+    "esbuild": "^0.20.2",
+    "happy-dom": "21.0.4"
   }
 }

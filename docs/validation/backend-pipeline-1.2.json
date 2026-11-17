@@ -1,0 +1,55 @@
+[
+  {
+    "check": "image-upload",
+    "reference_label": "wheat_stripe_rust",
+    "status": "identified",
+    "top": "wheat_stripe_rust",
+    "experimental": true,
+    "model_version": "20261117-092348",
+    "seconds": 4.202
+  },
+  {
+    "check": "image-upload",
+    "reference_label": "wheat_leaf_rust",
+    "status": "needs_retake",
+    "top": null,
+    "experimental": null,
+    "model_version": null,
+    "seconds": 0.016
+  },
+  {
+    "check": "image-upload",
+    "reference_label": "wheat_powdery_mildew",
+    "status": "identified",
+    "top": "wheat_powdery_mildew",
+    "experimental": true,
+    "model_version": "20261117-092348",
+    "seconds": 0.035
+  },
+  {
+    "check": "image-upload",
+    "reference_label": "healthy",
+    "status": "identified",
+    "top": "healthy",
+    "experimental": true,
+    "model_version": "20261117-092348",
+    "seconds": 0.042
+  },
+  {
+    "check": "image-upload",
+    "reference_label": "wheat_other",
+    "status": "uncertain",
+    "top": "wheat_other",
+    "experimental": true,
+    "model_version": "20261117-092348",
+    "seconds": 0.036
+  },
+  {
+    "check": "document-conversation",
+    "model": "deepseek-v4-pro",
+    "thinking": true,
+    "provider": "deepseek",
+    "characters": 147,
+    "notice_code": null
+  }
+]

@@ -18,13 +18,13 @@ class ModelRegistry:
             raw = json.loads(path.read_text(encoding="utf-8"))
             labels = raw["labels"]
             valid = (
-                raw.get("validated") is True and not raw.get("development_only") and raw.get("crop") == crop
+                (raw.get("validated") is True or (self.settings.allow_experimental_models and raw.get('development_ready') is True)) and not raw.get("development_only") and raw.get("crop") == crop
                 and raw.get("architecture") in {"efficientnet_b0", "mobilenet_v3_small"}
                 and len(labels) >= 2 and len(set(labels)) == len(labels)
                 and isinstance(raw.get("version"), str) and bool(raw["version"])
                 and isinstance(raw.get("input_size"), int) and 64 <= raw["input_size"] <= 1024
                 and isinstance(raw.get("label_names"), dict) and set(labels) <= set(raw["label_names"])
-                and all(label == "healthy" or (self.knowledge.get(label) or {}).get("crop") == crop for label in labels)
+                and all(label == 'healthy' or (label=='wheat_other' and crop=='wheat') or (self.knowledge.get(label) or {}).get("crop") == crop for label in labels)
                 and (path.parent / "weights.pt").is_file()
                 and 0 < raw.get("threshold", 0) < 1
                 and 0 <= raw.get("margin", -1) < 1
@@ -40,6 +40,7 @@ class ModelRegistry:
             "ready": bool(self.metadata(crop)) and torch_available,
             "classes": len((self.metadata(crop) or {}).get("labels", [])),
             "version": (self.metadata(crop) or {}).get("version"),
+            'experimental':bool((self.metadata(crop) or {}).get('development_ready')) and not (self.metadata(crop) or {}).get('validated',False),
         } for crop, name in CROP_NAMES.items()]
 
     def predict(self, crop, image_path: Path):
@@ -59,9 +60,13 @@ class ModelRegistry:
             candidates = cached[1].predict(image_path)
             top = candidates[0]
             accepted = top["score"] >= metadata["threshold"] and top["score"] - candidates[1]["score"] >= metadata["margin"]
-            disease_id = top["id"] if accepted and top["id"] != "healthy" else None
+            disease_id = top["id"] if accepted and top["id"] not in {"healthy","wheat_other"} else None
             title = "未发现已支持病害的明显特征" if accepted and top["id"] == "healthy" else ("疑似" + top["name"] if accepted else "需要补充信息后再判断")
-            return {"status": "identified" if accepted else "uncertain", "title": title, "candidates": candidates, "disease_id": disease_id, "model_version": metadata["version"]}
+            if top['id']=='wheat_other':
+                accepted=False
+                title='可能属于本版未覆盖的症状，请补充资料复核'
+            experimental = bool(metadata.get('development_ready')) and not metadata.get('validated',False)
+            return {"status": "identified" if accepted else "uncertain", "title": title, "candidates": candidates, "disease_id": disease_id, "model_version": metadata["version"],'experimental':experimental,'validation_scope':'field-verified' if metadata.get('field_verified') is True else 'public-dataset-internal-test'}
         except (ImportError, RuntimeError, OSError, ValueError, KeyError) as exc:
             # The UI receives a stable state rather than a traceback or invented label.
             return {"status": "model_error", "title": "识别服务暂时不可用，图片已保存", "candidates": [], "disease_id": None, "model_version": metadata.get("version")}

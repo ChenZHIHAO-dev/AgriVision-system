@@ -15,7 +15,7 @@ export function observeSystemTheme() {
   const stop = watch(resolvedTheme, value => {
     if (typeof document === 'undefined') return
     document.documentElement.style.colorScheme = value
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', value === 'dark' ? '#101813' : '#f5f6f4')
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', value === 'dark' ? '#101114' : '#f5f6f4')
   }, { immediate: true, flush: 'sync' })
   return () => { media.removeEventListener('change', update); stop() }
   // #endif

@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import AppIcon from '../../components/AppIcon.vue'
 import UiDialog from '../../components/UiDialog.vue'
 import AuthDialog from '../../components/AuthDialog.vue'
 import SelectField from '../../components/SelectField.vue'
+import ChatComposer from '../../components/ChatComposer.vue'
 import { apiBase, setApiBase, dataMode, setDataMode, request, upload, imageUrl, type Crop, type Meta, type CaseRecord, type KnowledgeCard, type Source, type DataMode } from '../../lib/api'
 import { crops, stages, regions, dateLabel, statusLabel } from '../../lib/options'
 import { auth, user } from '../../lib/auth'
 import { claimGuestRecords, clearGuestRecords } from '../../lib/preview'
 import { asset } from '../../lib/assets'
 import { themeChoice, resolvedTheme, setTheme, observeSystemTheme, type ThemeChoice } from '../../lib/theme'
+import type { ChatModel, DocumentAttachment, FollowUp } from '../../lib/api'
 
 type Tab = 'identify' | 'history' | 'knowledge'
 const tab = ref<Tab>('identify'), crop = ref<Crop>('wheat'), stage = ref('不清楚'), note = ref(''), photo = ref('')
@@ -23,6 +25,12 @@ const mode = ref<DataMode>(dataMode()), modeDraft = ref<DataMode>(mode.value), a
 const location = ref('河南省 / 南阳市'), province = ref('河南省'), city = ref('南阳市'), district = ref('暂不填写区县'), customLocation = ref(''), useCustom = ref(false)
 const editStage = ref('不清楚'), editLocation = ref(''), editNote = ref(''), extraOpen = ref(false), keyboardHeight = ref(0)
 const toast = ref(''); let toastTimer: ReturnType<typeof setTimeout> | undefined
+const chatModel = ref<ChatModel>(uni.getStorageSync('agrivision.chat.model')==='deepseek-v4-pro' ? 'deepseek-v4-pro' : 'deepseek-flash')
+const chatThinking = ref(Boolean(uni.getStorageSync('agrivision.chat.thinking')))
+const pendingDocuments = ref<DocumentAttachment[]>([]), pendingImages = ref<string[]>([])
+const photoDialogOpen = ref(false), chatPhoto = ref(''), photoCrop = ref<Crop>('wheat'), photoStage = ref('不清楚'), photoVariety = ref('')
+watch(chatModel,value=>uni.setStorageSync('agrivision.chat.model',value))
+watch(chatThinking,value=>uni.setStorageSync('agrivision.chat.thinking',value))
 const themeOptions: { id: ThemeChoice; name: string; symbol: string }[] = [{ id: 'light', name: '浅色', symbol: '☀️' }, { id: 'dark', name: '深色', symbol: '🌙' }, { id: 'system', name: '跟随系统', symbol: '◐' }]
 const provinces = Object.keys(regions)
 const cities = computed(() => Object.keys(regions[province.value] || {}))
@@ -68,7 +76,7 @@ async function refresh() {
   } catch (value) { online.value = false; showError(value) }
   finally { refreshing.value = false }
 }
-function navigate(value: Tab) { accountOpen.value = false; current.value = null; tab.value = value; filter.value = 'all'; query.value = ''; error.value = '' }
+function navigate(value: Tab) { accountOpen.value = false; current.value = null; tab.value = value; filter.value = 'all'; query.value = ''; error.value = ''; pendingDocuments.value=[];pendingImages.value=[];chatText.value='' }
 function chooseCrop(value: Crop) { crop.value = value; stage.value = '不清楚' }
 function openAuth(reason = '', initial: 'login' | 'register' = 'login') { accountOpen.value = false; authReason.value = reason; authMode.value = initial; authOpen.value = true }
 async function signedIn() {
@@ -127,16 +135,80 @@ async function addPhoto(path: string) {
 }
 async function scrollChat() { scrollAnchor.value = ''; await nextTick(); scrollAnchor.value = 'chat-end' }
 function openChat() { resultTab.value = 'chat'; scrollChat() }
-async function sendMessage(raw = chatText.value) {
-  if (!current.value || sending.value || !raw.trim()) return
-  const text = raw.trim(), id = current.value.id
-  sending.value = true; pendingMessage.value = text; chatText.value = ''; error.value = ''; scrollChat()
+async function startConsultation(selectedCrop:Crop|null=null) {
+  if (busy.value) return
+  busy.value=true;busyText.value='正在建立咨询…';error.value=''
   try {
-    await request(`/api/cases/${id}/messages`, 'POST', { text })
+    current.value=await request<CaseRecord>('/api/consultations','POST',{crop:selectedCrop,location:location.value,stage:'不清楚'})
+    resultTab.value='chat';chatText.value='';pendingDocuments.value=[];pendingImages.value=[];await refresh();scrollChat()
+  }catch(value){showError(value)}finally{busy.value=false}
+}
+function followUpActive(value:FollowUp) { return value.field==='crop' ? !current.value?.crop : !current.value?.stage || current.value.stage==='不清楚' }
+async function chooseContext(value:FollowUp, choice:{value:string;label:string}) {
+  if(!current.value || sending.value)return
+  try {
+    current.value=await request<CaseRecord>(`/api/cases/${current.value.id}/context`,'POST',{[value.field]:choice.value})
+    await sendMessage(value.field==='crop' ? `这次咨询的作物是${choice.label}。` : choice.value==='暂不确定' ? '生育期暂时不确定，请先按已有信息说明。' : `目前处于${choice.label}。`)
+  }catch(error){showError(error)}
+}
+function chooseChatPhoto(source:'album'|'camera'='album') {
+  uni.chooseImage({count:1,sizeType:['compressed'],sourceType:[source],success:result=>{
+    if ((result.tempFiles as {size:number}[])[0]?.size>8*1024*1024){showToast('图片不能超过 8MB');return}
+    chatPhoto.value=result.tempFilePaths[0];photoCrop.value=current.value?.crop||crop.value;photoStage.value=current.value?.stage||'不清楚';photoVariety.value=current.value?.variety||'';photoDialogOpen.value=true
+  },fail:error=>{if(!error.errMsg?.includes('cancel'))showToast('未能打开图片选择，请检查权限')}})
+}
+async function confirmChatPhoto() {
+  if(!chatPhoto.value || busy.value)return
+  if(!current.value || current.value.is_demo)await startConsultation(photoCrop.value)
+  if(!current.value)return
+  busy.value=true;busyText.value='正在调用图片识别模型…';error.value=''
+  try {
+    current.value=await upload(`/api/cases/${current.value.id}/images`,chatPhoto.value,{crop:photoCrop.value,stage:photoStage.value,variety:photoVariety.value})
+    pendingImages.value=[current.value.images[current.value.images.length-1].id]
+    photoDialogOpen.value=false;chatPhoto.value='';resultTab.value='chat';await refresh()
+  }catch(value){showError(value);return}finally{busy.value=false}
+  await sendMessage(chatText.value.trim() ? chatText.value : '请结合刚刚的图片识别结果、作物和生育期，说明目前的判断依据及下一步建议。')
+}
+async function acceptDocument(path:string,name:string,size:number) {
+  if(size>8*1024*1024){showToast('文件不能超过 8MB');return}
+  if(!current.value)await startConsultation()
+  if(!current.value)return
+  busy.value=true;busyText.value='正在读取资料文字…';error.value=''
+  try {
+    const previous=new Set((current.value.documents||[]).map(file=>file.id))
+    current.value=await upload(`/api/cases/${current.value.id}/attachments`,path,{filename:name})
+    pendingDocuments.value.push(...(current.value.documents||[]).filter(file=>!previous.has(file.id)))
+    resultTab.value='chat';showToast('资料已添加，可继续提问');await refresh()
+  }catch(value){showError(value)}finally{busy.value=false}
+}
+function chooseDocument() {
+  // #ifdef H5
+  uni.chooseFile({count:1,type:'all',extension:['.txt','.md','.pdf','.docx'],success:result=>{
+    const file=(Array.isArray(result.tempFiles)?result.tempFiles[0]:result.tempFiles) as File & {path?:string}
+    const path=file.path || (file instanceof File ? URL.createObjectURL(file) : '')
+    if(path)acceptDocument(path,file.name,file.size);else showToast('资料文件未能读取，请重新选择')
+  }})
+  // #endif
+  // #ifndef H5
+  uni.chooseMessageFile({count:1,type:'file',extension:['txt','md','pdf','docx'],success:result=>{const file=result.tempFiles[0];acceptDocument(file.path,file.name,file.size)}})
+  // #endif
+}
+async function removeAttachment(id:string) {
+  if(!current.value)return
+  try {await request(`/api/cases/${current.value.id}/attachments/${id}`,'DELETE');pendingDocuments.value=pendingDocuments.value.filter(file=>file.id!==id);current.value=await request(`/api/cases/${current.value.id}`)}catch(value){showError(value)}
+}
+function attach(kind:'image'|'document') { if(kind==='image')chooseChatPhoto();else chooseDocument() }
+async function sendMessage(raw = chatText.value) {
+  if (!current.value || sending.value || (!raw.trim()&&!pendingDocuments.value.length)) return
+  const text = raw.trim() || '请阅读刚添加的资料，提取与本次作物咨询相关的信息。', id = current.value.id
+  const sentDraft = raw === chatText.value
+  sending.value = true; pendingMessage.value = text; if (sentDraft) chatText.value = ''; error.value = ''; scrollChat()
+  try {
+    await request(`/api/cases/${id}/messages`, 'POST', { text,model:chatModel.value,thinking:chatThinking.value,attachment_ids:pendingDocuments.value.map(file=>file.id),image_ids:pendingImages.value })
     const updated = await request<CaseRecord>(`/api/cases/${id}`)
-    if (current.value?.id === id) current.value = updated
+    if (current.value?.id === id) { current.value = updated;pendingDocuments.value=[];pendingImages.value=[] }
     await refresh()
-  } catch (value) { if (current.value?.id === id) chatText.value = text; showError(value) }
+  } catch (value) { if (current.value?.id === id && sentDraft && !chatText.value) chatText.value = raw; showError(value) }
   finally { sending.value = false; pendingMessage.value = ''; scrollChat() }
 }
 function chatKeydown(event: KeyboardEvent) {
@@ -190,12 +262,12 @@ async function saveSettings() {
   <view class="av-app" :class="['theme-' + resolvedTheme, { 'is-chat': chatMode }]" :style="appStyle">
     <view class="sidebar">
       <button class="brand" @click="navigate('identify')"><view class="brand-mark"><AppIcon name="leaf" :size="27" white /></view><view><text class="brand-name">AgriVision</text><text class="brand-caption">宛农植保助手</text></view></button>
-      <text class="nav-caption">田间工作台</text>
-      <button class="nav-item" :class="{ active: tab === 'identify' }" @click="navigate('identify')"><AppIcon name="camera" /><text>识别问诊</text><text class="nav-trailing">↗</text></button>
+      <button class="button secondary new-chat-button" :disabled="busy" @click="startConsultation()">＋ 新建咨询</button><text class="nav-caption">田间工作台</text>
+      <button class="nav-item" :class="{ active: tab === 'identify' && !chatMode }" @click="navigate('identify')"><AppIcon name="camera" /><text>识别问诊</text><text class="nav-trailing">↗</text></button>
       <button class="nav-item" :class="{ active: tab === 'history' }" @click="navigate('history')"><AppIcon name="history" /><text>问诊记录</text><text v-if="user && records.length" class="nav-trailing nav-count">{{ records.length }}</text></button>
       <button class="nav-item" :class="{ active: tab === 'knowledge' }" @click="navigate('knowledge')"><AppIcon name="book" /><text>植保知识</text></button>
       <view class="sidebar-note"><text class="sidebar-sprout">🌾</text><text class="strong">立足南阳，服务中原</text><text class="muted">把每一次田间观察，变成有依据的下一步。</text></view>
-      <view class="sidebar-bottom"><button class="nav-settings" @click="openSettings"><AppIcon name="settings" :size="18" /><text>偏好与连接</text></button><text class="fine-print">AgriVision · 1.1 前端体验版</text></view>
+      <view class="sidebar-bottom"><button class="nav-settings" @click="openSettings"><AppIcon name="settings" :size="18" /><text>偏好与连接</text></button><text class="fine-print">AgriVision · 1.2 开发测试版</text></view>
     </view>
 
     <view class="main-shell">
@@ -227,21 +299,21 @@ async function saveSettings() {
                 <view v-if="!current.messages.length && !sending" class="chat-welcome"><view class="welcome-mark">🌱</view><text class="welcome-title">这次田间观察，我们一起看看</text><text class="muted">可以补充症状出现的时间、范围和近期用药情况，或从下面的问题开始。</text><view class="welcome-topics"><button v-for="text in ['还需要补充什么信息？', '如何拍清楚症状？', '用药前需要核对什么？']" :key="text" @click="sendMessage(text)">{{ text }} <text>↗</text></button></view></view>
                 <view v-for="(message, index) in current.messages" :key="index" class="message-row" :class="message.role">
                   <view v-if="message.role === 'assistant'" class="assistant-avatar">🌱</view>
-                  <view class="message-content"><text v-if="message.role === 'assistant'" class="message-author">宛农助手 <text>{{ message.provider === 'deepseek' ? '智能咨询' : '资料参考' }}</text></text><text class="message-bubble" :selectable="true">{{ message.text }}</text><view v-if="message.role === 'assistant'" class="message-tools"><button v-for="source in message.sources" :key="source.url" class="source-chip" @click="openSource(source)">↗ {{ source.title }}</button><button class="copy-button" aria-label="复制回答" @click="copyText(message.text)">复制</button></view><text v-if="message.notice" class="fine-print">{{ message.notice }}</text></view>
+                  <view class="message-content"><text v-if="message.role === 'assistant'" class="message-author">宛农助手 <text>{{ message.provider === 'deepseek' ? (message.model==='deepseek-v4-pro' ? 'DeepSeek V4 Pro' : 'DeepSeek Flash') + (message.thinking ? ' · 深度思考' : '') : message.provider==='clarification' ? '信息补充' : '资料参考' }}</text></text><text class="message-bubble" :selectable="true">{{ message.text }}</text><view v-if="message.attachments?.length" class="message-attachments"><template v-for="file in message.attachments" :key="file.id"><button v-if="file.kind==='image'" class="message-image" @click="viewPhoto(file.id)"><image :src="imageUrl(current,file.id)" mode="aspectFill" /></button><text v-else class="message-file">▤ {{ file.name }}</text></template></view><view v-if="message.follow_up && followUpActive(message.follow_up)" class="context-choice"><text class="context-prompt">{{ message.follow_up.prompt }}</text><view class="context-options"><button v-for="choice in message.follow_up.options" :key="choice.value" :disabled="sending" @click="chooseContext(message.follow_up!,choice)">{{ choice.label }}</button></view></view><view v-if="message.role === 'assistant'" class="message-tools"><button v-for="source in message.sources" :key="source.url" class="source-chip" @click="openSource(source)">↗ {{ source.title }}</button><button class="copy-button" aria-label="复制回答" @click="copyText(message.text)">复制</button></view><text v-if="message.notice" class="fine-print">{{ message.notice }}</text></view>
                 </view>
                 <view v-if="sending" class="message-row user"><text class="message-bubble pending-bubble">{{ pendingMessage }}</text></view>
                 <view v-if="sending" class="responding"><view class="spinner" /><text>正在整理资料…</text></view>
                 <view id="chat-end" class="chat-end" />
               </view>
             </scroll-view>
-            <view class="composer-dock"><view class="composer-wrap"><view class="composer-input"><textarea v-model="chatText" aria-label="咨询内容" placeholder="继续描述作物情况，或问问如何处理…" :auto-height="true" :maxlength="2000" :adjust-position="false" :cursor-spacing="16" :disabled="sending" confirm-type="send" @confirm="sendMessage()" @keydown="chatKeydown" @keyboardheightchange="keyboardHeight = $event.detail.height" /><button class="send-button" aria-label="发送消息" :disabled="!chatText.trim() || sending" @click="sendMessage()"><text>↑</text></button></view><view class="composer-meta"><text>具体用药请结合产品标签与农技复核</text><text class="desktop-only">Enter 发送 · Shift + Enter 换行</text></view></view></view>
+            <view class="composer-dock"><view class="composer-wrap"><ChatComposer v-model="chatText" v-model:model="chatModel" v-model:thinking="chatThinking" :attachments="pendingDocuments" :disabled="sending || busy" :preview="mode==='preview'" @send="sendMessage()" @attach="attach" @remove="removeAttachment" @resize="resizedChat" @limit="showToast('单条消息最多 12000 字，较长资料可作为文件上传')" @keyboard="keyboardHeight=$event" /></view></view>
           </view>
 
           <scroll-view v-else scroll-y class="page-scroll">
             <view class="page-content result-content">
               <view v-if="current.is_demo" class="inline-alert warning-alert">演示样例 · 用于体验问诊流程，未对你的照片作出识别。</view>
               <view class="result-grid"><view class="panel photo-panel"><view class="section-heading"><text class="section-title">症状照片</text><text class="badge">{{ current.images.length || '示意' }}{{ current.images.length ? ' 张' : '图' }}</text></view><button class="case-photo" aria-label="查看症状图片" @click="viewPhoto()"><image :src="imageUrl(current)" mode="aspectFit" /></button><button v-if="!current.is_demo" class="button secondary full-width" :disabled="busy || current.images.length >= 6" @click="choosePhoto('album', true)"><AppIcon name="plus" :size="17" /><text>补充照片</text></button><view class="case-context"><text class="muted small">{{ dateLabel(current.created_at) }}</text><text v-if="current.note" class="case-note">{{ current.note }}</text><button class="text-button" @click="editCase">补充种植情况 ↗</button></view></view>
-                <view class="panel result-panel"><text class="badge green">{{ statusLabel(current.status) }}</text><text class="result-title">{{ current.title }}</text><text class="result-summary">{{ current.advice.summary }}</text><text class="subheading">接下来可以这样做</text><view v-for="(action, index) in current.advice.actions" :key="action" class="action-row"><text class="action-index">{{ index + 1 }}</text><text>{{ action }}</text></view><view class="product-section"><text class="subheading">适用产品与用药依据</text><template v-if="current.advice.products.length"><view v-for="product in current.advice.products" :key="product.id" class="product-card"><text class="strong">{{ product.name }}</text><text>{{ product.ingredient }} · {{ product.formulation }}</text><text>{{ product.instructions }}</text><button class="text-button" @click="openSource({ title: product.name, url: product.label_url, date: '' })">查看产品标签 ↗</button></view></template><text v-else class="muted small">暂未匹配到资料完整的适用产品。请补充具体产品标签，由农技人员核对作物、对象与用法。</text></view><view v-if="current.advice.sources.length" class="result-sources"><text class="subheading">参考资料</text><button v-for="source in current.advice.sources" :key="source.url" class="source-button" @click="openSource(source)"><AppIcon name="book" :size="17" /><text class="flex-one">{{ source.title }}</text><text>↗</text></button></view><view v-if="current.candidates.length" class="candidate-section"><text class="fine-print">模型候选分数 · 用于比较，不代表确诊概率</text><view v-for="candidate in current.candidates" :key="candidate.id" class="settings-row"><text>{{ candidate.name }}</text><text>{{ (candidate.score * 100).toFixed(1) }}%</text></view></view><button class="button primary full-width continue-button" @click="openChat">继续咨询 <text>↗</text></button><button v-if="!user" class="text-button guest-save" @click="openAuth('登录后，可保存本次问诊和对话记录。')">登录，保存本次问诊</button></view>
+                <view class="panel result-panel"><text class="badge green">{{ statusLabel(current.status) }}</text><text v-if="current.experimental" class="badge experiment-badge">本地实验模型 · 尚待南阳实拍验证</text><text class="result-title">{{ current.title }}</text><text class="result-summary">{{ current.advice.summary }}</text><text class="subheading">接下来可以这样做</text><view v-for="(action, index) in current.advice.actions" :key="action" class="action-row"><text class="action-index">{{ index + 1 }}</text><text>{{ action }}</text></view><view class="product-section"><text class="subheading">适用产品与用药依据</text><template v-if="current.advice.products.length"><view v-for="product in current.advice.products" :key="product.id" class="product-card"><text class="strong">{{ product.name }}</text><text>{{ product.ingredient }} · {{ product.formulation }}</text><text>{{ product.instructions }}</text><button class="text-button" @click="openSource({ title: product.name, url: product.label_url, date: '' })">查看产品标签 ↗</button></view></template><text v-else class="muted small">暂未匹配到资料完整的适用产品。请补充具体产品标签，由农技人员核对作物、对象与用法。</text></view><view v-if="current.advice.sources.length" class="result-sources"><text class="subheading">参考资料</text><button v-for="source in current.advice.sources" :key="source.url" class="source-button" @click="openSource(source)"><AppIcon name="book" :size="17" /><text class="flex-one">{{ source.title }}</text><text>↗</text></button></view><view v-if="current.candidates.length" class="candidate-section"><text class="fine-print">模型候选分数 · 用于比较，不代表确诊概率</text><view v-for="candidate in current.candidates" :key="candidate.id" class="settings-row"><text>{{ candidate.name }}</text><text>{{ (candidate.score * 100).toFixed(1) }}%</text></view></view><button class="button primary full-width continue-button" @click="openChat">继续咨询 <text>↗</text></button><button v-if="!user" class="text-button guest-save" @click="openAuth('登录后，可保存本次问诊和对话记录。')">登录，保存本次问诊</button></view>
               </view>
             </view>
           </scroll-view>
@@ -250,13 +322,13 @@ async function saveSettings() {
         <scroll-view v-else scroll-y class="page-scroll">
           <view class="page-content">
             <template v-if="tab === 'identify'">
-              <view class="hero"><view class="hero-copy"><text class="hero-eyebrow">田间发现，及时了解</text><text class="hero-title">作物有异常？<text class="hero-break">拍照问一问。</text></text><text class="hero-description">小麦 · 玉米 · 花生<text> / </text>图片记录与持续咨询</text></view><image :src="asset('field-art.png')" mode="aspectFit" class="hero-art" /><text class="hero-coordinate">NANYANG · CENTRAL PLAINS</text></view>
+              <view class="hero"><view class="hero-copy"><text class="hero-eyebrow">田间发现，及时了解</text><text class="hero-title">作物有异常？<text class="hero-break">拍照问一问。</text></text><text class="hero-description">小麦 · 玉米 · 花生<text> / </text>图片记录与持续咨询</text><button class="hero-chat-link" :disabled="busy" @click="startConsultation()">不方便拍照？先聊一聊 →</button></view><image :src="asset('field-art.png')" mode="aspectFit" class="hero-art" /><text class="hero-coordinate">NANYANG · CENTRAL PLAINS</text></view>
               <view class="home-grid"><view class="panel identify-panel"><view class="section-heading"><view><text class="section-title">新建一次问诊</text><text class="section-description">选好作物，拍下症状，聊聊田间情况。</text></view><button class="text-button demo-link" :disabled="busy || !online" @click="demo">体验演示 ↗</button></view><view class="crop-grid"><button v-for="option in crops" :key="option.id" class="crop-option" :class="{ selected: crop === option.id }" :aria-pressed="crop === option.id" @click="chooseCrop(option.id)"><image :src="asset('crops/' + option.id + '.png')" mode="aspectFit" /><view><text class="crop-name">{{ option.name }}</text><text class="crop-caption">{{ option.id === 'wheat' ? '叶片与麦穗' : option.id === 'maize' ? '叶部与虫害' : '叶片与根茎' }}</text></view><text class="crop-radio">{{ crop === option.id ? '●' : '○' }}</text></button></view>
                 <view class="upload-zone" :class="{ 'has-photo': photo }" @dragover.prevent @drop.prevent="handleDrop"><template v-if="!photo"><view class="upload-symbol"><AppIcon name="camera" :size="34" /></view><text class="upload-title">先拍清症状，再了解原因</text><text class="upload-description">一张病叶近照，一张整株照片，更容易说清楚。</text><view class="upload-actions"><button class="button primary" @click="choosePhoto('album')"><AppIcon name="upload" :size="17" :white="resolvedTheme !== 'dark'" /><text>选择照片</text></button><button class="button secondary mobile-capture" @click="choosePhoto('camera')">拍照</button></view><text class="fine-print">JPG / PNG / WebP · 单张不超过 8MB</text></template><template v-else><image :src="photo" mode="aspectFit" class="selected-photo" /><view class="photo-controls"><text class="badge green">照片已选择</text><button class="button secondary" @click="choosePhoto('album')">更换</button><button class="icon-button" aria-label="移除已选图片" @click="photo = ''">×</button></view></template></view>
                 <view class="form-meta"><view><text class="field-label">种植地区</text><button class="region-button" @click="regionOpen = true"><text>{{ location }}</text><AppIcon name="chevron" :size="14" /></button></view><view><text class="field-label">生育期 <text class="muted">（可选）</text></text><SelectField v-model="stage" :options="stages[crop]" label="生育期" /></view></view><button class="text-button note-toggle" @click="extraOpen = !extraOpen">{{ extraOpen ? '− 收起补充描述' : '＋ 补充症状与近期用药' }}</button><textarea v-if="extraOpen" v-model="note" aria-label="症状与近期用药" class="note-input" placeholder="例如：这两天发现叶片异常，田边零星几株，近期还没用药……" :maxlength="2000" /><view class="submit-section"><button class="button primary full-width" :disabled="!photo || busy || !online" @click="startCase">{{ modelReady ? '开始识别与咨询' : '保存图片，开始咨询' }} <text>→</text></button><text class="fine-print">{{ mode === 'preview' ? '前端体验：照片仅保存在此设备，暂不进行模型识别。' : '正式识别模型接入前，可先记录图片并查阅资料。' }}</text></view>
               </view>
                 <view class="home-aside"><view class="panel guide-panel"><view class="section-heading"><text class="section-title">好照片，多一点线索</text><text>📸</text></view><view v-for="(text, index) in ['靠近症状，避开反光', '叶片正面、背面都拍清', '再补一张整株或田间照片']" :key="text" class="guide-line"><text>0{{ index + 1 }}</text><text>{{ text }}</text></view><button class="text-button" @click="selectedCard = cards.find(card => card.id === 'photo_guide') || null">查看拍摄指南 ↗</button></view>
-                  <view class="panel recent-panel"><view class="section-heading"><text class="section-title">最近问诊</text><button v-if="user" class="text-button" @click="navigate('history')">全部 →</button></view><template v-if="user && records.length"><button v-for="record in records.slice(0, 3)" :key="record.id" class="recent-item" @click="openCase(record.id)"><AppIcon :name="record.crop" :size="25" /><view class="flex-one"><text class="recent-title">{{ record.title }}</text><text class="fine-print">{{ dateLabel(record.created_at) }}</text></view><text class="muted">↗</text></button></template><view v-else class="recent-empty"><AppIcon name="history" :size="30" /><text class="strong">{{ user ? '还没有问诊记录' : '让每次观察，都有迹可循' }}</text><text class="muted">{{ user ? '从一张症状照片开始。' : '登录后，可保存照片、建议与对话。' }}</text><button v-if="!user" class="button soft" @click="openAuth()">登录保存记录</button></view></view><text class="aside-note">🌱 结合照片、种植情况和专业资料，做出更有依据的下一步。</text>
+                  <view class="panel recent-panel"><view class="section-heading"><text class="section-title">最近问诊</text><button v-if="user" class="text-button" @click="navigate('history')">全部 →</button></view><template v-if="user && records.length"><button v-for="record in records.slice(0, 3)" :key="record.id" class="recent-item" @click="openCase(record.id)"><AppIcon :name="record.crop || 'leaf'" :size="25" /><view class="flex-one"><text class="recent-title">{{ record.title }}</text><text class="fine-print">{{ dateLabel(record.created_at) }}</text></view><text class="muted">↗</text></button></template><view v-else class="recent-empty"><AppIcon name="history" :size="30" /><text class="strong">{{ user ? '还没有问诊记录' : '让每次观察，都有迹可循' }}</text><text class="muted">{{ user ? '从一张症状照片开始。' : '登录后，可保存照片、建议与对话。' }}</text><button v-if="!user" class="button soft" @click="openAuth()">登录保存记录</button></view></view><text class="aside-note">🌱 结合照片、种植情况和专业资料，做出更有依据的下一步。</text>
                 </view>
               </view>
             </template>
@@ -274,17 +346,18 @@ async function saveSettings() {
           </view>
         </scroll-view>
       </view>
-      <view v-if="!chatMode" class="mobile-nav"><button :class="{ active: tab === 'identify' }" @click="navigate('identify')"><AppIcon name="camera" :size="22" /><text>问诊</text></button><button :class="{ active: tab === 'history' }" @click="navigate('history')"><AppIcon name="history" :size="22" /><text>记录</text></button><button :class="{ active: tab === 'knowledge' }" @click="navigate('knowledge')"><AppIcon name="book" :size="22" /><text>知识</text></button></view>
+      <view v-if="!chatMode" class="mobile-nav"><button class="mobile-consult" :disabled="busy" @click="startConsultation()"><AppIcon name="chat" :size="22" /><text>咨询</text></button><button :class="{ active: tab === 'identify' }" @click="navigate('identify')"><AppIcon name="camera" :size="22" /><text>问诊</text></button><button :class="{ active: tab === 'history' }" @click="navigate('history')"><AppIcon name="history" :size="22" /><text>记录</text></button><button :class="{ active: tab === 'knowledge' }" @click="navigate('knowledge')"><AppIcon name="book" :size="22" /><text>知识</text></button></view>
     </view>
 
     <view v-if="accountOpen && user" class="popover-dismiss" @click="accountOpen = false"><view class="account-popover" @click.stop><text class="strong">{{ user.name }}</text><text class="fine-print">{{ user.username }} · {{ user.role === 'tester' ? '测试管理员' : '本机测试账户' }}</text><button @click="accountOpen = false; navigate('history')">我的问诊记录 <text>↗</text></button><button @click="openSettings">外观与设置 <text>↗</text></button><button class="logout" @click="signOut">退出登录</button></view></view>
     <view v-if="toast" class="toast" role="status">{{ toast }}</view>
     <AuthDialog v-if="authOpen" :initial-mode="authMode" :reason="authReason" @close="authOpen = false" @success="signedIn" />
 
+    <UiDialog v-if="photoDialogOpen" title="添加症状照片" subtitle="补充种植情况，让识别更有依据。" @close="photoDialogOpen=false"><image :src="chatPhoto" mode="aspectFit" class="chat-photo-preview" /><text class="field-label">照片中的作物</text><view class="photo-crop-choices"><button v-for="option in crops" :key="option.id" :class="{active:photoCrop===option.id}" @click="photoCrop=option.id;photoStage='不清楚'">{{ option.name }}</button></view><view class="form-stack"><view><text class="field-label">生育期（可选）</text><SelectField v-model="photoStage" :options="stages[photoCrop]" label="照片作物生育期" /></view><view class="form-field"><text class="field-label">品种（选填）</text><input v-model="photoVariety" aria-label="作物品种" placeholder="知道品种名称时可填写" :maxlength="80" /></view></view><text class="fine-print image-privacy-note">原图由独立识别模型处理，不发送给 DeepSeek。</text><template #footer><button class="button primary full-width" :disabled="busy" @click="confirmChatPhoto">{{ busy ? '正在识别…' : '识别并继续咨询' }}</button></template></UiDialog>
     <UiDialog v-if="selectedCard" :title="selectedCard.title" :subtitle="selectedCard.category" wide @close="selectedCard = null"><text class="article-summary">{{ selectedCard.summary }}</text><text class="section-title">建议检查与补充</text><view v-for="(action, index) in selectedCard.actions" :key="action" class="action-row"><text class="action-index">{{ index + 1 }}</text><text>{{ action }}</text></view><template v-if="selectedCard.sources.length"><text class="section-title">资料来源</text><button v-for="source in selectedCard.sources" :key="source.url" class="source-button" @click="openSource(source)"><view class="flex-one"><text>{{ source.title }}</text><text class="muted">{{ source.date }}</text></view><text>↗</text></button></template><template #footer><button class="button primary full-width" @click="selectedCard = null; navigate('identify')">带着照片，开始问诊 →</button></template></UiDialog>
     <UiDialog v-if="regionOpen" title="作物长在哪里？" subtitle="选择种植地区，帮助了解田间环境。" @close="regionOpen = false"><view class="form-stack"><template v-if="!useCustom"><view><text class="field-label">省份</text><SelectField :model-value="province" :options="provinces" label="省份" @update:model-value="changeProvince" /></view><view><text class="field-label">城市</text><SelectField :model-value="city" :options="cities" label="城市" @update:model-value="changeCity" /></view><view><text class="field-label">区县</text><SelectField v-model="district" :options="districts" label="区县" /></view></template><view v-else class="form-field"><text class="field-label">种植地区</text><input v-model="customLocation" aria-label="手动填写地区" placeholder="输入省、市、县或乡镇" :maxlength="120" /></view></view><button class="text-button manual-region" @click="useCustom = !useCustom">{{ useCustom ? '返回地区选择' : '其他地区，手动填写' }}</button><template #footer><button class="button primary full-width" @click="confirmRegion">确认地区</button></template></UiDialog>
     <UiDialog v-if="settingsOpen" title="外观与设置" subtitle="把工作台调成你习惯的样子。" @close="settingsOpen = false"><view class="settings-section"><text class="section-title">外观</text><view class="theme-options"><button v-for="option in themeOptions" :key="option.id" class="theme-option" :class="{ active: themeChoice === option.id }" :aria-pressed="themeChoice === option.id" @click="setTheme(option.id)"><text class="theme-symbol">{{ option.symbol }}</text><text>{{ option.name }}</text></button></view><text class="fine-print">跟随系统会随设备的深浅色设置自动切换。</text></view><view class="settings-section"><text class="section-title">体验方式</text><view class="segmented"><button :class="{ active: modeDraft === 'preview' }" @click="modeDraft = 'preview'">前端体验</button><button :class="{ active: modeDraft === 'live' }" @click="modeDraft = 'live'">连接后端</button></view><view v-if="modeDraft === 'live'" class="backend-input"><text class="field-label">后端服务地址</text><input v-model="apiDraft" class="text-input" aria-label="后端服务地址" placeholder="https://api.example.com" /><text class="fine-print">仅连接你信任的服务。API 密钥在后端配置。</text></view><text v-else class="fine-print mode-description">无需后端即可体验上传、咨询、登录与记录。资料和测试账户保存在当前设备，不跨设备同步。</text></view><view class="settings-section"><view class="settings-row"><text>图片识别模型</text><text class="muted">{{ meta?.models.some(model => model.ready) ? '部分已接入' : '待训练接入' }}</text></view><view class="settings-row"><text>对话服务</text><text class="muted">{{ meta?.deepseek_configured ? 'DeepSeek 已配置' : '本地资料体验' }}</text></view><view class="settings-row"><text>知识资料 / 产品目录</text><text class="muted">{{ meta?.knowledge_count || 15 }} / {{ meta?.product_count || 0 }}</text></view></view><template #footer><button class="button primary full-width" @click="saveSettings">完成</button></template></UiDialog>
-    <UiDialog v-if="editOpen && current" title="补充种植情况" @close="editOpen = false"><view class="form-stack"><view><text class="field-label">生育期</text><SelectField v-model="editStage" :options="stages[current.crop]" label="问诊生育期" /></view><view class="form-field"><text class="field-label">地区</text><input v-model="editLocation" aria-label="问诊地区" :maxlength="120" /></view><view><text class="field-label">症状与近期用药</text><textarea v-model="editNote" aria-label="补充症状" class="note-input" placeholder="补充出现时间、分布或近期用药…" :maxlength="2000" /></view></view><template #footer><button class="button primary full-width" :disabled="busy" @click="saveCase">保存情况</button></template></UiDialog>
+    <UiDialog v-if="editOpen && current" title="补充种植情况" @close="editOpen = false"><view class="form-stack"><view><text class="field-label">生育期</text><SelectField v-model="editStage" :options="stages[current.crop || crop]" label="问诊生育期" /></view><view class="form-field"><text class="field-label">地区</text><input v-model="editLocation" aria-label="问诊地区" :maxlength="120" /></view><view><text class="field-label">症状与近期用药</text><textarea v-model="editNote" aria-label="补充症状" class="note-input" placeholder="补充出现时间、分布或近期用药…" :maxlength="2000" /></view></view><template #footer><button class="button primary full-width" :disabled="busy" @click="saveCase">保存情况</button></template></UiDialog>
     <UiDialog v-if="infoOpen && current" title="本次问诊资料" :subtitle="current.crop_name + ' · ' + current.location" @close="infoOpen = false"><view class="settings-row"><text>生育期</text><text>{{ current.stage }}</text></view><view class="settings-row"><text>建立时间</text><text>{{ dateLabel(current.created_at) }}</text></view><text v-if="current.note" class="article-summary">{{ current.note }}</text><view class="info-photos"><button v-for="image in current.images" :key="image.id" aria-label="查看补充图片" @click="viewPhoto(image.id)"><image :src="imageUrl(current, image.id)" mode="aspectFill" /></button><image v-if="!current.images.length" :src="imageUrl(current)" mode="aspectFit" /></view><button v-if="!current.is_demo" class="button secondary full-width" :disabled="current.images.length >= 6 || busy" @click="choosePhoto('album', true)">＋ 补充照片</button><template #footer><button class="button primary full-width" @click="editCase">编辑种植情况</button></template></UiDialog>
     <UiDialog v-if="deleteTarget" title="删除这条问诊？" subtitle="关联的照片与对话会一起删除，删除后无法恢复。" @close="deleteTarget = null"><text class="article-summary">{{ deleteTarget.title }}</text><template #footer><view class="confirm-actions"><button class="button secondary" :disabled="busy" @click="deleteTarget = null">保留记录</button><button class="button danger" :disabled="busy" @click="confirmDelete">确认删除</button></view></template></UiDialog>
   </view>
@@ -300,4 +373,5 @@ async function saveSettings() {
 /* #ifdef MP-WEIXIN */
 .topbar{padding-top:calc(var(--status-bar-height) + 42px);min-height:calc(104px + var(--status-bar-height));height:calc(104px + var(--status-bar-height))}
 /* #endif */
+.new-chat-button{margin-bottom:24px;font-size:12px}.hero-chat-link{margin-top:12px;color:var(--hero-ink);font-size:11px;text-align:left;min-height:24px}.context-choice{margin:17px 0 8px;padding:15px;background:var(--surface);border:1px solid var(--line);border-radius:14px}.context-prompt{font-size:12px;font-weight:550;display:block;margin-bottom:11px}.context-options{display:flex;flex-wrap:wrap;gap:8px}.context-options>button{padding:7px 11px;border:1px solid var(--line);border-radius:9px;color:var(--ink);background:var(--subtle);font-size:12px;min-height:35px}.context-options>button:hover{border-color:var(--focus)}.message-attachments{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.message-image,.message-image>image{width:120px;height:110px;border-radius:12px;overflow:hidden}.message-file{font-size:11px;padding:7px 10px;border:1px solid var(--line);border-radius:9px;background:var(--subtle);overflow-wrap:anywhere}.chat-photo-preview{width:100%;height:180px;border-radius:13px;background:var(--subtle);margin:0 0 20px}.photo-crop-choices{display:flex;gap:9px;margin-bottom:22px}.photo-crop-choices>button{flex:1;border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center;font-size:13px;background:var(--subtle)}.photo-crop-choices>button.active{border-color:var(--focus);background:var(--accent-soft);color:var(--ink)}.image-privacy-note{margin-top:18px}.experiment-badge{margin-left:8px;font-size:9px}@media(max-width:760px){.hero{min-height:220px}.hero-chat-link{margin-top:10px;font-size:11px}.mobile-nav>button{width:70px}.new-chat-button{display:none}.context-choice{padding:12px}.context-options{gap:7px}.context-options>button{font-size:11px;padding:7px 9px}.experiment-badge{display:flex;margin:9px 0 0;font-size:9px}.message-image,.message-image>image{width:110px;height:100px}}
 </style>

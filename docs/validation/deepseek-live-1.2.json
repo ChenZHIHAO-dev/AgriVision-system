@@ -1,0 +1,29 @@
+[
+  {
+    "model": "deepseek-flash",
+    "requested_thinking": false,
+    "provider": "deepseek",
+    "actual_thinking": false,
+    "answer_characters": 302,
+    "notice_code": null,
+    "seconds": 2.26
+  },
+  {
+    "model": "deepseek-v4-pro",
+    "requested_thinking": false,
+    "provider": "deepseek",
+    "actual_thinking": false,
+    "answer_characters": 204,
+    "notice_code": null,
+    "seconds": 3.41
+  },
+  {
+    "model": "deepseek-flash",
+    "requested_thinking": true,
+    "provider": "deepseek",
+    "actual_thinking": true,
+    "answer_characters": 173,
+    "notice_code": null,
+    "seconds": 1.98
+  }
+]

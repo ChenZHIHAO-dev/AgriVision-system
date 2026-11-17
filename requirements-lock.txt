@@ -20,6 +20,7 @@ pluggy==1.7.0
 pydantic==2.14.3
 pydantic-core==2.50.4
 pygments==2.21.0
+pypdf==7.1.0
 pytest==9.2.0
 python-dotenv==1.2.4
 python-multipart==0.0.34

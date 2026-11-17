@@ -1,87 +1,87 @@
 # AgriVision 本地开发与模型接入
 
-## 软件启动
+当前版本 1.2.0-dev.1，项目位于 `F:\college\AgriVision`。功能边界和待验收项见[1.2 记录](backend-1.2.md)。
 
-在项目根目录使用 PowerShell。已完成环境准备时，运行：
+## 启动与环境
+
+本机依赖、数据和实验权重已准备，运行：
 
 ```powershell
 .\scripts\Start.ps1
 ```
 
-打开 `http://127.0.0.1:8000`，接口说明在 `http://127.0.0.1:8000/docs`。停止服务运行 `.\scripts\Stop.ps1`。
+打开 http://127.0.0.1:8000，在“偏好与连接”选择“连接后端”，地址同为 http://127.0.0.1:8000。API 文档为 /docs；停止用 `.\scripts\Stop.ps1`。服务只绑定本机，不会自动开放公网。
 
-新环境安装使用 `.\scripts\Setup.ps1`；需要 CUDA 模型框架时使用 `.\scripts\Setup.ps1 -WithCuda`。脚本要求 uv 和 Node.js，Python 建议 3.12。依赖保存在项目 `.venv` 与 `node_modules` 中；前后端安装分别使用已验证的 `package-lock.json` 和 `requirements-lock.txt`。
+新环境安装使用 `.\scripts\Setup.ps1`；需要训练与 CUDA 时使用 `.\scripts\Setup.ps1 -WithCuda`。依赖分别锁定在 package-lock.json、requirements-lock.txt 和 requirements-ml.txt。建议 Python 3.12；本机 Node 24、PyTorch 2.7.1+cu126。
 
-前端热更新开发使用 `npm run dev`，后端另开终端运行：
+前端热更新：
+
+```powershell
+npm run dev
+```
+
+默认前端体验模式，不调用真实识别与 API。后端可另开终端运行：
 
 ```powershell
 .venv\Scripts\python.exe -m uvicorn app.main:app --app-dir services/api --host 127.0.0.1 --port 8000
 ```
 
-后端启动时如果 `apps/client/dist/build/h5` 已存在，会同时服务网页构建产物。前端依赖或环境配置变化后执行 `npm run build`。使用端口 8000 以外的后端时，需同步修改客户端运行与连接中的地址或构建前端的 `VITE_API_BASE_URL`。
-
-## 微信小程序
-
-运行 `npm run build:mp`，将 `apps/client/dist/build/mp-weixin` 导入微信开发者工具。当前使用游客 AppID 作为开发占位，正式测试替换为自己的小程序 AppID。手机真机的 localhost 指向手机自身，需改为手机可达的后端地址并配置微信网络要求。
-
-前端所有业务请求共用 `src/lib/api.ts`，问诊信息更新使用 POST context 接口，避免依赖小程序请求方法中未声明的 PATCH。
+后端同时提供 apps/client/dist/build/h5 中的网页。修改前端后运行 npm run build；修改后端后重启。Start / Stop 脚本校验本项目监听进程及启动时间，不停止其他应用。
 
 ## DeepSeek 配置
 
-复制 `.env.example` 为项目根目录 `.env`，只在后端填写 `DEEPSEEK_API_KEY`。模型标识默认 `deepseek-flash`，可按[官方 Chat Completions 文档](https://api-docs.deepseek.com/api/create-chat-completion/)修改。重新启动后端后，运行状态会显示已配置。
+密钥放在用户拥有的 `secrets/deepseek.env`：
 
-未配置密钥时，咨询使用本地资料检索与说明；接口调用失败也保留这条路径。用药配方请求使用独立的产品规则，不让对话模型自由填入剂量。
+```dotenv
+DEEPSEEK_API_KEY="在本机填写"
+```
+
+整个 secrets 目录被忽略；不要把它提交，也不要放入前端 VITE 变量。用户已填写，不需要代理打开或重写。应用运行时读取，支持引号并关闭插值，日志和 API 只显示配置状态。
+
+根目录 .env.example 仅提供后端参数模板。模型默认 deepseek-flash，网页可选 deepseek-v4-pro 和思考开关；参数见[官方文档](https://api-docs.deepseek.com/zh-cn/)。未配置或调用失败时返回本地资料与明确提示；用药方案仍由标签规则处理。
 
 ## 数据与模型
 
-原始数据按标签配置的内部标识放置：
+本轮模型的来源、类别、划分、训练命令、阈值与实际指标见[小麦模型说明](model-card-wheat-v1.md)。所有数据与权重保存在本机，代码仓库不包含它们。
 
-```text
-data/raw/wheat/
-  wheat_stripe_rust/
-  wheat_leaf_rust/
-  wheat_powdery_mildew/
-  healthy/
-```
+| 路径 | 内容 |
+| --- | --- |
+| data/sources/kaggle-wheat-v6.zip | 主数据原始压缩包 |
+| data/sources/metadata | 来源元数据及版本 |
+| data/wheat-v1 | 整理图像、来源映射、数据清单与检查报告 |
+| artifacts/experiments/wheat-b0-v1 | 实验权重、训练记录、校准和评测 |
+| artifacts/models/wheat | 当前本机服务加载的实验模型包 |
+| data/manual-tests/wheat-real-photos | 用户手动试图、署名许可与空白记录表 |
 
-生成数据清单：
+模型标签为 configs/labels/wheat-v1.json 的五类。旧 wheat.json 保留四类通用框架示例，不混用标签顺序。训练和推理共享架构、预处理及标签元数据。
 
-```powershell
-.venv\Scripts\python.exe -m ml.agrivision_ml.prepare --data-root data/raw/wheat --labels configs/labels/wheat.json --output data/manifests/wheat.csv
-```
+实验激活使用 evaluate 的 --activate-experimental，要求真实训练清单的 test 划分、每类至少 20 张、Macro-F1 ≥ 0.8、每类召回率 ≥ 0.6，仍保持 validated=false。默认本机允许实验模型；设 AGRIVISION_ALLOW_EXPERIMENTAL_MODELS=0 可以关闭。合成开发检查模型始终被拒绝。
 
-同叶、同株、同地块拍摄批次或增强衍生关系应通过 `--groups data/groups.csv` 提供。分组文件为 `path,group` 两列，路径相对于数据根目录。默认精确与感知哈希只能发现部分重复，不能替代来源分组和人工复核。
+--activate 与 --field-verified 仅在完成实际田间验证并由操作者确认时使用，不能以内部测试代替。新实验使用新输出目录；迁移 AutoDL 时保留清单、标签、依赖和实验记录。
 
-开始迁移学习：
+## 微信与手机
 
-```powershell
-.venv\Scripts\python.exe -m ml.agrivision_ml.train --data-root data/raw/wheat --manifest data/manifests/wheat.csv --labels configs/labels/wheat.json --output artifacts/models/wheat --epochs 30 --batch-size 8 --device auto
-```
+`npm run build:mp` 输出 apps/client/dist/build/mp-weixin，可导入微信开发者工具。当前 AppID 是游客占位；真机需自己的 AppID、手机可达的后端地址、权限与域名配置。
 
-默认采用 ImageNet 预训练 EfficientNet-B0；`--architecture mobilenet_v3_small` 可比较轻量方案。首次使用预训练权重会访问 PyTorch 官方下载地址。输入大小、批量、冻结轮数与学习率可用命令行调整。路径与数据清单可迁移至 AutoDL。
+GitHub Pages 只提供前端。手机 localhost 指向手机自身，不能用它访问电脑的 3060 或 API。实际手机后端联调需后续配置可达的 HTTPS 服务，不把密钥放到 Pages。
 
-模型包包含 `weights.pt`、`metadata.json` 和 `training.json`。标签顺序、图像缩放、归一化与模型结构由训练和推理共用。默认阈值为开发起点，需根据验证集检查并调整；模型分数不是病害确诊概率。
-
-评测与接入：
+## 验证
 
 ```powershell
-.venv\Scripts\python.exe -m ml.agrivision_ml.evaluate --bundle artifacts/models/wheat --data-root data/raw/wheat --manifest data/manifests/wheat.csv --split test
+npm run test:frontend
+npm run typecheck
+npm run build
+npm run build:mp
+npm run build:pages
+.venv\Scripts\python.exe -m pytest -q
 ```
 
-模型默认 `validated=false`。实拍和独立测试核对完成后，可在同一命令加入 `--activate --field-verified` 接入开发服务。开发门槛要求每类测试至少 20 张、Macro-F1 至少 0.8、每类召回率至少 0.6；这些是开发接入检查，不代表商业田间效果标准。开发检查模型始终禁止激活。
+scripts/check_live_chat.py 和 scripts/check_backend_pipeline.py 通过正常本机 HTTP 接口检查真实服务，会产生少量 API 用量；只输出调用状态和字数，不读取密钥文件或输出回答正文。后者使用内部测试样本，绝不扫描手动试图目录。
 
-运行模型框架检查：
+scripts/smoke_ml.py 仍用于合成图像的训练 / 导出 / 推理代码检查，产物只能位于 .cache，不能用于业务识别或评价病害效果。
 
-```powershell
-.venv\Scripts\python.exe scripts/smoke_ml.py
-```
+## 运行资料
 
-该脚本创建合成图片，执行数据划分、一次短训练、权重导出和加载推理，仅验证代码链路。产物位于 `.cache/ml-smoke`，不会进入业务模型目录。
+已有 SQLite 保存本机问诊记录，账户仍为前端测试。knowledge/products.json 为空；接入公司资料时需保持来源和审核状态，再完善登记、适用作物、病虫害对象、生育期及标签用法。
 
-## 产品资料与测试
-
-`knowledge/products.json` 初始为空。产品结构定义在 `services/api/app/schemas.py`；只有审核信息、有效期、标签来源、适用作物与对象等字段匹配的产品才会展示。公司资料接入后，还需扩展生育期、采收间隔和混配模板等条件核对。
-
-后端与数据测试：`.venv\Scripts\python.exe -m pytest -q`。前端类型检查：`npm run typecheck`。两端构建分别为 `npm run build`、`npm run build:mp`。
-
-数据、用户图片、数据库、密钥、模型权重和本地缓存均在忽略规则中。业务源文件与配置模板可提交到代码仓库。
+图片保存在 runtime/images，文档在本机解析为文字；接口返回文档元数据，资料摘录用于对话。数据、运行记录、密钥和权重均在 Git 忽略规则中。待办与浏览器 / 真机验证范围持续记录在 README 和 validation.md。
