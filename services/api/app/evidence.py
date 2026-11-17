@@ -22,9 +22,18 @@ def aggregate_images(case):
                 "image_id": image_id,
                 "image_index": index,
                 "crop": image.get("crop") or prediction.get("crop") or case.get("crop"),
-                "stage": image.get("stage")
-                or prediction.get("stage")
-                or case.get("stage"),
+                "stage": next(
+                    (
+                        stage
+                        for stage in (
+                            image.get("stage"),
+                            prediction.get("stage"),
+                            case.get("stage"),
+                        )
+                        if stage and stage != "不清楚"
+                    ),
+                    case.get("stage", "不清楚"),
+                ),
                 "status": prediction.get("status", "pending"),
                 "title": prediction.get("title", "历史图片尚缺独立识别记录"),
                 "disease_id": prediction.get("disease_id"),

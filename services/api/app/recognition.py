@@ -6,6 +6,10 @@ def recognition_state(case):
     status = case.get("status", "awaiting_image")
     candidates = case.get("candidates") or []
     result = {
+        "context": {
+            field: case.get(field, "")
+            for field in ("crop", "stage", "location", "variety")
+        },
         "image_received": bool(images),
         "image_count": len(images),
         "status": status,

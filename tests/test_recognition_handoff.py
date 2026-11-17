@@ -187,3 +187,50 @@ def test_standalone_recognition_never_calls_chat_and_unknown_stage_preserves_kno
         assert record["recognition"]["image_received"] is True
         assert record["recognition"]["disease_id"] == "wheat_powdery_mildew"
         assert record["messages"] == [] and "白粉病" in record["advice"]["summary"]
+
+
+def test_latest_context_and_known_stage_override_stale_clarification(
+    tmp_path, monkeypatch
+):
+    seen = {}
+
+    async def respond(_self, url, **kwargs):
+        seen.update(kwargs["json"])
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": "### 建议\n请先观察叶片两面。\n\n请补充小麦当前生育期。"
+                        }
+                    }
+                ]
+            },
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", respond)
+    case = example()
+    case["images"][0]["stage"] = "不清楚"
+    settings = Settings(
+        root=ROOT, runtime=tmp_path, models=tmp_path, deepseek_key="fake-test-value"
+    )
+    answer = asyncio.run(
+        Chat(settings, Knowledge(ROOT)).answer(
+            case,
+            "请继续回答",
+            [
+                {
+                    "role": "assistant",
+                    "provider": "clarification",
+                    "text": "STALE_CLARIFICATION",
+                }
+            ],
+        )
+    )
+    latest = json.loads(seen["messages"][-2]["content"].split("\n", 1)[1])
+    assert latest["context"]["stage"] == "苗期"
+    assert latest["image_results"][0]["stage"] == "苗期"
+    assert "STALE_CLARIFICATION" not in json.dumps(seen)
+    assert "观察叶片两面" in answer["text"] and "请补充" not in answer["text"]

@@ -3,27 +3,48 @@ export default {
   onLaunch() {
     // #ifdef H5
     const enhance = () => {
-      document.querySelectorAll<HTMLElement>('uni-button').forEach(button => {
-        const disabled = button.hasAttribute('disabled') && button.getAttribute('disabled') !== 'false'
-        button.setAttribute('role', 'button'); button.setAttribute('aria-disabled', String(disabled)); button.tabIndex = disabled ? -1 : 0
+      document.querySelectorAll<HTMLElement>('uni-button').forEach((button) => {
+        const disabled =
+          button.hasAttribute('disabled') && button.getAttribute('disabled') !== 'false'
+        if (!button.hasAttribute('role')) button.setAttribute('role', 'button')
+        button.setAttribute('aria-disabled', String(disabled))
+        button.tabIndex = disabled ? -1 : 0
       })
-      document.querySelectorAll<HTMLElement>('uni-input[aria-label], uni-textarea[aria-label]').forEach(wrapper => wrapper.querySelector('input,textarea')?.setAttribute('aria-label', wrapper.getAttribute('aria-label') || ''))
+      document
+        .querySelectorAll<HTMLElement>('uni-input[aria-label], uni-textarea[aria-label]')
+        .forEach((wrapper) =>
+          wrapper
+            .querySelector('input,textarea')
+            ?.setAttribute('aria-label', wrapper.getAttribute('aria-label') || ''),
+        )
     }
-    new MutationObserver(enhance).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled'] })
-    document.addEventListener('keydown', event => {
+    new MutationObserver(enhance).observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['disabled'],
+    })
+    document.addEventListener('keydown', (event) => {
       if (event.key !== 'Enter' && event.key !== ' ') return
       const button = (event.target as HTMLElement)?.closest<HTMLElement>('uni-button')
-      if (button && button.tabIndex === 0) { event.preventDefault(); button.click() }
+      if (button && button.tabIndex === 0) {
+        event.preventDefault()
+        button.click()
+      }
     })
     const viewport = () => {
       const visual = window.visualViewport
-      document.documentElement.style.setProperty('--app-height', `${visual?.height || window.innerHeight}px`)
+      document.documentElement.style.setProperty(
+        '--app-height',
+        `${visual?.height || window.innerHeight}px`,
+      )
       document.documentElement.style.setProperty('--viewport-top', `${visual?.offsetTop || 0}px`)
     }
     window.addEventListener('resize', viewport)
     window.visualViewport?.addEventListener('resize', viewport)
     window.visualViewport?.addEventListener('scroll', viewport)
-    enhance(); viewport()
+    enhance()
+    viewport()
     // #endif
   },
 }

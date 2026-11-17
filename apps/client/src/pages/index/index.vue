@@ -5,373 +5,2754 @@ import UiDialog from '../../components/UiDialog.vue'
 import AuthDialog from '../../components/AuthDialog.vue'
 import SelectField from '../../components/SelectField.vue'
 import ChatComposer from '../../components/ChatComposer.vue'
-import { apiBase, setApiBase, dataMode, setDataMode, request, upload, imageUrl, type Crop, type Meta, type CaseRecord, type KnowledgeCard, type Source, type DataMode } from '../../lib/api'
+import ScanProgress from '../../components/ScanProgress.vue'
+import IdentifyHome from '../../components/IdentifyHome.vue'
+import NavigationDock from '../../components/NavigationDock.vue'
+import KnowledgeLibrary from '../../components/KnowledgeLibrary.vue'
+import { createDraftStore } from '../../lib/drafts'
+import ConversationHistory from '../../components/ConversationHistory.vue'
+import ConversationDrawer from '../../components/ConversationDrawer.vue'
+import PhotoSourceSheet from '../../components/PhotoSourceSheet.vue'
+import UserCenter from '../../components/UserCenter.vue'
+import UserSettings from '../../components/UserSettings.vue'
+import AdminConsole from '../../components/AdminConsole.vue'
+import MarkdownMessage from '../../components/MarkdownMessage.vue'
+import RecognitionResult from '../../components/RecognitionResult.vue'
+import RecognitionSummary from '../../components/RecognitionSummary.vue'
+import { recognitionFor, imageQuestion } from '../../lib/recognition'
+import { appVersion } from '../../lib/appInfo'
+import {
+  apiBase,
+  dataMode,
+  request,
+  upload,
+  imageUrl,
+  type Crop,
+  type Meta,
+  type CaseRecord,
+  type KnowledgeCard,
+  type Source,
+  type DataMode,
+} from '../../lib/api'
 import { crops, stages, regions, dateLabel, statusLabel } from '../../lib/options'
 import { auth, user } from '../../lib/auth'
-import { claimGuestRecords, clearGuestRecords } from '../../lib/preview'
+import { clearGuestRecords } from '../../lib/preview'
 import { asset } from '../../lib/assets'
-import { themeChoice, resolvedTheme, setTheme, observeSystemTheme, type ThemeChoice } from '../../lib/theme'
+import { resolvedTheme, observeSystemTheme } from '../../lib/theme'
 import type { ChatModel, DocumentAttachment, FollowUp } from '../../lib/api'
 
-type Tab = 'identify' | 'history' | 'knowledge'
-const tab = ref<Tab>('identify'), crop = ref<Crop>('wheat'), stage = ref('不清楚'), note = ref(''), photo = ref('')
-const meta = ref<Meta | null>(null), online = ref(false), refreshing = ref(false), busy = ref(false), busyText = ref(''), error = ref('')
-const records = ref<CaseRecord[]>([]), cards = ref<KnowledgeCard[]>([]), current = ref<CaseRecord | null>(null)
-const resultTab = ref<'advice' | 'chat'>('advice'), chatText = ref(''), sending = ref(false), pendingMessage = ref(''), scrollAnchor = ref('')
-const query = ref(''), filter = ref('all'), selectedCard = ref<KnowledgeCard | null>(null)
-const settingsOpen = ref(false), regionOpen = ref(false), editOpen = ref(false), infoOpen = ref(false), deleteTarget = ref<CaseRecord | null>(null)
-const authOpen = ref(false), authMode = ref<'login' | 'register'>('login'), authReason = ref(''), accountOpen = ref(false)
-const mode = ref<DataMode>(dataMode()), modeDraft = ref<DataMode>(mode.value), apiDraft = ref(apiBase())
-const location = ref('河南省 / 南阳市'), province = ref('河南省'), city = ref('南阳市'), district = ref('暂不填写区县'), customLocation = ref(''), useCustom = ref(false)
-const editStage = ref('不清楚'), editLocation = ref(''), editNote = ref(''), extraOpen = ref(false), keyboardHeight = ref(0)
-const toast = ref(''); let toastTimer: ReturnType<typeof setTimeout> | undefined
-const chatModel = ref<ChatModel>(uni.getStorageSync('agrivision.chat.model')==='deepseek-v4-pro' ? 'deepseek-v4-pro' : 'deepseek-flash')
+type Tab = 'identify' | 'history' | 'knowledge' | 'profile' | 'settings'
+const tab = ref<Tab>('identify'),
+  crop = ref<Crop>('wheat'),
+  stage = ref('不清楚'),
+  note = ref(''),
+  photo = ref('')
+const meta = ref<Meta | null>(null),
+  online = ref(false),
+  refreshing = ref(false),
+  busy = ref(false),
+  busyText = ref(''),
+  error = ref('')
+const records = ref<CaseRecord[]>([]),
+  cards = ref<KnowledgeCard[]>([]),
+  current = ref<CaseRecord | null>(null)
+const resultTab = ref<'advice' | 'chat'>('advice'),
+  chatText = ref(''),
+  sending = ref(false),
+  pendingMessage = ref(''),
+  scrollAnchor = ref('')
+const retainedCase = ref<CaseRecord | null>(null)
+const drafts = createDraftStore(),
+  sidebarExpanded = ref(true)
+const query = ref(''),
+  filter = ref('all'),
+  selectedCard = ref<KnowledgeCard | null>(null)
+const adminOpen = ref(false),
+  regionOpen = ref(false),
+  editOpen = ref(false),
+  infoOpen = ref(false),
+  deleteTarget = ref<CaseRecord | null>(null)
+const authOpen = ref(false),
+  authMode = ref<'login' | 'register'>('login'),
+  authReason = ref('')
+const mode = ref<DataMode>(dataMode())
+const location = ref(''),
+  province = ref('河南省'),
+  city = ref('南阳市'),
+  district = ref('暂不填写区县'),
+  customLocation = ref(''),
+  useCustom = ref(false)
+const editStage = ref('不清楚'),
+  editLocation = ref(''),
+  editNote = ref(''),
+  keyboardHeight = ref(0)
+const historyDrawerOpen = ref(false),
+  photoSourceOpen = ref(false),
+  photoTarget = ref<'identify' | 'chat' | 'supplement'>('identify')
+const isAdmin = computed(() => user.value?.role === 'admin')
+let viewportBaseline = 0,
+  viewportWidth = 0,
+  nativeWindowHeight = 0
+const scanPhoto = ref('')
+const toast = ref('')
+let toastTimer: ReturnType<typeof setTimeout> | undefined
+const chatModel = ref<ChatModel>(
+  uni.getStorageSync('agrivision.chat.model') === 'deepseek-v4-pro'
+    ? 'deepseek-v4-pro'
+    : 'deepseek-flash',
+)
 const chatThinking = ref(Boolean(uni.getStorageSync('agrivision.chat.thinking')))
-const pendingDocuments = ref<DocumentAttachment[]>([]), pendingImages = ref<string[]>([])
-const photoDialogOpen = ref(false), chatPhoto = ref(''), photoCrop = ref<Crop>('wheat'), photoStage = ref('不清楚'), photoVariety = ref('')
-watch(chatModel,value=>uni.setStorageSync('agrivision.chat.model',value))
-watch(chatThinking,value=>uni.setStorageSync('agrivision.chat.thinking',value))
-const themeOptions: { id: ThemeChoice; name: string; symbol: string }[] = [{ id: 'light', name: '浅色', symbol: '☀️' }, { id: 'dark', name: '深色', symbol: '🌙' }, { id: 'system', name: '跟随系统', symbol: '◐' }]
+const chatWebSearch = ref(
+  chatModel.value === 'deepseek-flash' && Boolean(uni.getStorageSync('agrivision.chat.webSearch')),
+)
+const pendingDocuments = ref<DocumentAttachment[]>([]),
+  pendingImages = ref<string[]>([])
+const photoDialogOpen = ref(false),
+  chatPhoto = ref(''),
+  photoCrop = ref<Crop>('wheat'),
+  photoStage = ref('不清楚'),
+  photoVariety = ref('')
+watch(chatModel, (value) => uni.setStorageSync('agrivision.chat.model', value))
+watch(chatThinking, (value) => uni.setStorageSync('agrivision.chat.thinking', value))
+watch(chatWebSearch, (value) => uni.setStorageSync('agrivision.chat.webSearch', value))
+watch(chatModel, (value) => {
+  if (value !== 'deepseek-flash') chatWebSearch.value = false
+})
 const provinces = Object.keys(regions)
 const cities = computed(() => Object.keys(regions[province.value] || {}))
 const districts = computed(() => regions[province.value]?.[city.value] || ['暂不填写区县'])
 const chatMode = computed(() => !!current.value && resultTab.value === 'chat')
-const modelReady = computed(() => meta.value?.models.find(model => model.crop === crop.value)?.ready || false)
-const title = computed(() => current.value ? `${current.value.crop_name}问诊` : ({ identify: '识别问诊', history: '问诊记录', knowledge: '植保知识' })[tab.value])
-const filteredRecords = computed(() => records.value.filter(record => (filter.value === 'all' || record.crop === filter.value) && (record.title + record.note + record.crop_name).includes(query.value.trim())))
-const filteredCards = computed(() => cards.value.filter(card => (filter.value === 'all' || card.crop === filter.value || card.crop === 'general') && (card.title + card.summary + card.keywords.join('')).includes(query.value.trim())))
+const pendingImagePreviews = computed(
+  () =>
+    current.value?.images
+      .filter((image) => pendingImages.value.includes(image.id))
+      .map((image) => ({ id: image.id, url: imageUrl(current.value!, image.id) })) || [],
+)
+const contextNeeded = computed<FollowUp | null>(() => {
+  if (!current.value?.crop)
+    return {
+      field: 'crop',
+      prompt: '这次咨询哪种作物？',
+      options: crops.map((item) => ({ value: item.id, label: item.name })),
+    }
+  if (!current.value.stage || current.value.stage === '不清楚')
+    return {
+      field: 'stage',
+      prompt: '目前处于哪个生育期？',
+      options: stages[current.value.crop]
+        .filter((value) => value !== '不清楚')
+        .map((value) => ({ value, label: value === '暂不确定' ? '暂不确定' : value })),
+    }
+  return null
+})
+const currentReceipt = computed(() => (current.value ? recognitionFor(current.value) : undefined))
+const title = computed(() =>
+  current.value
+    ? chatMode.value
+      ? current.value.crop
+        ? current.value.crop_name + '咨询'
+        : '新咨询'
+      : '识别结果'
+    : {
+        identify: '首页',
+        history: '问诊记录',
+        knowledge: '植保知识',
+        profile: '我的',
+        settings: '设置',
+      }[tab.value],
+)
+const filteredRecords = computed(() =>
+  records.value.filter(
+    (record) =>
+      (filter.value === 'all' || record.crop === filter.value) &&
+      (record.title + record.note + record.crop_name).includes(query.value.trim()),
+  ),
+)
+const filteredCards = computed(() =>
+  cards.value.filter(
+    (card) =>
+      (filter.value === 'all' || card.crop === filter.value || card.crop === 'general') &&
+      (card.title + card.summary + card.keywords.join('')).includes(query.value.trim()),
+  ),
+)
 const appStyle = computed(() => {
   // #ifndef H5
-  return keyboardHeight.value ? { height: `${uni.getSystemInfoSync().windowHeight - keyboardHeight.value}px` } : {}
+  const height = (nativeWindowHeight || uni.getSystemInfoSync().windowHeight) - keyboardHeight.value
+  return keyboardHeight.value ? { height: height + 'px', '--app-height': height + 'px' } : {}
   // #endif
   // #ifdef H5
   return {}
   // #endif
 })
 let stopTheme: (() => void) | undefined
+function nativeKeyboard(event: { height: number }) {
+  keyboardHeight.value = event.height
+  if (!event.height) nativeWindowHeight = uni.getSystemInfoSync().windowHeight
+}
 function resizedChat() {
   // #ifdef H5
+  const visible = window.visualViewport?.height || window.innerHeight
+  if (viewportWidth !== window.innerWidth) {
+    viewportWidth = window.innerWidth
+    viewportBaseline = visible
+  }
+  const editing = document.activeElement?.matches('input,textarea')
+  if (!editing && !keyboardHeight.value) viewportBaseline = visible
+  viewportBaseline = Math.max(viewportBaseline, visible)
+  keyboardHeight.value =
+    window.innerWidth <= 760 &&
+    (editing || keyboardHeight.value > 0) &&
+    viewportBaseline - visible > 110
+      ? viewportBaseline - visible
+      : 0
+  document.documentElement.classList.toggle('keyboard-open', keyboardHeight.value > 0)
   if (chatMode.value) requestAnimationFrame(() => scrollChat())
   // #endif
 }
 onMounted(() => {
-  stopTheme = observeSystemTheme(); refresh()
+  stopTheme = observeSystemTheme()
+  auth.restore().then(refresh)
+  // #ifndef H5
+  nativeWindowHeight = uni.getSystemInfoSync().windowHeight
+  uni.onKeyboardHeightChange(nativeKeyboard)
+  // #endif
   // #ifdef H5
   window.visualViewport?.addEventListener('resize', resizedChat)
+  window.addEventListener('focusin', resizedChat)
+  window.addEventListener('focusout', resizedChat)
+  resizedChat()
   // #endif
 })
 onUnmounted(() => {
-  stopTheme?.(); clearTimeout(toastTimer)
+  stopTheme?.()
+  clearTimeout(toastTimer)
   // #ifdef H5
   window.visualViewport?.removeEventListener('resize', resizedChat)
+  window.removeEventListener('focusin', resizedChat)
+  window.removeEventListener('focusout', resizedChat)
+  document.documentElement.classList.remove('keyboard-open')
+  // #endif
+  // #ifndef H5
+  uni.offKeyboardHeightChange(nativeKeyboard)
   // #endif
 })
-function showToast(text: string) { toast.value = text; clearTimeout(toastTimer); toastTimer = setTimeout(() => { toast.value = '' }, 2600) }
-function showError(value: unknown) { error.value = value instanceof Error ? value.message : '操作未完成，请重试' }
+function showToast(text: string) {
+  toast.value = text
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => {
+    toast.value = ''
+  }, 2600)
+}
+function showError(value: unknown) {
+  error.value = value instanceof Error ? value.message : '操作未完成，请重试'
+}
 async function refresh() {
   refreshing.value = true
   try {
-    const [system, history, knowledge] = await Promise.all([request<Meta>('/api/meta'), request<{ items: CaseRecord[] }>('/api/cases'), request<{ items: KnowledgeCard[] }>('/api/knowledge')])
-    meta.value = system; records.value = history.items; cards.value = knowledge.items; online.value = true
-  } catch (value) { online.value = false; showError(value) }
-  finally { refreshing.value = false }
+    const [system, history, knowledge] = await Promise.all([
+      request<Meta>('/api/meta'),
+      request<{ items: CaseRecord[] }>('/api/cases'),
+      request<{ items: KnowledgeCard[] }>('/api/knowledge'),
+    ])
+    meta.value = system
+    records.value = history.items
+    cards.value = knowledge.items
+    online.value = true
+  } catch (value) {
+    online.value = false
+    showError(value)
+  } finally {
+    refreshing.value = false
+  }
 }
-function navigate(value: Tab) { accountOpen.value = false; current.value = null; tab.value = value; filter.value = 'all'; query.value = ''; error.value = ''; pendingDocuments.value=[];pendingImages.value=[];chatText.value='' }
-function chooseCrop(value: Crop) { crop.value = value; stage.value = '不清楚' }
-function openAuth(reason = '', initial: 'login' | 'register' = 'login') { accountOpen.value = false; authReason.value = reason; authMode.value = initial; authOpen.value = true }
+function navigate(value: Tab) {
+  rememberDraft()
+  if (current.value) retainedCase.value = current.value
+  current.value = null
+  tab.value = value
+  filter.value = 'all'
+  query.value = ''
+  error.value = ''
+}
+function chooseCrop(value: Crop) {
+  crop.value = value
+  stage.value = '不清楚'
+}
+function openAuth(reason = '', initial: 'login' | 'register' = 'login') {
+  authReason.value = reason
+  authMode.value = initial
+  authOpen.value = true
+}
 async function signedIn() {
   authOpen.value = false
-  try { claimGuestRecords(); await refresh(); showToast(`欢迎，${user.value?.name}。记录已保存在此设备。`) } catch (value) { showError(value) }
+  try {
+    clearGuestRecords()
+    drafts.clear()
+    clearComposer()
+    current.value = null
+    retainedCase.value = null
+    records.value = []
+    navigate('profile')
+    await refresh()
+    showToast('已登录，后续问诊将保存到你的账户。')
+  } catch (value) {
+    showError(value)
+  }
 }
-async function signOut() { accountOpen.value = false; auth.logout(); clearGuestRecords(); navigate('identify'); photo.value = ''; note.value = ''; await refresh(); showToast('已退出登录，仍可继续使用识别与咨询') }
-function changeProvince(value: string) { province.value = value; city.value = cities.value[0]; district.value = '暂不填写区县' }
-function changeCity(value: string) { city.value = value; district.value = '暂不填写区县' }
+async function signOut() {
+  await auth.logout()
+  clearGuestRecords()
+  drafts.clear()
+  clearComposer()
+  current.value = null
+  retainedCase.value = null
+  records.value = []
+  navigate('profile')
+  photo.value = ''
+  note.value = ''
+  await refresh()
+  showToast('已退出登录，仍可继续使用识别与咨询')
+}
+function changeProvince(value: string) {
+  province.value = value
+  city.value = cities.value[0]
+  district.value = '暂不填写区县'
+}
+function changeCity(value: string) {
+  city.value = value
+  district.value = '暂不填写区县'
+}
 function confirmRegion() {
-  if (useCustom.value && !customLocation.value.trim()) { showToast('请填写种植地区'); return }
-  location.value = useCustom.value ? customLocation.value.trim() : [province.value, city.value, district.value === '暂不填写区县' ? '' : district.value].filter(Boolean).join(' / ')
+  if (useCustom.value && !customLocation.value.trim()) {
+    showToast('可补充种植地区')
+    return
+  }
+  location.value = useCustom.value
+    ? customLocation.value.trim()
+    : [province.value, city.value, district.value === '暂不填写区县' ? '' : district.value]
+        .filter(Boolean)
+        .join(' / ')
+  if (editOpen.value) editLocation.value = location.value
   regionOpen.value = false
 }
 function choosePhoto(source: 'album' | 'camera' = 'album', supplement = false) {
-  uni.chooseImage({ count: 1, sizeType: ['compressed'], sourceType: [source], success: async result => {
-    const files = result.tempFiles as { size: number }[]
-    if (files?.[0]?.size > 8 * 1024 * 1024) { showToast('图片不能超过 8MB，请压缩后重试'); return }
-    if (supplement) await addPhoto(result.tempFilePaths[0])
-    else { photo.value = result.tempFilePaths[0]; error.value = '' }
-  }, fail: value => { if (!value.errMsg?.includes('cancel')) showToast('未能打开相册或相机，请检查权限后重试') } })
-}
-function handleDrop(event: unknown) {
-  // #ifdef H5
-  const file = (event as DragEvent).dataTransfer?.files[0]
-  if (!file) return
-  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { showToast('请选择 JPG、PNG 或 WebP 图片'); return }
-  if (file.size > 8 * 1024 * 1024) { showToast('图片不能超过 8MB'); return }
-  photo.value = URL.createObjectURL(file)
-  // #endif
+  uni.chooseImage({
+    count: 1,
+    sizeType: ['compressed'],
+    sourceType: [source],
+    success: async (result) => {
+      const files = result.tempFiles as { size: number }[]
+      if (files?.[0]?.size > 8 * 1024 * 1024) {
+        showToast('图片不能超过 8MB，请压缩后重试')
+        return
+      }
+      if (supplement) await addPhoto(result.tempFilePaths[0])
+      else {
+        photo.value = result.tempFilePaths[0]
+        error.value = ''
+        await startCase()
+      }
+    },
+    fail: (value) => {
+      if (!value.errMsg?.includes('cancel')) showToast('未能打开相册或相机，请检查权限后重试')
+    },
+  })
 }
 async function startCase() {
   if (!photo.value || busy.value) return
-  busy.value = true; busyText.value = mode.value === 'preview' ? '正在保存本次观察…' : '正在上传并处理问诊…'; error.value = ''
+  rememberDraft()
+  scanPhoto.value = photo.value
+  busy.value = true
+  busyText.value = mode.value === 'preview' ? '正在保存本次观察…' : '正在上传并处理问诊…'
+  error.value = ''
   try {
-    current.value = await upload('/api/cases', photo.value, { crop: crop.value, location: location.value, stage: stage.value, note: note.value })
-    resultTab.value = 'advice'; photo.value = ''; note.value = ''; await refresh()
-  } catch (value) { showError(value) } finally { busy.value = false }
+    current.value = await upload('/api/cases', photo.value, { crop: crop.value })
+    clearComposer()
+    resultTab.value = 'advice'
+    photo.value = ''
+    note.value = ''
+    await refresh()
+  } catch (value) {
+    showError(value)
+  } finally {
+    busy.value = false
+    scanPhoto.value = ''
+  }
 }
 async function demo() {
   if (busy.value) return
-  busy.value = true; busyText.value = '正在打开演示样例…'; error.value = ''
-  try { current.value = await request<CaseRecord>('/api/cases/demo', 'POST', { crop: crop.value }); resultTab.value = 'advice'; await refresh() }
-  catch (value) { showError(value) } finally { busy.value = false }
+  busy.value = true
+  busyText.value = '正在打开演示样例…'
+  error.value = ''
+  try {
+    current.value = await request<CaseRecord>('/api/cases/demo', 'POST', { crop: crop.value })
+    resultTab.value = 'advice'
+    await refresh()
+  } catch (value) {
+    showError(value)
+  } finally {
+    busy.value = false
+  }
 }
 async function openCase(id: string) {
-  busy.value = true; busyText.value = '正在读取记录…'; error.value = ''
-  try { current.value = await request<CaseRecord>('/api/cases/' + id); resultTab.value = 'advice' }
-  catch (value) { showError(value) } finally { busy.value = false }
+  rememberDraft()
+  busy.value = true
+  busyText.value = '正在读取记录…'
+  error.value = ''
+  try {
+    current.value = await request<CaseRecord>('/api/cases/' + id)
+    restoreComposer()
+    resultTab.value =
+      current.value.messages.length || !current.value.images.length ? 'chat' : 'advice'
+  } catch (value) {
+    showError(value)
+  } finally {
+    busy.value = false
+  }
+}
+async function retryRecognition() {
+  if (!current.value || busy.value) return
+  busy.value = true
+  busyText.value = '正在重新识别照片…'
+  error.value = ''
+  try {
+    current.value = await request<CaseRecord>(
+      '/api/cases/' + current.value.id + '/retry',
+      'POST',
+      {},
+    )
+    await refresh()
+    showToast('逐张识别结果已更新')
+  } catch (value) {
+    showError(value)
+  } finally {
+    busy.value = false
+  }
 }
 async function addPhoto(path: string) {
   if (!current.value || busy.value) return
-  busy.value = true; busyText.value = '正在保存补充照片…'
-  try { current.value = await upload(`/api/cases/${current.value.id}/images`, path, {}); await refresh(); showToast('补充照片已保存') }
-  catch (value) { showError(value) } finally { busy.value = false }
+  scanPhoto.value = path
+  busy.value = true
+  busyText.value = '正在保存补充照片…'
+  try {
+    current.value = await upload(`/api/cases/${current.value.id}/images`, path, {})
+    await refresh()
+    showToast('补充照片已保存')
+  } catch (value) {
+    showError(value)
+  } finally {
+    busy.value = false
+    scanPhoto.value = ''
+  }
 }
-async function scrollChat() { scrollAnchor.value = ''; await nextTick(); scrollAnchor.value = 'chat-end' }
-function openChat() { resultTab.value = 'chat'; scrollChat() }
-async function startConsultation(selectedCrop:Crop|null=null) {
+async function scrollChat() {
+  scrollAnchor.value = ''
+  await nextTick()
+  scrollAnchor.value = 'chat-end'
+}
+function openChat() {
+  resultTab.value = 'chat'
+  scrollChat()
+}
+async function startConsultation(selectedCrop: Crop | null = null) {
   if (busy.value) return
-  busy.value=true;busyText.value='正在建立咨询…';error.value=''
+  rememberDraft()
+  busy.value = true
+  busyText.value = '正在建立咨询…'
+  error.value = ''
   try {
-    current.value=await request<CaseRecord>('/api/consultations','POST',{crop:selectedCrop,location:location.value,stage:'不清楚'})
-    resultTab.value='chat';chatText.value='';pendingDocuments.value=[];pendingImages.value=[];await refresh();scrollChat()
-  }catch(value){showError(value)}finally{busy.value=false}
+    current.value = await request<CaseRecord>('/api/consultations', 'POST', {
+      crop: selectedCrop,
+      location: location.value,
+      stage: '不清楚',
+    })
+    clearComposer()
+    resultTab.value = 'chat'
+    chatText.value = ''
+    pendingDocuments.value = []
+    pendingImages.value = []
+    await refresh()
+    scrollChat()
+  } catch (value) {
+    showError(value)
+  } finally {
+    busy.value = false
+  }
 }
-function followUpActive(value:FollowUp) { return value.field==='crop' ? !current.value?.crop : !current.value?.stage || current.value.stage==='不清楚' }
-async function chooseContext(value:FollowUp, choice:{value:string;label:string}) {
-  if(!current.value || sending.value)return
+async function chooseContext(value: FollowUp, choice: { value: string; label: string }) {
+  if (!current.value || sending.value) return
   try {
-    current.value=await request<CaseRecord>(`/api/cases/${current.value.id}/context`,'POST',{[value.field]:choice.value})
-    await sendMessage(value.field==='crop' ? `这次咨询的作物是${choice.label}。` : choice.value==='暂不确定' ? '生育期暂时不确定，请先按已有信息说明。' : `目前处于${choice.label}。`)
-  }catch(error){showError(error)}
+    current.value = await request<CaseRecord>(
+      '/api/cases/' + current.value.id + '/context',
+      'POST',
+      { [value.field]: choice.value },
+    )
+    showToast(
+      value.field === 'crop'
+        ? '作物已更新，请继续补充信息。'
+        : '生育期已更新，发送问题后生成建议。',
+    )
+  } catch (value) {
+    showError(value)
+  }
 }
-function chooseChatPhoto(source:'album'|'camera'='album') {
-  uni.chooseImage({count:1,sizeType:['compressed'],sourceType:[source],success:result=>{
-    if ((result.tempFiles as {size:number}[])[0]?.size>8*1024*1024){showToast('图片不能超过 8MB');return}
-    chatPhoto.value=result.tempFilePaths[0];photoCrop.value=current.value?.crop||crop.value;photoStage.value=current.value?.stage||'不清楚';photoVariety.value=current.value?.variety||'';photoDialogOpen.value=true
-  },fail:error=>{if(!error.errMsg?.includes('cancel'))showToast('未能打开图片选择，请检查权限')}})
+function chooseChatPhoto(source: 'album' | 'camera' = 'album') {
+  uni.chooseImage({
+    count: 1,
+    sizeType: ['compressed'],
+    sourceType: [source],
+    success: (result) => {
+      if ((result.tempFiles as { size: number }[])[0]?.size > 8 * 1024 * 1024) {
+        showToast('图片不能超过 8MB')
+        return
+      }
+      chatPhoto.value = result.tempFilePaths[0]
+      photoCrop.value = current.value?.crop || crop.value
+      photoStage.value = current.value?.stage || '不清楚'
+      photoVariety.value = current.value?.variety || ''
+      if (current.value?.crop) {
+        confirmChatPhoto()
+      } else {
+        photoDialogOpen.value = true
+      }
+    },
+    fail: (error) => {
+      if (!error.errMsg?.includes('cancel')) showToast('未能打开图片选择，请检查权限')
+    },
+  })
 }
 async function confirmChatPhoto() {
-  if(!chatPhoto.value || busy.value)return
-  if(!current.value || current.value.is_demo)await startConsultation(photoCrop.value)
-  if(!current.value)return
-  busy.value=true;busyText.value='正在调用图片识别模型…';error.value=''
+  if (!chatPhoto.value || busy.value) return
+  if (!current.value || current.value.is_demo) await startConsultation(photoCrop.value)
+  if (!current.value) return
+  scanPhoto.value = chatPhoto.value
+  busy.value = true
+  busyText.value = '正在调用图片识别模型…'
+  error.value = ''
   try {
-    current.value=await upload(`/api/cases/${current.value.id}/images`,chatPhoto.value,{crop:photoCrop.value,stage:photoStage.value,variety:photoVariety.value})
-    pendingImages.value=[current.value.images[current.value.images.length-1].id]
-    photoDialogOpen.value=false;chatPhoto.value='';resultTab.value='chat';await refresh()
-  }catch(value){showError(value);return}finally{busy.value=false}
-  await sendMessage(chatText.value.trim() ? chatText.value : '请结合刚刚的图片识别结果、作物和生育期，说明目前的判断依据及下一步建议。')
+    current.value = await upload(`/api/cases/${current.value.id}/images`, chatPhoto.value, {
+      crop: photoCrop.value,
+      stage: photoStage.value,
+      variety: photoVariety.value,
+    })
+    pendingImages.value = [
+      ...new Set([
+        ...pendingImages.value,
+        current.value.images[current.value.images.length - 1].id,
+      ]),
+    ]
+    photoDialogOpen.value = false
+    chatPhoto.value = ''
+    resultTab.value = 'chat'
+    await refresh()
+  } catch (value) {
+    showError(value)
+    return
+  } finally {
+    busy.value = false
+    scanPhoto.value = ''
+  }
+  showToast('照片已处理，可继续添加或发送咨询。')
 }
-async function acceptDocument(path:string,name:string,size:number) {
-  if(size>8*1024*1024){showToast('文件不能超过 8MB');return}
-  if(!current.value)await startConsultation()
-  if(!current.value)return
-  busy.value=true;busyText.value='正在读取资料文字…';error.value=''
+async function acceptDocument(path: string, name: string, size: number) {
+  if (size > 8 * 1024 * 1024) {
+    showToast('文件不能超过 8MB')
+    return
+  }
+  if (!current.value) await startConsultation()
+  if (!current.value) return
+  busy.value = true
+  busyText.value = '正在读取资料文字…'
+  error.value = ''
   try {
-    const previous=new Set((current.value.documents||[]).map(file=>file.id))
-    current.value=await upload(`/api/cases/${current.value.id}/attachments`,path,{filename:name})
-    pendingDocuments.value.push(...(current.value.documents||[]).filter(file=>!previous.has(file.id)))
-    resultTab.value='chat';showToast('资料已添加，可继续提问');await refresh()
-  }catch(value){showError(value)}finally{busy.value=false}
+    const previous = new Set((current.value.documents || []).map((file) => file.id))
+    current.value = await upload(`/api/cases/${current.value.id}/attachments`, path, {
+      filename: name,
+    })
+    pendingDocuments.value.push(
+      ...(current.value.documents || []).filter((file) => !previous.has(file.id)),
+    )
+    resultTab.value = 'chat'
+    showToast('资料已添加，可继续提问')
+    await refresh()
+  } catch (value) {
+    showError(value)
+  } finally {
+    busy.value = false
+  }
 }
 function chooseDocument() {
   // #ifdef H5
-  uni.chooseFile({count:1,type:'all',extension:['.txt','.md','.pdf','.docx'],success:result=>{
-    const file=(Array.isArray(result.tempFiles)?result.tempFiles[0]:result.tempFiles) as File & {path?:string}
-    const path=file.path || (file instanceof File ? URL.createObjectURL(file) : '')
-    if(path)acceptDocument(path,file.name,file.size);else showToast('资料文件未能读取，请重新选择')
-  }})
+  uni.chooseFile({
+    count: 1,
+    type: 'all',
+    extension: ['.txt', '.md', '.pdf', '.docx'],
+    success: (result) => {
+      const file = (
+        Array.isArray(result.tempFiles) ? result.tempFiles[0] : result.tempFiles
+      ) as File & { path?: string }
+      const path = file.path || (file instanceof File ? URL.createObjectURL(file) : '')
+      if (path) acceptDocument(path, file.name, file.size)
+      else showToast('资料文件未能读取，请重新选择')
+    },
+  })
   // #endif
   // #ifndef H5
-  uni.chooseMessageFile({count:1,type:'file',extension:['txt','md','pdf','docx'],success:result=>{const file=result.tempFiles[0];acceptDocument(file.path,file.name,file.size)}})
+  uni.chooseMessageFile({
+    count: 1,
+    type: 'file',
+    extension: ['txt', 'md', 'pdf', 'docx'],
+    success: (result) => {
+      const file = result.tempFiles[0]
+      acceptDocument(file.path, file.name, file.size)
+    },
+  })
   // #endif
 }
-async function removeAttachment(id:string) {
-  if(!current.value)return
-  try {await request(`/api/cases/${current.value.id}/attachments/${id}`,'DELETE');pendingDocuments.value=pendingDocuments.value.filter(file=>file.id!==id);current.value=await request(`/api/cases/${current.value.id}`)}catch(value){showError(value)}
-}
-function attach(kind:'image'|'document') { if(kind==='image')chooseChatPhoto();else chooseDocument() }
-async function sendMessage(raw = chatText.value) {
-  if (!current.value || sending.value || (!raw.trim()&&!pendingDocuments.value.length)) return
-  const text = raw.trim() || '请阅读刚添加的资料，提取与本次作物咨询相关的信息。', id = current.value.id
-  const sentDraft = raw === chatText.value
-  sending.value = true; pendingMessage.value = text; if (sentDraft) chatText.value = ''; error.value = ''; scrollChat()
+async function removeAttachment(id: string) {
+  if (!current.value) return
   try {
-    await request(`/api/cases/${id}/messages`, 'POST', { text,model:chatModel.value,thinking:chatThinking.value,attachment_ids:pendingDocuments.value.map(file=>file.id),image_ids:pendingImages.value })
-    const updated = await request<CaseRecord>(`/api/cases/${id}`)
-    if (current.value?.id === id) { current.value = updated;pendingDocuments.value=[];pendingImages.value=[] }
-    await refresh()
-  } catch (value) { if (current.value?.id === id && sentDraft && !chatText.value) chatText.value = raw; showError(value) }
-  finally { sending.value = false; pendingMessage.value = ''; scrollChat() }
+    await request(`/api/cases/${current.value.id}/attachments/${id}`, 'DELETE')
+    pendingDocuments.value = pendingDocuments.value.filter((file) => file.id !== id)
+    current.value = await request(`/api/cases/${current.value.id}`)
+  } catch (value) {
+    showError(value)
+  }
 }
-function chatKeydown(event: KeyboardEvent) {
-  // #ifdef H5
-  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendMessage() }
-  // #endif
-}
-function editCase() { if (!current.value) return; infoOpen.value = false; editStage.value = current.value.stage; editLocation.value = current.value.location; editNote.value = current.value.note; editOpen.value = true }
-async function saveCase() {
-  if (!current.value || !editLocation.value.trim()) { showToast('请填写种植地区'); return }
+async function removePendingImage(id: string) {
+  if (!current.value || busy.value) return
   busy.value = true
-  try { current.value = await request(`/api/cases/${current.value.id}/context`, 'POST', { stage: editStage.value, location: editLocation.value.trim(), note: editNote.value }); editOpen.value = false; await refresh(); showToast('种植情况已更新') }
-  catch (value) { showError(value) } finally { busy.value = false }
+  try {
+    current.value = await request<CaseRecord>(
+      '/api/cases/' + current.value.id + '/images/' + id,
+      'DELETE',
+    )
+    pendingImages.value = pendingImages.value.filter((value) => value !== id)
+    await refresh()
+  } catch (value) {
+    showError(value)
+  } finally {
+    busy.value = false
+  }
+}
+function rememberDraft() {
+  if (current.value)
+    drafts.save(current.value.id, {
+      text: chatText.value,
+      documents: pendingDocuments.value.map((file) => file.id),
+      images: pendingImages.value,
+    })
+}
+function restoreComposer() {
+  clearComposer()
+  if (!current.value) return
+  const draft = drafts.get(current.value.id)
+  chatText.value = draft.text
+  pendingDocuments.value = (current.value.documents || []).filter((file) =>
+    draft.documents.includes(file.id),
+  )
+  pendingImages.value = current.value.images
+    .filter((image) => draft.images.includes(image.id))
+    .map((image) => image.id)
+}
+function navigateFromDrawer(value: Tab) {
+  historyDrawerOpen.value = false
+  navigate(value)
+}
+function toggleNavigation() {
+  if (uni.getSystemInfoSync().windowWidth <= 760) historyDrawerOpen.value = true
+  else sidebarExpanded.value = !sidebarExpanded.value
+}
+function clearComposer() {
+  chatText.value = ''
+  pendingDocuments.value = []
+  pendingImages.value = []
+}
+function attach(kind: 'image' | 'document') {
+  if (kind === 'image') openPhotoSources('chat')
+  else chooseDocument()
+}
+async function sendMessage(raw = chatText.value) {
+  if (
+    !current.value ||
+    sending.value ||
+    (!raw.trim() && !pendingDocuments.value.length && !pendingImages.value.length)
+  )
+    return
+  const text =
+      raw.trim() ||
+      (pendingImages.value.length
+        ? imageQuestion(current.value) +
+          (pendingDocuments.value.length ? '请同时结合刚添加的资料回答。' : '')
+        : '请阅读刚添加的资料，提取与本次作物咨询相关的信息。'),
+    id = current.value.id
+  const sentDraft = raw === chatText.value
+  sending.value = true
+  pendingMessage.value = text
+  if (sentDraft) chatText.value = ''
+  error.value = ''
+  scrollChat()
+  try {
+    await request(`/api/cases/${id}/messages`, 'POST', {
+      text,
+      model: chatModel.value,
+      thinking: chatThinking.value,
+      web_search: chatWebSearch.value,
+      attachment_ids: pendingDocuments.value.map((file) => file.id),
+      image_ids: pendingImages.value,
+    })
+    const updated = await request<CaseRecord>(`/api/cases/${id}`)
+    if (current.value?.id === id) {
+      current.value = updated
+      pendingDocuments.value = []
+      pendingImages.value = []
+    }
+    await refresh()
+  } catch (value) {
+    if (current.value?.id === id && sentDraft && !chatText.value) chatText.value = raw
+    showError(value)
+  } finally {
+    sending.value = false
+    pendingMessage.value = ''
+    scrollChat()
+  }
+}
+function editCase() {
+  if (!current.value) return
+  infoOpen.value = false
+  editStage.value = current.value.stage
+  editLocation.value = current.value.location
+  editNote.value = current.value.note
+  editOpen.value = true
+}
+async function saveCase() {
+  if (!current.value) return
+  busy.value = true
+  try {
+    current.value = await request(`/api/cases/${current.value.id}/context`, 'POST', {
+      stage: editStage.value,
+      location: editLocation.value.trim(),
+      note: editNote.value,
+    })
+    editOpen.value = false
+    await refresh()
+    showToast('种植情况已更新')
+  } catch (value) {
+    showError(value)
+  } finally {
+    busy.value = false
+  }
 }
 async function confirmDelete() {
   if (!deleteTarget.value) return
   busy.value = true
-  try { const id = deleteTarget.value.id; await request(`/api/cases/${id}`, 'DELETE'); if (current.value?.id === id) current.value = null; deleteTarget.value = null; await refresh(); showToast('问诊记录已删除') }
-  catch (value) { showError(value) } finally { busy.value = false }
+  try {
+    const id = deleteTarget.value.id
+    await request(`/api/cases/${id}`, 'DELETE')
+    if (current.value?.id === id) current.value = null
+    deleteTarget.value = null
+    await refresh()
+    showToast('问诊记录已删除')
+  } catch (value) {
+    showError(value)
+  } finally {
+    busy.value = false
+  }
 }
 function openSource(source: Source) {
   // #ifdef H5
-  window.open(source.url, '_blank', 'noopener,noreferrer'); return
+  window.open(source.url, '_blank', 'noopener,noreferrer')
+  return
   // #endif
   // #ifndef H5
-  uni.setClipboardData({ data: source.url }); showToast('资料链接已复制')
+  uni.setClipboardData({ data: source.url })
+  showToast('资料链接已复制')
   // #endif
 }
-function viewPhoto(id?: string) { if (current.value) uni.previewImage({ urls: current.value.images.length ? current.value.images.map(image => imageUrl(current.value!, image.id)) : [imageUrl(current.value)], current: imageUrl(current.value, id) }) }
-function copyText(text: string) { uni.setClipboardData({ data: text, showToast: false, success: () => showToast('回答已复制') }) }
-function openSettings() { accountOpen.value = false; modeDraft.value = mode.value; apiDraft.value = apiBase(); settingsOpen.value = true }
-async function saveSettings() {
-  try {
-    const previousBase = apiBase()
-    if (modeDraft.value === 'live') {
-      // #ifdef H5
-      if (window.location.protocol === 'https:' && !apiDraft.value.startsWith('https://')) throw new Error('此页面使用 HTTPS，请填写 HTTPS 后端地址')
-      // #endif
-      setApiBase(apiDraft.value.trim())
+function viewPhoto(id?: string) {
+  if (current.value)
+    uni.previewImage({
+      urls: current.value.images.length
+        ? current.value.images.map((image) => imageUrl(current.value!, image.id))
+        : [imageUrl(current.value)],
+      current: imageUrl(current.value, id),
+    })
+}
+function copyText(text: string) {
+  uni.setClipboardData({ data: text, showToast: false, success: () => showToast('回答已复制') })
+}
+function identifyFromKnowledge() {
+  selectedCard.value = null
+  navigate('identify')
+}
+function openSettings() {
+  navigate('settings')
+}
+async function openAdmin() {
+  if (!isAdmin.value) return
+  adminOpen.value = true
+  if (mode.value === 'live')
+    try {
+      await request('/api/admin/status')
+    } catch (value) {
+      adminOpen.value = false
+      showError(value)
     }
-    const changed = modeDraft.value !== mode.value || (modeDraft.value === 'live' && apiDraft.value.trim().replace(/\/$/, '') !== previousBase)
-    settingsOpen.value = false
-    if (!changed) { showToast('偏好已保存'); return }
-    setDataMode(modeDraft.value); mode.value = modeDraft.value; current.value = null; records.value = []; error.value = ''
-    await refresh(); if (online.value) showToast(mode.value === 'preview' ? '已切换到前端体验' : '已连接后端服务')
-  } catch (value) { showError(value) }
+}
+async function refreshAdmin() {
+  if (!isAdmin.value) return
+  try {
+    await request('/api/admin/status')
+    await refresh()
+    showToast('服务状态已更新')
+  } catch (value) {
+    showError(value)
+  }
+}
+async function openConversation(id: string) {
+  historyDrawerOpen.value = false
+  await openCase(id)
+  if (chatMode.value) scrollChat()
+}
+async function openConsultation() {
+  if (current.value) {
+    openChat()
+    return
+  }
+  const previous =
+    retainedCase.value?.id || records.value.find((record) => record.messages.length)?.id
+  if (previous) {
+    try {
+      current.value = await request<CaseRecord>('/api/cases/' + previous)
+      restoreComposer()
+      openChat()
+      return
+    } catch {
+      retainedCase.value = null
+    }
+  }
+  await startConsultation()
+}
+function openPhotoSources(target: 'identify' | 'chat' | 'supplement' = 'identify') {
+  if (busy.value) return
+  photoTarget.value = target
+  photoSourceOpen.value = true
+}
+function pickPhoto(source: 'album' | 'camera') {
+  photoSourceOpen.value = false
+  if (photoTarget.value === 'chat') chooseChatPhoto(source)
+  else choosePhoto(source, photoTarget.value === 'supplement')
+}
+function loginFromDrawer() {
+  historyDrawerOpen.value = false
+  openAuth('登录后，后续咨询会保存到你的账户。')
+}
+function newFromDrawer() {
+  historyDrawerOpen.value = false
+  startConsultation()
 }
 </script>
 
 <template>
-  <view class="av-app" :class="['theme-' + resolvedTheme, { 'is-chat': chatMode }]" :style="appStyle">
+  <view
+    class="av-app"
+    :class="[
+      'theme-' + resolvedTheme,
+      {
+        'is-chat': chatMode,
+        'keyboard-open': keyboardHeight > 0,
+        'nav-collapsed': !sidebarExpanded,
+      },
+    ]"
+    :style="appStyle"
+  >
     <view class="sidebar">
-      <button class="brand" @click="navigate('identify')"><view class="brand-mark"><AppIcon name="leaf" :size="27" white /></view><view><text class="brand-name">AgriVision</text><text class="brand-caption">宛农植保助手</text></view></button>
-      <button class="button secondary new-chat-button" :disabled="busy" @click="startConsultation()">＋ 新建咨询</button><text class="nav-caption">田间工作台</text>
-      <button class="nav-item" :class="{ active: tab === 'identify' && !chatMode }" @click="navigate('identify')"><AppIcon name="camera" /><text>识别问诊</text><text class="nav-trailing">↗</text></button>
-      <button class="nav-item" :class="{ active: tab === 'history' }" @click="navigate('history')"><AppIcon name="history" /><text>问诊记录</text><text v-if="user && records.length" class="nav-trailing nav-count">{{ records.length }}</text></button>
-      <button class="nav-item" :class="{ active: tab === 'knowledge' }" @click="navigate('knowledge')"><AppIcon name="book" /><text>植保知识</text></button>
-      <view class="sidebar-note"><text class="sidebar-sprout">🌾</text><text class="strong">立足南阳，服务中原</text><text class="muted">把每一次田间观察，变成有依据的下一步。</text></view>
-      <view class="sidebar-bottom"><button class="nav-settings" @click="openSettings"><AppIcon name="settings" :size="18" /><text>偏好与连接</text></button><text class="fine-print">AgriVision · 1.2 开发测试版</text></view>
+      <button class="brand" @click="navigate('identify')">
+        <view class="brand-mark"><AppIcon name="leaf" :size="27" white /></view
+        ><view
+          ><text class="brand-name">AgriVision</text
+          ><text class="brand-caption">宛农植保助手</text></view
+        >
+      </button>
+      <text class="nav-caption">工作台</text>
+      <button
+        class="nav-item"
+        :class="{ active: tab === 'identify' && !current }"
+        @click="navigate('identify')"
+      >
+        <AppIcon name="home" /><text>首页</text>
+      </button>
+      <button class="nav-item" :class="{ active: chatMode }" @click="openConsultation">
+        <AppIcon name="chat" /><text>咨询</text>
+      </button>
+      <button
+        class="nav-item"
+        :class="{ active: current && !chatMode }"
+        @click="openPhotoSources('identify')"
+      >
+        <AppIcon name="camera" /><text>拍照识别</text>
+      </button>
+      <button
+        class="nav-item"
+        :class="{ active: ['profile', 'settings', 'knowledge'].includes(tab) && !current }"
+        @click="navigate('profile')"
+      >
+        <text class="nav-user-avatar">{{ user?.name.slice(0, 1) || '我' }}</text
+        ><text>我的</text>
+      </button>
+      <ConversationHistory
+        :records="records"
+        :user="user"
+        :selected="current?.id"
+        @open="openConversation"
+        @new="startConsultation()"
+        @login="openAuth('登录后，后续咨询会保存到你的账户。')"
+      />
+      <view class="sidebar-bottom"
+        ><button class="nav-settings" @click="openSettings">
+          <AppIcon name="settings" :size="18" /><text>设置</text></button
+        ><text class="fine-print">AgriVision · {{ appVersion }}</text></view
+      >
     </view>
 
     <view class="main-shell">
       <view class="topbar">
-        <view class="breadcrumb"><text class="desktop-only muted">田间工作台</text><text class="desktop-only crumb-divider">/</text><text class="topbar-title">{{ title }}</text></view>
-        <view class="topbar-actions">
-          <button class="connection-badge" @click="openSettings"><view class="status-dot" :class="{ offline: !online }" /><text>{{ refreshing ? '正在连接' : mode === 'preview' ? '前端体验' : online ? '服务已连接' : '服务未连接' }}</text></button>
-          <button class="icon-button appearance-button" aria-label="外观与设置" @click="openSettings">{{ resolvedTheme === 'dark' ? '☾' : '☀' }}</button>
-          <button v-if="!user" class="login-button" @click="openAuth()">登录<text class="desktop-only"> / 注册</text></button>
-          <button v-else class="account-button" aria-label="账户菜单" :aria-expanded="accountOpen" @click="accountOpen = !accountOpen"><text class="avatar">{{ user.name.slice(0, 1).toUpperCase() }}</text><text class="account-name">{{ user.name }}</text><AppIcon name="chevron" :size="12" /></button>
-        </view>
+        <button
+          class="icon-button navigation-toggle"
+          aria-label="打开导航与问诊记录"
+          @click="toggleNavigation"
+        >
+          ☰
+        </button>
+        <view class="breadcrumb"
+          ><button class="desktop-only breadcrumb-home" @click="navigate('identify')">工作台</button
+          ><text class="desktop-only crumb-divider">/</text
+          ><text class="topbar-title">{{ title }}</text></view
+        >
+        <view class="topbar-actions"
+          ><button
+            v-if="chatMode && current?.images.length"
+            class="header-result-link"
+            @click="resultTab = 'advice'"
+          >
+            识别结果</button
+          ><button
+            v-if="chatMode"
+            class="icon-button"
+            aria-label="问诊信息"
+            @click="infoOpen = true"
+          >
+            <AppIcon name="info" :size="18" /></button
+          ><button v-if="!user" class="login-button" @click="openAuth()">
+            登录<text class="desktop-only"> / 注册</text></button
+          ><button v-else class="account-button" aria-label="用户中心" @click="navigate('profile')">
+            <text class="avatar">{{ user.name.slice(0, 1).toUpperCase() }}</text
+            ><text class="account-name">{{ user.name }}</text>
+          </button></view
+        >
       </view>
-      <view v-if="error" class="error-strip" role="alert"><text class="flex-one">{{ error }}</text><button v-if="!online" class="text-button" @click="refresh">重试</button><button class="icon-button" aria-label="关闭提示" @click="error = ''">×</button></view>
-      <view v-if="busy" class="loading-strip" role="status"><view class="spinner" /><text>{{ busyText || '正在保存…' }}</text></view>
+      <view v-if="error" class="error-strip" role="alert"
+        ><text class="flex-one">{{ error }}</text
+        ><button v-if="!online" class="text-button" @click="refresh">重试</button
+        ><button class="icon-button" aria-label="关闭提示" @click="error = ''">×</button></view
+      >
+      <view v-if="busy" class="loading-strip" role="status"
+        ><view class="spinner" /><text>{{ busyText || '正在保存…' }}</text></view
+      >
 
       <view class="workspace">
         <view v-if="current" class="case-area">
-          <view class="case-toolbar">
-            <button class="case-back icon-button" aria-label="返回工作台" @click="current = null"><text>←</text></button>
-            <view class="case-heading flex-one"><text class="strong">{{ current.crop_name }} · {{ current.stage === '不清楚' ? '生育期待补充' : current.stage }}</text><text class="muted">{{ current.location }}</text></view>
-            <view class="segmented case-tabs"><button :class="{ active: resultTab === 'advice' }" @click="resultTab = 'advice'">结果与建议</button><button :class="{ active: resultTab === 'chat' }" @click="openChat">继续咨询</button></view>
-            <button class="icon-button" aria-label="查看问诊资料" @click="infoOpen = true"><AppIcon name="info" :size="20" /></button>
+          <view v-if="!chatMode" class="case-toolbar">
+            <button
+              class="case-back icon-button"
+              aria-label="返回拍照问诊"
+              @click="navigate('identify')"
+            >
+              ←
+            </button>
+            <view class="case-heading flex-one"
+              ><text class="strong">{{ current.crop_name }}</text
+              ><text v-if="current.location" class="muted">{{ current.location }}</text></view
+            >
+            <button class="icon-button" aria-label="查看问诊资料" @click="infoOpen = true">
+              <AppIcon name="info" :size="20" />
+            </button>
           </view>
 
           <view v-if="chatMode" class="chat-workspace">
-            <view v-if="mode === 'preview'" class="chat-mode-note"><text>🌱 本地资料体验 · 图片识别与智能对话服务待接入</text><button v-if="!user" @click="openAuth('登录后，可保存本次问诊和对话记录。')">登录保存</button></view>
-            <scroll-view scroll-y class="message-scroll" :scroll-into-view="scrollAnchor" :scroll-with-animation="true">
+            <view v-if="mode === 'preview'" class="chat-mode-note"
+              ><text>🌱 当前提供植保资料参考，智能服务暂未连接</text
+              ><button v-if="!user" @click="openAuth('登录后，新的问诊与咨询会保存到你的账户。')">
+                登录保存
+              </button></view
+            >
+            <scroll-view
+              scroll-y
+              class="message-scroll"
+              :scroll-into-view="scrollAnchor"
+              :scroll-with-animation="true"
+            >
               <view class="message-stream">
-                <view v-if="!current.messages.length && !sending" class="chat-welcome"><view class="welcome-mark">🌱</view><text class="welcome-title">这次田间观察，我们一起看看</text><text class="muted">可以补充症状出现的时间、范围和近期用药情况，或从下面的问题开始。</text><view class="welcome-topics"><button v-for="text in ['还需要补充什么信息？', '如何拍清楚症状？', '用药前需要核对什么？']" :key="text" @click="sendMessage(text)">{{ text }} <text>↗</text></button></view></view>
-                <view v-for="(message, index) in current.messages" :key="index" class="message-row" :class="message.role">
+                <RecognitionSummary
+                  v-if="
+                    currentReceipt?.image_received &&
+                    (!current.messages.length || pendingImages.length)
+                  "
+                  :result="currentReceipt"
+                  compact
+                />
+                <view v-if="!current.messages.length && !sending" class="chat-welcome"
+                  ><view class="welcome-mark">🌱</view
+                  ><text class="welcome-title">这次田间观察，我们一起看看</text
+                  ><text class="muted"
+                    >可以补充症状出现的时间、范围和近期用药情况，或从下面的问题开始。</text
+                  ><view class="welcome-topics"
+                    ><button
+                      v-for="text in [
+                        '还需要补充什么信息？',
+                        '如何拍清楚症状？',
+                        '用药前需要核对什么？',
+                      ]"
+                      :key="text"
+                      @click="sendMessage(text)"
+                    >
+                      {{ text }} <text>↗</text>
+                    </button></view
+                  ></view
+                >
+                <view
+                  v-for="(message, index) in current.messages"
+                  :key="index"
+                  class="message-row"
+                  :class="message.role"
+                >
                   <view v-if="message.role === 'assistant'" class="assistant-avatar">🌱</view>
-                  <view class="message-content"><text v-if="message.role === 'assistant'" class="message-author">宛农助手 <text>{{ message.provider === 'deepseek' ? (message.model==='deepseek-v4-pro' ? 'DeepSeek V4 Pro' : 'DeepSeek Flash') + (message.thinking ? ' · 深度思考' : '') : message.provider==='clarification' ? '信息补充' : '资料参考' }}</text></text><text class="message-bubble" :selectable="true">{{ message.text }}</text><view v-if="message.attachments?.length" class="message-attachments"><template v-for="file in message.attachments" :key="file.id"><button v-if="file.kind==='image'" class="message-image" @click="viewPhoto(file.id)"><image :src="imageUrl(current,file.id)" mode="aspectFill" /></button><text v-else class="message-file">▤ {{ file.name }}</text></template></view><view v-if="message.follow_up && followUpActive(message.follow_up)" class="context-choice"><text class="context-prompt">{{ message.follow_up.prompt }}</text><view class="context-options"><button v-for="choice in message.follow_up.options" :key="choice.value" :disabled="sending" @click="chooseContext(message.follow_up!,choice)">{{ choice.label }}</button></view></view><view v-if="message.role === 'assistant'" class="message-tools"><button v-for="source in message.sources" :key="source.url" class="source-chip" @click="openSource(source)">↗ {{ source.title }}</button><button class="copy-button" aria-label="复制回答" @click="copyText(message.text)">复制</button></view><text v-if="message.notice" class="fine-print">{{ message.notice }}</text></view>
+                  <view class="message-content"
+                    ><text v-if="message.role === 'assistant'" class="message-author"
+                      >宛农助手
+                      <text>{{
+                        message.provider === 'deepseek'
+                          ? (message.model === 'deepseek-v4-pro'
+                              ? 'DeepSeek V4 Pro'
+                              : 'DeepSeek Flash') + (message.thinking ? ' · 深度思考' : '')
+                          : message.provider === 'recognition'
+                            ? '识别摘要'
+                            : message.provider === 'clarification'
+                              ? '信息补充'
+                              : '资料参考'
+                      }}</text></text
+                    ><text v-if="message.web_search_used" class="web-used-label"
+                      >↗ 已联网检索 · 来源见回答下方</text
+                    ><RecognitionSummary
+                      v-if="
+                        message.role === 'assistant' &&
+                        message.recognition &&
+                        !['recognition', 'clarification'].includes(message.provider)
+                      "
+                      :result="message.recognition"
+                      compact
+                    /><MarkdownMessage
+                      v-if="message.role === 'assistant'"
+                      :content="message.text"
+                    /><text v-else class="message-bubble" :selectable="true">{{
+                      message.text
+                    }}</text
+                    ><view v-if="message.attachments?.length" class="message-attachments"
+                      ><template v-for="file in message.attachments" :key="file.id"
+                        ><button
+                          v-if="file.kind === 'image'"
+                          class="message-image"
+                          :aria-label="'查看' + file.name"
+                          @click="viewPhoto(file.id)"
+                        >
+                          <image :src="imageUrl(current, file.id)" mode="aspectFill" /></button
+                        ><text v-else class="message-file">▤ {{ file.name }}</text></template
+                      ></view
+                    ><view
+                      v-if="
+                        index === current.messages.length - 1 &&
+                        message.provider === 'clarification' &&
+                        contextNeeded
+                      "
+                      class="context-choice"
+                      ><text class="context-prompt">{{ contextNeeded!.prompt }}</text
+                      ><view class="context-options"
+                        ><button
+                          v-for="choice in contextNeeded!.options"
+                          :key="choice.value"
+                          :disabled="sending"
+                          @click="chooseContext(contextNeeded!, choice)"
+                        >
+                          {{ choice.label }}
+                        </button></view
+                      ></view
+                    ><button
+                      v-if="
+                        index === current.messages.length - 1 &&
+                        message.provider === 'clarification' &&
+                        !contextNeeded
+                      "
+                      class="button secondary continue-question"
+                      :disabled="sending"
+                      @click="sendMessage('基础信息已补充，请回答刚才的问题。')"
+                    >
+                      继续回答 ↗
+                    </button>
+                    <view
+                      v-if="message.role === 'assistant' && message.provider !== 'clarification'"
+                      class="message-tools"
+                      ><button
+                        v-for="source in message.sources"
+                        :key="source.url"
+                        class="source-chip"
+                        @click="openSource(source)"
+                      >
+                        ↗ {{ source.title }}</button
+                      ><button
+                        class="copy-button"
+                        aria-label="复制回答"
+                        @click="copyText(message.text)"
+                      >
+                        复制
+                      </button></view
+                    ><text v-if="message.notice" class="fine-print">{{
+                      message.notice
+                    }}</text></view
+                  >
                 </view>
-                <view v-if="sending" class="message-row user"><text class="message-bubble pending-bubble">{{ pendingMessage }}</text></view>
-                <view v-if="sending" class="responding"><view class="spinner" /><text>正在整理资料…</text></view>
+                <view v-if="sending" class="message-row user"
+                  ><text class="message-bubble pending-bubble">{{ pendingMessage }}</text></view
+                >
+                <view v-if="sending" class="responding"
+                  ><view class="spinner" /><text>正在整理资料…</text></view
+                >
                 <view id="chat-end" class="chat-end" />
               </view>
             </scroll-view>
-            <view class="composer-dock"><view class="composer-wrap"><ChatComposer v-model="chatText" v-model:model="chatModel" v-model:thinking="chatThinking" :attachments="pendingDocuments" :disabled="sending || busy" :preview="mode==='preview'" @send="sendMessage()" @attach="attach" @remove="removeAttachment" @resize="resizedChat" @limit="showToast('单条消息最多 12000 字，较长资料可作为文件上传')" @keyboard="keyboardHeight=$event" /></view></view>
+            <view class="composer-dock"
+              ><view class="composer-wrap"
+                ><ChatComposer
+                  v-model="chatText"
+                  v-model:model="chatModel"
+                  v-model:thinking="chatThinking"
+                  v-model:web-search="chatWebSearch"
+                  :attachments="pendingDocuments"
+                  :images="pendingImagePreviews"
+                  :disabled="sending || busy"
+                  :preview="mode === 'preview'"
+                  @send="sendMessage()"
+                  @attach="attach"
+                  @remove="removeAttachment"
+                  @remove-image="removePendingImage"
+                  @resize="resizedChat"
+                  @limit="showToast('单条消息最多 12000 字，较长资料可作为文件上传')"
+                  @keyboard="keyboardHeight = $event" /></view
+            ></view>
           </view>
 
-          <scroll-view v-else scroll-y class="page-scroll">
-            <view class="page-content result-content">
-              <view v-if="current.is_demo" class="inline-alert warning-alert">演示样例 · 用于体验问诊流程，未对你的照片作出识别。</view>
-              <view class="result-grid"><view class="panel photo-panel"><view class="section-heading"><text class="section-title">症状照片</text><text class="badge">{{ current.images.length || '示意' }}{{ current.images.length ? ' 张' : '图' }}</text></view><button class="case-photo" aria-label="查看症状图片" @click="viewPhoto()"><image :src="imageUrl(current)" mode="aspectFit" /></button><button v-if="!current.is_demo" class="button secondary full-width" :disabled="busy || current.images.length >= 6" @click="choosePhoto('album', true)"><AppIcon name="plus" :size="17" /><text>补充照片</text></button><view class="case-context"><text class="muted small">{{ dateLabel(current.created_at) }}</text><text v-if="current.note" class="case-note">{{ current.note }}</text><button class="text-button" @click="editCase">补充种植情况 ↗</button></view></view>
-                <view class="panel result-panel"><text class="badge green">{{ statusLabel(current.status) }}</text><text v-if="current.experimental" class="badge experiment-badge">本地实验模型 · 尚待南阳实拍验证</text><text class="result-title">{{ current.title }}</text><text class="result-summary">{{ current.advice.summary }}</text><text class="subheading">接下来可以这样做</text><view v-for="(action, index) in current.advice.actions" :key="action" class="action-row"><text class="action-index">{{ index + 1 }}</text><text>{{ action }}</text></view><view class="product-section"><text class="subheading">适用产品与用药依据</text><template v-if="current.advice.products.length"><view v-for="product in current.advice.products" :key="product.id" class="product-card"><text class="strong">{{ product.name }}</text><text>{{ product.ingredient }} · {{ product.formulation }}</text><text>{{ product.instructions }}</text><button class="text-button" @click="openSource({ title: product.name, url: product.label_url, date: '' })">查看产品标签 ↗</button></view></template><text v-else class="muted small">暂未匹配到资料完整的适用产品。请补充具体产品标签，由农技人员核对作物、对象与用法。</text></view><view v-if="current.advice.sources.length" class="result-sources"><text class="subheading">参考资料</text><button v-for="source in current.advice.sources" :key="source.url" class="source-button" @click="openSource(source)"><AppIcon name="book" :size="17" /><text class="flex-one">{{ source.title }}</text><text>↗</text></button></view><view v-if="current.candidates.length" class="candidate-section"><text class="fine-print">模型候选分数 · 用于比较，不代表确诊概率</text><view v-for="candidate in current.candidates" :key="candidate.id" class="settings-row"><text>{{ candidate.name }}</text><text>{{ (candidate.score * 100).toFixed(1) }}%</text></view></view><button class="button primary full-width continue-button" @click="openChat">继续咨询 <text>↗</text></button><button v-if="!user" class="text-button guest-save" @click="openAuth('登录后，可保存本次问诊和对话记录。')">登录，保存本次问诊</button></view>
-              </view>
-            </view>
-          </scroll-view>
+          <scroll-view v-else scroll-y class="page-scroll"
+            ><RecognitionResult
+              :record="current"
+              :receipt="currentReceipt"
+              :busy="busy"
+              @photo="viewPhoto"
+              @source="openSource"
+              @edit="editCase"
+              @retry="retryRecognition"
+          /></scroll-view>
+          <view v-if="!chatMode" class="result-actions"
+            ><button
+              v-if="!current.is_demo"
+              class="button secondary"
+              :disabled="busy || current.images.length >= 6"
+              @click="openPhotoSources('supplement')"
+            >
+              补充照片</button
+            ><button class="button primary" @click="openChat">
+              <AppIcon name="chat" white :size="18" /><text>继续对话</text>
+            </button></view
+          >
         </view>
 
         <scroll-view v-else scroll-y class="page-scroll">
           <view class="page-content">
-            <template v-if="tab === 'identify'">
-              <view class="hero"><view class="hero-copy"><text class="hero-eyebrow">田间发现，及时了解</text><text class="hero-title">作物有异常？<text class="hero-break">拍照问一问。</text></text><text class="hero-description">小麦 · 玉米 · 花生<text> / </text>图片记录与持续咨询</text><button class="hero-chat-link" :disabled="busy" @click="startConsultation()">不方便拍照？先聊一聊 →</button></view><image :src="asset('field-art.png')" mode="aspectFit" class="hero-art" /><text class="hero-coordinate">NANYANG · CENTRAL PLAINS</text></view>
-              <view class="home-grid"><view class="panel identify-panel"><view class="section-heading"><view><text class="section-title">新建一次问诊</text><text class="section-description">选好作物，拍下症状，聊聊田间情况。</text></view><button class="text-button demo-link" :disabled="busy || !online" @click="demo">体验演示 ↗</button></view><view class="crop-grid"><button v-for="option in crops" :key="option.id" class="crop-option" :class="{ selected: crop === option.id }" :aria-pressed="crop === option.id" @click="chooseCrop(option.id)"><image :src="asset('crops/' + option.id + '.png')" mode="aspectFit" /><view><text class="crop-name">{{ option.name }}</text><text class="crop-caption">{{ option.id === 'wheat' ? '叶片与麦穗' : option.id === 'maize' ? '叶部与虫害' : '叶片与根茎' }}</text></view><text class="crop-radio">{{ crop === option.id ? '●' : '○' }}</text></button></view>
-                <view class="upload-zone" :class="{ 'has-photo': photo }" @dragover.prevent @drop.prevent="handleDrop"><template v-if="!photo"><view class="upload-symbol"><AppIcon name="camera" :size="34" /></view><text class="upload-title">先拍清症状，再了解原因</text><text class="upload-description">一张病叶近照，一张整株照片，更容易说清楚。</text><view class="upload-actions"><button class="button primary" @click="choosePhoto('album')"><AppIcon name="upload" :size="17" :white="resolvedTheme !== 'dark'" /><text>选择照片</text></button><button class="button secondary mobile-capture" @click="choosePhoto('camera')">拍照</button></view><text class="fine-print">JPG / PNG / WebP · 单张不超过 8MB</text></template><template v-else><image :src="photo" mode="aspectFit" class="selected-photo" /><view class="photo-controls"><text class="badge green">照片已选择</text><button class="button secondary" @click="choosePhoto('album')">更换</button><button class="icon-button" aria-label="移除已选图片" @click="photo = ''">×</button></view></template></view>
-                <view class="form-meta"><view><text class="field-label">种植地区</text><button class="region-button" @click="regionOpen = true"><text>{{ location }}</text><AppIcon name="chevron" :size="14" /></button></view><view><text class="field-label">生育期 <text class="muted">（可选）</text></text><SelectField v-model="stage" :options="stages[crop]" label="生育期" /></view></view><button class="text-button note-toggle" @click="extraOpen = !extraOpen">{{ extraOpen ? '− 收起补充描述' : '＋ 补充症状与近期用药' }}</button><textarea v-if="extraOpen" v-model="note" aria-label="症状与近期用药" class="note-input" placeholder="例如：这两天发现叶片异常，田边零星几株，近期还没用药……" :maxlength="2000" /><view class="submit-section"><button class="button primary full-width" :disabled="!photo || busy || !online" @click="startCase">{{ modelReady ? '开始识别与咨询' : '保存图片，开始咨询' }} <text>→</text></button><text class="fine-print">{{ mode === 'preview' ? '前端体验：照片仅保存在此设备，暂不进行模型识别。' : '正式识别模型接入前，可先记录图片并查阅资料。' }}</text></view>
-              </view>
-                <view class="home-aside"><view class="panel guide-panel"><view class="section-heading"><text class="section-title">好照片，多一点线索</text><text>📸</text></view><view v-for="(text, index) in ['靠近症状，避开反光', '叶片正面、背面都拍清', '再补一张整株或田间照片']" :key="text" class="guide-line"><text>0{{ index + 1 }}</text><text>{{ text }}</text></view><button class="text-button" @click="selectedCard = cards.find(card => card.id === 'photo_guide') || null">查看拍摄指南 ↗</button></view>
-                  <view class="panel recent-panel"><view class="section-heading"><text class="section-title">最近问诊</text><button v-if="user" class="text-button" @click="navigate('history')">全部 →</button></view><template v-if="user && records.length"><button v-for="record in records.slice(0, 3)" :key="record.id" class="recent-item" @click="openCase(record.id)"><AppIcon :name="record.crop || 'leaf'" :size="25" /><view class="flex-one"><text class="recent-title">{{ record.title }}</text><text class="fine-print">{{ dateLabel(record.created_at) }}</text></view><text class="muted">↗</text></button></template><view v-else class="recent-empty"><AppIcon name="history" :size="30" /><text class="strong">{{ user ? '还没有问诊记录' : '让每次观察，都有迹可循' }}</text><text class="muted">{{ user ? '从一张症状照片开始。' : '登录后，可保存照片、建议与对话。' }}</text><button v-if="!user" class="button soft" @click="openAuth()">登录保存记录</button></view></view><text class="aside-note">🌱 结合照片、种植情况和专业资料，做出更有依据的下一步。</text>
-                </view>
-              </view>
-            </template>
-
+            <template v-if="tab === 'identify'"
+              ><IdentifyHome
+                :crop="crop"
+                :records="records"
+                :logged-in="!!user"
+                :models="meta?.models || []"
+                :busy="busy"
+                @crop="chooseCrop"
+                @capture="choosePhoto"
+                @consult="startConsultation"
+                @open="openCase"
+                @history="navigate('history')"
+                @login="openAuth('登录后，后续问诊会保存到你的账户。')"
+            /></template>
             <template v-else-if="tab === 'history'">
-              <view class="page-heading"><view><text class="eyebrow">FIELD NOTES</text><text class="page-title">把田间变化，记录下来</text><text class="muted">{{ user ? '照片、建议和对话，都在同一条记录里。' : '登录后，随时回看上次的问诊与咨询。' }}</text></view><button v-if="user" class="button primary" @click="navigate('identify')">＋ 新建问诊</button></view>
-              <view v-if="!user" class="panel empty-state login-empty"><view class="empty-icon">🌾</view><text class="section-title">登录，让观察有迹可循</text><text class="muted">保存症状照片和咨询记录，下次不用重新说起。未登录也可以继续识别问诊、咨询和浏览知识。</text><button class="button primary" @click="openAuth('登录后，即可保存并查看你的问诊记录。')">登录 / 注册</button><button class="text-button" @click="navigate('identify')">先去问一问 →</button></view>
-              <view v-else class="panel history-panel"><view class="list-toolbar"><view class="filter-tabs"><button :class="{ active: filter === 'all' }" @click="filter = 'all'">全部</button><button v-for="option in crops" :key="option.id" :class="{ active: filter === option.id }" @click="filter = option.id">{{ option.name }}</button></view><view class="search-field"><AppIcon name="search" :size="18" /><input v-model="query" aria-label="搜索问诊记录" placeholder="搜索作物、症状或备注" /></view></view><view v-if="!filteredRecords.length" class="empty-state"><view class="empty-icon">🌱</view><text class="section-title">{{ records.length ? '没有匹配的记录' : '从第一次田间观察开始' }}</text><text class="muted">{{ records.length ? '试试其他关键词，或切换作物筛选。' : '上传一张照片，或先体验一条演示问诊。' }}</text><button v-if="!records.length" class="button soft" @click="demo">体验演示问诊 ↗</button></view><view v-for="record in filteredRecords" :key="record.id" class="history-row"><button class="history-main" @click="openCase(record.id)"><image :src="imageUrl(record)" mode="aspectFill" /><view class="flex-one"><text class="history-title">{{ record.title }}</text><text class="muted small">{{ record.crop_name }} · {{ dateLabel(record.updated_at) }}</text></view><text class="badge">{{ statusLabel(record.status) }}</text></button><button class="icon-button" aria-label="删除问诊记录" @click="deleteTarget = record"><AppIcon name="trash" :size="18" /></button></view></view>
+              <view class="page-heading"
+                ><view
+                  ><text class="eyebrow">FIELD NOTES</text
+                  ><text class="page-title">把田间变化，记录下来</text
+                  ><text class="muted">{{
+                    user
+                      ? '照片、建议和对话，都在同一条记录里。'
+                      : '登录后，随时回看上次的问诊与咨询。'
+                  }}</text></view
+                ><button v-if="user" class="button primary" @click="navigate('identify')">
+                  ＋ 新建问诊
+                </button></view
+              >
+              <view v-if="!user" class="panel empty-state login-empty"
+                ><view class="empty-icon">🌾</view
+                ><text class="section-title">登录，让观察有迹可循</text
+                ><text class="muted"
+                  >保存症状照片和咨询记录，下次不用重新说起。未登录也可以继续识别问诊、咨询和浏览知识。</text
+                ><button
+                  class="button primary"
+                  @click="openAuth('登录后，即可保存并查看你的问诊记录。')"
+                >
+                  登录 / 注册</button
+                ><button class="text-button" @click="navigate('identify')">
+                  先去问一问 →
+                </button></view
+              >
+              <view v-else class="panel history-panel"
+                ><view class="list-toolbar"
+                  ><view class="filter-tabs"
+                    ><button :class="{ active: filter === 'all' }" @click="filter = 'all'">
+                      全部</button
+                    ><button
+                      v-for="option in crops"
+                      :key="option.id"
+                      :class="{ active: filter === option.id }"
+                      @click="filter = option.id"
+                    >
+                      {{ option.name }}
+                    </button></view
+                  ><view class="search-field"
+                    ><AppIcon name="search" :size="18" /><input
+                      v-model="query"
+                      aria-label="搜索问诊记录"
+                      placeholder="搜索作物、症状或备注" /></view></view
+                ><view v-if="!filteredRecords.length" class="empty-state"
+                  ><view class="empty-icon">🌱</view
+                  ><text class="section-title">{{
+                    records.length ? '没有匹配的记录' : '从第一次田间观察开始'
+                  }}</text
+                  ><text class="muted">{{
+                    records.length
+                      ? '试试其他关键词，或切换作物筛选。'
+                      : '上传一张照片，或先体验一条演示问诊。'
+                  }}</text
+                  ><button v-if="!records.length" class="button soft" @click="demo">
+                    体验演示问诊 ↗
+                  </button></view
+                ><view v-for="record in filteredRecords" :key="record.id" class="history-row"
+                  ><button class="history-main" @click="openCase(record.id)">
+                    <image :src="imageUrl(record)" mode="aspectFill" /><view class="flex-one"
+                      ><text class="history-title">{{ record.title }}</text
+                      ><text class="muted small"
+                        >{{ record.crop_name }} · {{ dateLabel(record.updated_at) }}</text
+                      ></view
+                    ><text class="badge">{{ statusLabel(record.status) }}</text></button
+                  ><button
+                    class="icon-button"
+                    aria-label="删除问诊记录"
+                    @click="deleteTarget = record"
+                  >
+                    <AppIcon name="trash" :size="18" /></button></view
+              ></view>
             </template>
 
-            <template v-else>
-              <view class="page-heading"><view><text class="eyebrow">GROW WITH KNOWLEDGE</text><text class="page-title">有依据，才更有把握</text><text class="muted">小麦、玉米、花生的植保资料与拍摄指南。</text></view><text class="badge green">{{ cards.length }} 份资料</text></view><view class="list-toolbar knowledge-toolbar"><view class="filter-tabs"><button :class="{ active: filter === 'all' }" @click="filter = 'all'">全部</button><button v-for="option in crops" :key="option.id" :class="{ active: filter === option.id }" @click="filter = option.id">{{ option.name }}</button></view><view class="search-field"><AppIcon name="search" :size="18" /><input v-model="query" aria-label="搜索植保资料" placeholder="搜索病害、症状或拍摄问题" /></view></view><view class="knowledge-grid"><button v-for="card in filteredCards" :key="card.id" class="panel knowledge-card" @click="selectedCard = card"><view class="section-heading"><view class="knowledge-icon"><AppIcon :name="card.crop === 'general' ? 'camera' : card.crop" :size="26" /></view><text class="badge">{{ card.category }}</text></view><text class="knowledge-title">{{ card.title }}</text><text class="knowledge-summary">{{ card.summary }}</text><view class="knowledge-bottom"><text>{{ card.sources.length ? '附资料来源' : '拍摄与操作建议' }}</text><text>↗</text></view></button></view><view v-if="!filteredCards.length" class="empty-state"><view class="empty-icon">🔎</view><text class="section-title">没有找到对应资料</text><text class="muted">试试病害名称，或换一个症状关键词。</text></view>
-            </template>
-            <view class="page-footer"><text>AgriVision · 让田间观察有迹可循</text><text>1.1 前端体验版</text></view>
+            <template v-else-if="tab === 'profile'"
+              ><UserCenter
+                :user="user"
+                :admin="isAdmin"
+                @login="openAuth()"
+                @register="openAuth('', 'register')"
+                @settings="openSettings"
+                @resources="navigate('knowledge')"
+                @admin="openAdmin"
+                @logout="signOut"
+            /></template>
+            <template v-else-if="tab === 'settings'"
+              ><UserSettings @back="navigate('profile')"
+            /></template>
+            <template v-else
+              ><KnowledgeLibrary :cards="cards" @open="selectedCard = $event" @source="openSource"
+            /></template>
+            <view class="page-footer"
+              ><text>AgriVision · 宛农植保助手</text><text>{{ appVersion }} 开发测试版</text></view
+            >
           </view>
         </scroll-view>
       </view>
-      <view v-if="!chatMode" class="mobile-nav"><button class="mobile-consult" :disabled="busy" @click="startConsultation()"><AppIcon name="chat" :size="22" /><text>咨询</text></button><button :class="{ active: tab === 'identify' }" @click="navigate('identify')"><AppIcon name="camera" :size="22" /><text>问诊</text></button><button :class="{ active: tab === 'history' }" @click="navigate('history')"><AppIcon name="history" :size="22" /><text>记录</text></button><button :class="{ active: tab === 'knowledge' }" @click="navigate('knowledge')"><AppIcon name="book" :size="22" /><text>知识</text></button></view>
+      <NavigationDock
+        :active="chatMode ? 'chat' : tab"
+        :keyboard-open="keyboardHeight > 0"
+        @navigate="navigate"
+        @chat="openConsultation"
+        @capture="openPhotoSources('identify')"
+      />
     </view>
 
-    <view v-if="accountOpen && user" class="popover-dismiss" @click="accountOpen = false"><view class="account-popover" @click.stop><text class="strong">{{ user.name }}</text><text class="fine-print">{{ user.username }} · {{ user.role === 'tester' ? '测试管理员' : '本机测试账户' }}</text><button @click="accountOpen = false; navigate('history')">我的问诊记录 <text>↗</text></button><button @click="openSettings">外观与设置 <text>↗</text></button><button class="logout" @click="signOut">退出登录</button></view></view>
+    <ScanProgress v-if="busy && scanPhoto" :src="scanPhoto" />
+    <ConversationDrawer
+      v-if="historyDrawerOpen"
+      :records="records"
+      :user="user"
+      :selected="current?.id"
+      @close="historyDrawerOpen = false"
+      @navigate="navigateFromDrawer"
+      @open="openConversation"
+      @new="newFromDrawer"
+      @login="loginFromDrawer"
+    />
+    <PhotoSourceSheet
+      :crop="crop"
+      :allow-crop="photoTarget === 'identify'"
+      @crop="chooseCrop"
+      v-if="photoSourceOpen"
+      @close="photoSourceOpen = false"
+      @choose="pickPhoto"
+    />
     <view v-if="toast" class="toast" role="status">{{ toast }}</view>
-    <AuthDialog v-if="authOpen" :initial-mode="authMode" :reason="authReason" @close="authOpen = false" @success="signedIn" />
+    <AuthDialog
+      v-if="authOpen"
+      :initial-mode="authMode"
+      :reason="authReason"
+      @close="authOpen = false"
+      @success="signedIn"
+    />
 
-    <UiDialog v-if="photoDialogOpen" title="添加症状照片" subtitle="补充种植情况，让识别更有依据。" @close="photoDialogOpen=false"><image :src="chatPhoto" mode="aspectFit" class="chat-photo-preview" /><text class="field-label">照片中的作物</text><view class="photo-crop-choices"><button v-for="option in crops" :key="option.id" :class="{active:photoCrop===option.id}" @click="photoCrop=option.id;photoStage='不清楚'">{{ option.name }}</button></view><view class="form-stack"><view><text class="field-label">生育期（可选）</text><SelectField v-model="photoStage" :options="stages[photoCrop]" label="照片作物生育期" /></view><view class="form-field"><text class="field-label">品种（选填）</text><input v-model="photoVariety" aria-label="作物品种" placeholder="知道品种名称时可填写" :maxlength="80" /></view></view><text class="fine-print image-privacy-note">原图由独立识别模型处理，不发送给 DeepSeek。</text><template #footer><button class="button primary full-width" :disabled="busy" @click="confirmChatPhoto">{{ busy ? '正在识别…' : '识别并继续咨询' }}</button></template></UiDialog>
-    <UiDialog v-if="selectedCard" :title="selectedCard.title" :subtitle="selectedCard.category" wide @close="selectedCard = null"><text class="article-summary">{{ selectedCard.summary }}</text><text class="section-title">建议检查与补充</text><view v-for="(action, index) in selectedCard.actions" :key="action" class="action-row"><text class="action-index">{{ index + 1 }}</text><text>{{ action }}</text></view><template v-if="selectedCard.sources.length"><text class="section-title">资料来源</text><button v-for="source in selectedCard.sources" :key="source.url" class="source-button" @click="openSource(source)"><view class="flex-one"><text>{{ source.title }}</text><text class="muted">{{ source.date }}</text></view><text>↗</text></button></template><template #footer><button class="button primary full-width" @click="selectedCard = null; navigate('identify')">带着照片，开始问诊 →</button></template></UiDialog>
-    <UiDialog v-if="regionOpen" title="作物长在哪里？" subtitle="选择种植地区，帮助了解田间环境。" @close="regionOpen = false"><view class="form-stack"><template v-if="!useCustom"><view><text class="field-label">省份</text><SelectField :model-value="province" :options="provinces" label="省份" @update:model-value="changeProvince" /></view><view><text class="field-label">城市</text><SelectField :model-value="city" :options="cities" label="城市" @update:model-value="changeCity" /></view><view><text class="field-label">区县</text><SelectField v-model="district" :options="districts" label="区县" /></view></template><view v-else class="form-field"><text class="field-label">种植地区</text><input v-model="customLocation" aria-label="手动填写地区" placeholder="输入省、市、县或乡镇" :maxlength="120" /></view></view><button class="text-button manual-region" @click="useCustom = !useCustom">{{ useCustom ? '返回地区选择' : '其他地区，手动填写' }}</button><template #footer><button class="button primary full-width" @click="confirmRegion">确认地区</button></template></UiDialog>
-    <UiDialog v-if="settingsOpen" title="外观与设置" subtitle="把工作台调成你习惯的样子。" @close="settingsOpen = false"><view class="settings-section"><text class="section-title">外观</text><view class="theme-options"><button v-for="option in themeOptions" :key="option.id" class="theme-option" :class="{ active: themeChoice === option.id }" :aria-pressed="themeChoice === option.id" @click="setTheme(option.id)"><text class="theme-symbol">{{ option.symbol }}</text><text>{{ option.name }}</text></button></view><text class="fine-print">跟随系统会随设备的深浅色设置自动切换。</text></view><view class="settings-section"><text class="section-title">体验方式</text><view class="segmented"><button :class="{ active: modeDraft === 'preview' }" @click="modeDraft = 'preview'">前端体验</button><button :class="{ active: modeDraft === 'live' }" @click="modeDraft = 'live'">连接后端</button></view><view v-if="modeDraft === 'live'" class="backend-input"><text class="field-label">后端服务地址</text><input v-model="apiDraft" class="text-input" aria-label="后端服务地址" placeholder="https://api.example.com" /><text class="fine-print">仅连接你信任的服务。API 密钥在后端配置。</text></view><text v-else class="fine-print mode-description">无需后端即可体验上传、咨询、登录与记录。资料和测试账户保存在当前设备，不跨设备同步。</text></view><view class="settings-section"><view class="settings-row"><text>图片识别模型</text><text class="muted">{{ meta?.models.some(model => model.ready) ? '部分已接入' : '待训练接入' }}</text></view><view class="settings-row"><text>对话服务</text><text class="muted">{{ meta?.deepseek_configured ? 'DeepSeek 已配置' : '本地资料体验' }}</text></view><view class="settings-row"><text>知识资料 / 产品目录</text><text class="muted">{{ meta?.knowledge_count || 15 }} / {{ meta?.product_count || 0 }}</text></view></view><template #footer><button class="button primary full-width" @click="saveSettings">完成</button></template></UiDialog>
-    <UiDialog v-if="editOpen && current" title="补充种植情况" @close="editOpen = false"><view class="form-stack"><view><text class="field-label">生育期</text><SelectField v-model="editStage" :options="stages[current.crop || crop]" label="问诊生育期" /></view><view class="form-field"><text class="field-label">地区</text><input v-model="editLocation" aria-label="问诊地区" :maxlength="120" /></view><view><text class="field-label">症状与近期用药</text><textarea v-model="editNote" aria-label="补充症状" class="note-input" placeholder="补充出现时间、分布或近期用药…" :maxlength="2000" /></view></view><template #footer><button class="button primary full-width" :disabled="busy" @click="saveCase">保存情况</button></template></UiDialog>
-    <UiDialog v-if="infoOpen && current" title="本次问诊资料" :subtitle="current.crop_name + ' · ' + current.location" @close="infoOpen = false"><view class="settings-row"><text>生育期</text><text>{{ current.stage }}</text></view><view class="settings-row"><text>建立时间</text><text>{{ dateLabel(current.created_at) }}</text></view><text v-if="current.note" class="article-summary">{{ current.note }}</text><view class="info-photos"><button v-for="image in current.images" :key="image.id" aria-label="查看补充图片" @click="viewPhoto(image.id)"><image :src="imageUrl(current, image.id)" mode="aspectFill" /></button><image v-if="!current.images.length" :src="imageUrl(current)" mode="aspectFit" /></view><button v-if="!current.is_demo" class="button secondary full-width" :disabled="current.images.length >= 6 || busy" @click="choosePhoto('album', true)">＋ 补充照片</button><template #footer><button class="button primary full-width" @click="editCase">编辑种植情况</button></template></UiDialog>
-    <UiDialog v-if="deleteTarget" title="删除这条问诊？" subtitle="关联的照片与对话会一起删除，删除后无法恢复。" @close="deleteTarget = null"><text class="article-summary">{{ deleteTarget.title }}</text><template #footer><view class="confirm-actions"><button class="button secondary" :disabled="busy" @click="deleteTarget = null">保留记录</button><button class="button danger" :disabled="busy" @click="confirmDelete">确认删除</button></view></template></UiDialog>
+    <UiDialog
+      v-if="photoDialogOpen"
+      title="照片中的作物是什么？"
+      subtitle="选择作物后立即识别，生育期和地区可在咨询时补充。"
+      @close="photoDialogOpen = false"
+      ><image :src="chatPhoto" mode="aspectFit" class="chat-photo-preview" /><view
+        class="photo-crop-choices"
+        ><button
+          v-for="option in crops"
+          :key="option.id"
+          :class="{ active: photoCrop === option.id }"
+          @click="photoCrop = option.id"
+        >
+          {{ option.name }}
+        </button></view
+      ><text class="fine-print">请添加同种作物、同次田间观察的照片。原图不发送给对话模型。</text
+      ><template #footer
+        ><button class="button primary full-width" :disabled="busy" @click="confirmChatPhoto">
+          识别并继续咨询
+        </button></template
+      ></UiDialog
+    >
+    <UiDialog
+      v-if="selectedCard"
+      :title="selectedCard.title"
+      :subtitle="selectedCard.category"
+      wide
+      @close="selectedCard = null"
+      ><text class="article-summary">{{ selectedCard.summary }}</text
+      ><text class="section-title">建议检查与补充</text
+      ><view v-for="(action, index) in selectedCard.actions" :key="action" class="action-row"
+        ><text class="action-index">{{ index + 1 }}</text
+        ><text>{{ action }}</text></view
+      ><template v-if="selectedCard.sources.length"
+        ><text class="section-title">资料来源</text
+        ><button
+          v-for="source in selectedCard.sources"
+          :key="source.url"
+          class="source-button"
+          @click="openSource(source)"
+        >
+          <view class="flex-one"
+            ><text>{{ source.title }}</text
+            ><text class="muted">{{ source.date }}</text></view
+          ><text>↗</text>
+        </button></template
+      ><template #footer
+        ><button class="button primary full-width" @click="identifyFromKnowledge">
+          带着照片，开始问诊 →
+        </button></template
+      ></UiDialog
+    >
+    <UiDialog
+      v-if="regionOpen"
+      title="作物长在哪里？"
+      subtitle="选择种植地区，帮助了解田间环境。"
+      @close="regionOpen = false"
+      ><view class="form-stack"
+        ><template v-if="!useCustom"
+          ><view
+            ><text class="field-label">省份</text
+            ><SelectField
+              :model-value="province"
+              :options="provinces"
+              label="省份"
+              @update:model-value="changeProvince" /></view
+          ><view
+            ><text class="field-label">城市</text
+            ><SelectField
+              :model-value="city"
+              :options="cities"
+              label="城市"
+              @update:model-value="changeCity" /></view
+          ><view
+            ><text class="field-label">区县</text
+            ><SelectField v-model="district" :options="districts" label="区县" /></view></template
+        ><view v-else class="form-field"
+          ><text class="field-label">种植地区</text
+          ><input
+            v-model="customLocation"
+            aria-label="手动填写地区"
+            placeholder="输入省、市、县或乡镇"
+            :maxlength="120" /></view></view
+      ><button class="text-button manual-region" @click="useCustom = !useCustom">
+        {{ useCustom ? '返回地区选择' : '其他地区，手动填写' }}</button
+      ><template #footer
+        ><button class="button primary full-width" @click="confirmRegion">
+          确认地区
+        </button></template
+      ></UiDialog
+    >
+    <AdminConsole
+      v-if="adminOpen && isAdmin"
+      :base="apiBase()"
+      :meta="meta"
+      :busy="busy"
+      @close="adminOpen = false"
+      @refresh="refreshAdmin"
+    />
+    <UiDialog v-if="editOpen && current" title="补充种植情况" @close="editOpen = false"
+      ><view class="form-stack"
+        ><view
+          ><text class="field-label">生育期</text
+          ><SelectField
+            v-model="editStage"
+            :options="stages[current.crop || crop]"
+            label="问诊生育期" /></view
+        ><view class="form-field"
+          ><text class="field-label">地区</text
+          ><input v-model="editLocation" aria-label="问诊地区" :maxlength="120" /></view
+        ><view
+          ><text class="field-label">症状与近期用药</text
+          ><textarea
+            v-model="editNote"
+            aria-label="补充症状"
+            class="note-input"
+            placeholder="补充出现时间、分布或近期用药…"
+            :maxlength="2000"
+          /></view></view
+      ><template #footer
+        ><button class="button primary full-width" :disabled="busy" @click="saveCase">
+          保存情况
+        </button></template
+      ></UiDialog
+    >
+    <UiDialog
+      v-if="infoOpen && current"
+      title="本次问诊资料"
+      :subtitle="current.crop_name + ' · ' + current.location"
+      @close="infoOpen = false"
+      ><view class="settings-row"
+        ><text>生育期</text><text>{{ current.stage }}</text></view
+      ><view class="settings-row"
+        ><text>建立时间</text><text>{{ dateLabel(current.created_at) }}</text></view
+      ><text v-if="current.note" class="article-summary">{{ current.note }}</text
+      ><view class="info-photos"
+        ><button
+          v-for="image in current.images"
+          :key="image.id"
+          aria-label="查看补充图片"
+          @click="viewPhoto(image.id)"
+        >
+          <image :src="imageUrl(current, image.id)" mode="aspectFill" /></button
+        ><image v-if="!current.images.length" :src="imageUrl(current)" mode="aspectFit" /></view
+      ><button
+        v-if="!current.is_demo"
+        class="button secondary full-width"
+        :disabled="current.images.length >= 6 || busy"
+        @click="openPhotoSources('supplement')"
+      >
+        ＋ 补充照片</button
+      ><template #footer
+        ><button class="button primary full-width" @click="editCase">编辑种植情况</button></template
+      ></UiDialog
+    >
+    <UiDialog
+      v-if="deleteTarget"
+      title="删除这条问诊？"
+      subtitle="关联的照片与对话会一起删除，删除后无法恢复。"
+      @close="deleteTarget = null"
+      ><text class="article-summary">{{ deleteTarget.title }}</text
+      ><template #footer
+        ><view class="confirm-actions"
+          ><button class="button secondary" :disabled="busy" @click="deleteTarget = null">
+            保留记录</button
+          ><button class="button danger" :disabled="busy" @click="confirmDelete">
+            确认删除
+          </button></view
+        ></template
+      ></UiDialog
+    >
   </view>
 </template>
 
 <style scoped>
-.sidebar{width:230px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:28px 20px 23px}.brand{display:flex;gap:12px;align-items:center;text-align:left;margin:4px 0 42px}.brand-mark{width:43px;height:43px;border-radius:14px;background:#216b4b;display:flex;align-items:center;justify-content:center}.brand-name{display:block;font-size:22px;font-weight:700;letter-spacing:-.8px}.brand-caption{display:block;font-size:10px;letter-spacing:2px;color:var(--muted);margin-top:1px}.nav-caption{font-size:10px;color:var(--muted);letter-spacing:1px;margin:0 13px 12px}.nav-item{display:flex;align-items:center;gap:13px;padding:13px 15px;border-radius:12px;font-size:14px;margin:3px 0;color:var(--muted);min-height:48px}.nav-item.active{background:var(--accent-soft);color:var(--accent);font-weight:550}.nav-trailing{margin-left:auto;font-size:15px}.nav-count{font-size:10px;background:var(--surface);border-radius:5px;padding:0 5px}.sidebar-note{margin-top:auto;display:flex;flex-direction:column;gap:11px;padding:35px 12px}.sidebar-sprout{font-size:25px}.sidebar-note .strong{font-size:12px}.sidebar-note .muted{font-size:11px;line-height:1.9}.sidebar-bottom{border-top:1px solid var(--line);padding:16px 10px 0}.nav-settings{display:flex;align-items:center;gap:10px;font-size:12px;min-height:38px}.sidebar-bottom .fine-print{font-size:9px;margin-top:8px}.main-shell{min-width:0;flex:1;display:flex;flex-direction:column;position:relative;overflow:hidden}.topbar{height:76px;min-height:76px;padding:0 32px;border-bottom:1px solid var(--line);background:var(--glass);backdrop-filter:blur(20px);display:flex;align-items:center;justify-content:space-between;gap:20px;z-index:40;flex-shrink:0}.breadcrumb{display:flex;align-items:center;gap:15px;font-size:12px;min-width:0}.crumb-divider{color:var(--line)}.topbar-title{font-weight:550;font-size:13px;white-space:nowrap}.topbar-actions{display:flex;align-items:center;gap:16px}.connection-badge{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);padding:4px 8px;border-radius:7px}.status-dot.offline{background:var(--warning)}.login-button{font-size:12px;font-weight:550;border:1px solid var(--line);border-radius:10px;padding:7px 14px;background:var(--surface);white-space:nowrap;min-height:37px}.account-button{display:flex;align-items:center;gap:9px;min-height:40px}.avatar{width:31px;height:31px;background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;border-radius:50%;font-size:13px;font-weight:600}.account-name{font-size:12px;max-width:75px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.workspace{flex:1;min-height:0;position:relative;display:flex;overflow:hidden}.page-scroll{flex:1;min-height:0;height:100%;width:100%}.page-content{max-width:1320px;margin:0 auto;padding:30px 34px 20px}.hero{min-height:205px;border-radius:20px;background:var(--hero);color:var(--hero-ink);padding:30px 34px;display:flex;align-items:center;position:relative;overflow:hidden;isolation:isolate}.hero-copy{position:relative;z-index:2}.hero-eyebrow{font-size:10px;letter-spacing:2.5px;display:block;color:#d4e4c5;margin-bottom:15px}.hero-title{font-size:30px;letter-spacing:-.5px;font-weight:650;display:block;line-height:1.55}.hero-break{margin-left:12px}.hero-description{font-size:11px;color:#d2e2cd;display:block;margin-top:12px}.hero-description>text{padding:0 9px;color:#89a990}.hero-art{position:absolute;right:12px;top:-32px;width:360px;height:290px;opacity:.77;z-index:1}.hero-coordinate{position:absolute;bottom:24px;right:31px;font-size:7px;letter-spacing:4px;color:#d7e1b2}.home-grid{display:grid;grid-template-columns:minmax(0,1fr) 285px;gap:22px;margin-top:24px;align-items:start}.identify-panel{padding:26px}.demo-link{font-size:11px;white-space:nowrap;background:var(--accent-soft);border-radius:7px;padding:4px 8px;min-height:29px}.crop-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:24px 0 21px}.crop-option{position:relative;display:flex;align-items:center;text-align:left;gap:8px;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--subtle);min-width:0;min-height:82px}.crop-option.selected{border-color:var(--accent);background:var(--accent-soft)}.crop-option>image{width:35px;height:45px;flex-shrink:0}.crop-name{display:block;font-size:14px;font-weight:600}.crop-caption{display:block;font-size:9px;color:var(--muted);margin-top:4px}.crop-radio{position:absolute;right:9px;top:6px;font-size:10px;color:var(--muted)}.selected .crop-radio{color:var(--accent)}.upload-zone{min-height:255px;border:1px dashed var(--line);border-radius:15px;background:var(--subtle);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 18px;position:relative;overflow:hidden}.upload-symbol{width:62px;height:62px;background:var(--accent-soft);border-radius:20px;display:flex;align-items:center;justify-content:center;margin-bottom:17px}.upload-title{font-size:17px;font-weight:550}.upload-description{font-size:11px;color:var(--muted);text-align:center;margin-top:7px;line-height:1.9}.upload-actions{display:flex;gap:9px;margin:22px 0 13px}.upload-zone .fine-print{font-size:10px}.mobile-capture{display:none}.upload-zone.has-photo{padding:0;background:var(--subtle);min-height:285px}.selected-photo{width:100%;height:285px}.photo-controls{position:absolute;bottom:12px;right:12px;left:12px;display:flex;gap:9px;align-items:center}.photo-controls .badge{margin-right:auto;background:var(--surface)}.photo-controls .button{min-height:33px;padding:4px 12px;font-size:11px}.photo-controls .icon-button{background:var(--surface);height:33px;width:33px;min-width:33px}.form-meta{display:grid;grid-template-columns:1.2fr 1fr;gap:13px;margin-top:23px}.region-button{display:flex;justify-content:space-between;align-items:center;gap:6px;min-height:44px;width:100%;padding:10px 12px;background:var(--subtle);border:1px solid var(--line);border-radius:11px;text-align:left;font-size:12px}.region-button>text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.note-toggle{font-size:11px;margin:13px 0 5px}.submit-section{margin-top:16px;border-top:1px solid var(--line);padding-top:20px}.submit-section .button{min-height:47px;justify-content:space-between;padding:10px 18px}.submit-section .fine-print{font-size:10px;margin-top:11px;text-align:center}.home-aside{display:flex;flex-direction:column;gap:20px}.guide-panel,.recent-panel{padding:22px}.home-aside .section-title{font-size:14px}.guide-line{display:flex;align-items:center;gap:13px;font-size:11px;line-height:1.9;margin-top:21px}.guide-line>text:first-child{font-size:10px;color:var(--muted)}.guide-panel>.text-button{display:flex;width:100%;border-top:1px solid var(--line);margin-top:22px;padding-top:12px;justify-content:space-between;font-size:10px}.recent-item{width:100%;display:flex;gap:11px;align-items:center;text-align:left;padding-top:20px}.recent-title{font-size:11px;line-height:1.8;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.recent-item .fine-print{font-size:9px;margin-top:4px}.recent-empty{display:flex;align-items:center;text-align:center;flex-direction:column;gap:10px;padding:24px 0 5px}.recent-empty .strong{font-size:12px;margin-top:3px}.recent-empty .muted{font-size:11px}.recent-empty .button{font-size:11px;min-height:35px;margin-top:5px;padding:6px 14px}.aside-note{padding:0 12px;font-size:11px;line-height:2;color:var(--muted)}.page-footer{display:flex;justify-content:space-between;align-items:center;gap:15px;color:var(--muted);font-size:9px;padding:27px 2px 8px}.page-heading{display:flex;justify-content:space-between;align-items:center;gap:20px;margin:6px 0 30px}.page-title{font-size:28px;font-weight:650;letter-spacing:-.6px;display:block;line-height:1.6;margin:7px 0 5px}.page-heading .muted{font-size:12px}.list-toolbar{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:14px}.filter-tabs{display:flex;gap:6px}.filter-tabs>button{font-size:12px;padding:7px 13px;border-radius:9px;color:var(--muted);min-height:35px}.filter-tabs>button.active{background:var(--accent-soft);color:var(--accent);font-weight:550}.search-field{display:flex;gap:9px;align-items:center;padding:8px 12px;background:var(--surface);border:1px solid var(--line);border-radius:11px;width:270px;max-width:100%}.search-field input{flex:1;min-width:0;font-size:12px;height:25px}.history-panel{padding:22px 25px}.history-row{border-top:1px solid var(--line);padding:19px 0;display:flex;gap:10px;align-items:center}.history-main{display:flex;align-items:center;gap:17px;text-align:left;flex:1;min-width:0}.history-main>image{width:64px;height:64px;background:var(--subtle);border-radius:13px;flex-shrink:0}.history-title{display:block;font-size:14px;font-weight:550;margin-bottom:5px}.history-main .small{font-size:11px}.knowledge-toolbar{margin-bottom:24px}.knowledge-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:19px}.knowledge-card{padding:23px;text-align:left;display:flex;flex-direction:column;transition:transform .18s,box-shadow .18s}.knowledge-card:hover{transform:translateY(-2px);box-shadow:var(--shadow)}.knowledge-icon{width:45px;height:45px;border-radius:13px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center}.knowledge-title{display:block;font-size:17px;font-weight:600;margin:21px 0 10px}.knowledge-summary{display:block;color:var(--muted);font-size:12px;line-height:1.9;flex:1}.knowledge-bottom{display:flex;justify-content:space-between;border-top:1px solid var(--line);margin-top:23px;padding-top:14px;font-size:10px;color:var(--accent)}.mobile-nav{display:none}.popover-dismiss{position:absolute;inset:0;z-index:100}.account-popover{position:absolute;right:25px;top:66px;padding:18px 18px 8px;width:232px;border-radius:17px;border:1px solid var(--line);background:var(--elevated);box-shadow:0 12px 45px #0002}.account-popover>.strong{font-size:14px}.account-popover>.fine-print{margin:3px 0 13px}.account-popover>button{display:flex;justify-content:space-between;width:100%;padding:11px 0;font-size:12px;border-top:1px solid var(--line);text-align:left}.account-popover>.logout{color:var(--danger)}
-.case-area{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0}.case-toolbar{display:grid;grid-template-columns:40px minmax(0,1fr) auto 40px;align-items:center;gap:14px;padding:15px 29px;background:var(--surface);border-bottom:1px solid var(--line);flex-shrink:0}.case-heading>.strong{display:block;font-size:13px}.case-heading>.muted{display:block;font-size:11px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.case-tabs{min-width:230px}.case-tabs>button{font-size:12px}.result-content{width:100%;padding-top:15px}.result-grid{display:grid;grid-template-columns:minmax(220px,.65fr) minmax(0,1.35fr);gap:23px;align-items:start}.photo-panel{padding:22px}.photo-panel .section-title{font-size:15px}.case-photo{display:block;width:100%;height:245px;background:var(--subtle);border-radius:13px;margin:18px 0}.case-photo>image{width:100%;height:100%}.case-context{margin-top:21px;display:flex;flex-direction:column;gap:8px}.case-note{font-size:12px;line-height:1.9}.case-context>.text-button{font-size:11px}.result-panel{padding:28px}.result-title{font-size:25px;font-weight:650;letter-spacing:-.4px;line-height:1.65;display:block;margin:12px 0}.result-summary{display:block;font-size:14px;line-height:1.95;color:var(--muted);margin-bottom:27px}.subheading{display:block;font-size:14px;font-weight:650;margin:24px 0 12px}.product-section{border-top:1px solid var(--line);margin-top:23px}.product-section .muted{display:block;line-height:1.9;font-size:12px}.product-card{display:flex;flex-direction:column;gap:8px;font-size:12px;margin:13px 0}.result-sources,.candidate-section{border-top:1px solid var(--line);margin-top:23px}.candidate-section{padding-top:18px}.continue-button{margin-top:27px;justify-content:space-between}.guest-save{display:flex;justify-content:center;width:100%;margin-top:9px;font-size:11px}.chat-workspace{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}.chat-mode-note{flex-shrink:0;text-align:center;font-size:10px;color:var(--muted);padding:8px 15px;display:flex;align-items:center;justify-content:center;gap:12px}.chat-mode-note>button{color:var(--accent);font-size:10px;text-decoration:underline;text-underline-offset:3px;white-space:nowrap}.message-scroll{flex:1;min-height:0;height:0;width:100%}.message-stream{max-width:840px;width:100%;margin:0 auto;padding:25px 27px 10px}.chat-welcome{display:flex;flex-direction:column;align-items:center;text-align:center;max-width:510px;margin:35px auto 22px;gap:14px}.welcome-mark{font-size:29px;width:70px;height:70px;border-radius:23px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center}.welcome-title{font-size:24px;font-weight:600;letter-spacing:-.5px;margin-top:4px}.chat-welcome>.muted{font-size:13px;line-height:1.9;max-width:390px}.welcome-topics{width:100%;max-width:380px;display:flex;flex-direction:column;gap:10px;margin:15px 0}.welcome-topics>button{width:100%;display:flex;justify-content:space-between;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:12px 17px;font-size:12px;text-align:left}.welcome-topics>button>text{color:var(--muted)}.message-row{display:flex;align-items:flex-start;gap:11px;margin:0 0 30px;max-width:94%}.assistant-avatar{width:31px;height:31px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;margin-top:1px}.message-content{min-width:0;max-width:100%}.message-author{font-size:12px;font-weight:550;display:block;margin:3px 0 10px}.message-author>text{font-weight:400;font-size:10px;color:var(--muted);margin-left:8px}.message-bubble{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.95;display:block;user-select:text}.message-row.user{margin-left:auto;justify-content:flex-end;max-width:83%;margin-bottom:29px}.user .message-bubble{background:var(--accent-soft);color:var(--ink);border:1px solid var(--line);border-radius:19px 19px 4px 19px;padding:12px 17px}.message-tools{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}.source-chip{font-size:10px;border:1px solid var(--line);border-radius:7px;padding:4px 8px;color:var(--muted);text-align:left}.copy-button{font-size:10px;color:var(--muted);padding:5px 8px}.responding{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px;padding:10px 0 25px 40px}.chat-end{height:1px}.composer-dock{flex-shrink:0;z-index:10;background:var(--bg);padding:12px 25px max(13px,env(safe-area-inset-bottom));border-top:1px solid transparent}.composer-wrap{max-width:790px;margin:0 auto;width:100%}.composer-input{display:flex;align-items:flex-end;gap:12px;background:var(--elevated);border:1px solid var(--line);border-radius:23px;padding:14px 13px 12px 19px;box-shadow:0 3px 18px #00000005}.composer-input:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}.composer-input textarea{flex:1;width:100%;font-size:14px;line-height:1.8;min-height:29px;max-height:126px;padding:3px 0;outline:none}.send-button{width:36px;min-width:36px;height:36px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:500;line-height:1}.composer-meta{display:flex;justify-content:space-between;gap:15px;color:var(--muted);font-size:10px;padding:9px 5px 0}.manual-region{margin-top:18px}.backend-input{margin-top:20px}.backend-input .fine-print{margin-top:10px}.mode-description{margin-top:13px}.info-photos{display:flex;gap:10px;flex-wrap:wrap;margin:15px 0 20px}.info-photos>button,.info-photos>image{width:95px;height:95px;border:1px solid var(--line);border-radius:12px;background:var(--subtle);overflow:hidden}.info-photos image{width:95px;height:95px}.confirm-actions{display:flex;gap:12px}.confirm-actions>.button{flex:1}
-@media(min-width:1550px){.page-content{padding-top:37px}.hero{min-height:235px}.hero-title{font-size:35px}.hero-art{right:60px;width:430px;height:335px}.home-grid{grid-template-columns:minmax(0,1fr) 310px;gap:26px}.identify-panel{padding:30px}.hero-description{font-size:12px}.upload-zone{min-height:285px}.guide-line{font-size:12px}}
-@media(max-width:1190px){.sidebar{width:205px;padding-left:15px;padding-right:15px}.brand-name{font-size:20px}.brand-mark{width:39px;height:39px}.brand{gap:9px}.topbar{padding:0 24px}.page-content{padding:25px}.home-grid{grid-template-columns:minmax(0,1fr) 250px;gap:18px}.identify-panel{padding:21px}.hero-art{right:-50px;opacity:.5}.hero-title{font-size:27px}.crop-option{padding:11px 8px;gap:6px}.crop-option>image{width:29px}.crop-caption{font-size:8px}.guide-panel,.recent-panel{padding:19px}.home-aside .section-title{font-size:13px}.knowledge-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.result-grid{grid-template-columns:230px minmax(0,1fr);gap:18px}.result-panel{padding:23px}.photo-panel{padding:18px}.case-toolbar{padding-left:20px;padding-right:20px}.message-stream{padding-left:30px;padding-right:30px}}
-@media(max-width:1000px) and (min-width:761px){.sidebar{width:78px;padding:28px 10px}.brand{justify-content:center;margin-bottom:35px}.brand>view:last-child,.nav-caption,.nav-item>text,.sidebar-note,.sidebar-bottom{display:none}.nav-item{justify-content:center;padding:12px}.topbar-actions{gap:9px}.hero-break{display:block;margin-left:0}.hero{min-height:220px}.hero-description{max-width:270px;line-height:1.9}.home-grid{grid-template-columns:minmax(0,1fr) 245px}.case-tabs{min-width:210px}}
-@media(max-width:760px){.desktop-only,.sidebar{display:none!important}.topbar{height:62px;min-height:62px;padding:0 16px;gap:10px;background:var(--glass)}.topbar-title{font-size:15px}.breadcrumb{gap:8px;min-width:0}.topbar-actions{gap:6px}.connection-badge{font-size:9px;gap:5px;padding:4px}.appearance-button{width:34px;min-width:34px;height:36px;font-size:21px}.login-button{font-size:12px;padding:5px 12px;min-height:34px;border-radius:9px}.account-button{gap:4px}.account-name{display:none}.account-button .avatar{width:30px;height:30px}.account-button .app-icon{display:none}.page-content{padding:17px 16px 10px}.hero{min-height:190px;border-radius:16px;padding:25px 24px;align-items:flex-start}.hero-eyebrow{font-size:9px;letter-spacing:1.6px;margin-bottom:13px}.hero-title{font-size:28px;line-height:1.5;letter-spacing:-.4px}.hero-break{display:block;margin-left:0}.hero-description{font-size:10px;line-height:1.9;max-width:240px;margin-top:13px}.hero-description>text{padding:0 5px}.hero-art{width:260px;height:260px;right:-89px;top:4px;opacity:.58}.hero-coordinate{display:none}.home-grid{grid-template-columns:1fr;margin-top:18px;gap:18px}.identify-panel{padding:21px 17px}.demo-link{font-size:10px;min-height:29px;padding:4px 7px}.crop-grid{gap:8px;margin:20px 0}.crop-option{flex-direction:column;align-items:flex-start;gap:5px;padding:13px 11px;min-height:107px}.crop-option>image{width:38px;height:42px}.crop-name{font-size:14px}.crop-caption{font-size:9px;margin-top:2px}.crop-radio{right:10px;top:7px}.upload-zone{min-height:265px;padding:24px 12px}.upload-symbol{width:59px;height:59px;border-radius:19px;margin-bottom:14px}.upload-title{font-size:16px}.upload-description{font-size:11px;max-width:235px}.upload-actions{margin-top:21px;margin-bottom:13px}.mobile-capture{display:flex}.upload-zone .fine-print{font-size:9px}.form-meta{gap:10px;margin-top:20px;grid-template-columns:1.1fr 1fr}.form-meta .field-label{font-size:11px}.region-button{font-size:12px}.note-toggle{font-size:11px;margin-top:13px}.submit-section{padding-top:18px;margin-top:14px}.submit-section .button{min-height:47px;justify-content:center;font-size:13px;gap:10px}.submit-section .fine-print{font-size:10px;line-height:1.8}.home-aside{gap:18px}.guide-panel,.recent-panel{padding:22px}.home-aside .section-title{font-size:16px}.guide-line{font-size:13px;margin-top:20px}.guide-panel>.text-button{font-size:11px}.recent-item{padding-top:20px}.recent-title{font-size:12px}.recent-item .fine-print{font-size:10px}.recent-empty .strong{font-size:13px}.recent-empty .muted{font-size:12px}.recent-empty .button{font-size:12px;min-height:39px}.aside-note{font-size:11px;padding:0 9px}.page-footer{font-size:8px;gap:8px;padding:24px 2px 15px}.mobile-nav{display:flex;flex-shrink:0;align-items:center;justify-content:space-around;height:calc(64px + env(safe-area-inset-bottom));padding:5px 8px calc(5px + env(safe-area-inset-bottom));background:var(--glass);backdrop-filter:blur(20px);border-top:1px solid var(--line);z-index:35}.mobile-nav>button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:85px;height:49px;border-radius:12px;font-size:10px;color:var(--muted)}.mobile-nav>button.active{background:var(--accent-soft);color:var(--accent)}.page-heading{margin:5px 0 24px;align-items:center;gap:10px}.page-title{font-size:24px;margin:7px 0 6px;line-height:1.6}.page-heading .muted{font-size:12px;line-height:1.9;display:block}.page-heading>.button{font-size:11px;padding:7px 11px;min-height:39px;white-space:nowrap}.page-heading>.badge{font-size:9px;padding:4px 6px;flex-shrink:0}.history-panel{padding:17px}.list-toolbar{flex-direction:column;align-items:stretch;gap:15px;margin-bottom:15px}.filter-tabs{justify-content:space-between;gap:8px}.filter-tabs>button{font-size:12px;padding:6px 14px}.search-field{width:100%;padding:9px 12px}.search-field input{font-size:13px}.history-row{padding:18px 0;gap:6px}.history-main{gap:11px;flex-wrap:wrap;position:relative}.history-main>image{width:52px;height:59px;border-radius:10px}.history-title{font-size:13px;line-height:1.8;margin-bottom:4px}.history-main .small{font-size:10px}.history-main>.badge{font-size:8px;margin-left:63px;margin-top:-7px;display:none}.history-row>.icon-button{width:32px;min-width:32px}.knowledge-grid{grid-template-columns:1fr;gap:15px}.knowledge-card{padding:22px}.knowledge-title{font-size:18px;margin-top:18px}.knowledge-summary{font-size:13px;line-height:1.95}.knowledge-bottom{font-size:11px;margin-top:22px}.knowledge-toolbar{margin-bottom:20px}.account-popover{top:56px;right:13px;width:230px}.case-toolbar{grid-template-columns:36px minmax(0,1fr) 36px;padding:11px 15px 12px;gap:8px}.case-back{grid-column:1;grid-row:1;min-width:36px;width:36px;height:36px}.case-heading{grid-column:2;grid-row:1}.case-heading>.strong{font-size:12px}.case-heading>.muted{font-size:10px;max-width:240px}.case-tabs{grid-column:1/-1;grid-row:2;min-width:0;margin-top:3px}.case-tabs>button{font-size:12px;padding:6px 12px;min-height:32px}.case-toolbar>.icon-button:last-child{grid-column:3;grid-row:1;min-width:36px;width:36px;height:36px}.chat-mode-note{font-size:9px;line-height:1.6;padding:9px 12px;gap:8px;justify-content:space-between}.chat-mode-note>button{font-size:9px}.message-stream{padding:20px 17px 10px}.chat-welcome{margin:14px auto 5px;gap:12px}.welcome-mark{width:58px;height:58px;border-radius:20px;font-size:26px}.welcome-title{font-size:20px;line-height:1.6;margin:5px 0}.chat-welcome>.muted{font-size:12px;max-width:280px;line-height:1.9}.welcome-topics{margin:9px 0 15px;gap:9px}.welcome-topics>button{font-size:12px;padding:11px 14px}.message-row{gap:8px;max-width:100%;margin-bottom:25px}.assistant-avatar{width:26px;height:26px;border-radius:9px;font-size:14px}.message-content{max-width:calc(100% - 34px)}.message-author{font-size:11px;margin:2px 0 8px}.message-author>text{font-size:9px;margin-left:6px}.message-bubble{font-size:14px;line-height:1.95}.user .message-bubble{padding:11px 14px}.message-row.user{max-width:90%}.user .message-content{max-width:100%}.message-tools{gap:6px}.source-chip{font-size:9px;line-height:1.8;padding:4px 7px}.copy-button{font-size:10px}.composer-dock{padding:10px 12px calc(12px + env(safe-area-inset-bottom));border-top-color:var(--line)}.composer-input{border-radius:22px;padding:11px 10px 10px 15px;gap:9px}.composer-input textarea{font-size:16px;min-height:28px;max-height:115px;line-height:1.8;padding-top:3px}.send-button{width:35px;min-width:35px;height:35px;font-size:24px}.composer-meta{justify-content:center;font-size:9px;line-height:1.7;padding-top:8px}.result-content{padding-top:0}.result-content .inline-alert{margin-top:15px;margin-bottom:15px;font-size:11px}.result-grid{display:flex;flex-direction:column;gap:17px}.photo-panel{order:2;width:100%;padding:21px}.result-panel{order:1;width:100%;padding:23px 21px}.result-title{font-size:23px;line-height:1.6}.result-summary{font-size:13px;line-height:2}.subheading{font-size:14px}.action-row{font-size:13px}.product-section .muted{font-size:12px}.source-button{font-size:11px;line-height:1.9}.case-photo{height:240px}.case-context{margin-top:18px}.case-note{font-size:13px}.guest-save{font-size:12px}.is-chat .toast{bottom:125px}.info-photos{gap:8px}.info-photos>button,.info-photos>image,.info-photos image{width:90px;height:90px}}
+.continue-question {
+  font-size: 12px;
+  margin: 13px 0;
+  min-height: 40px;
+}
+
+.result-actions {
+  display: flex;
+  gap: 11px;
+  justify-content: flex-end;
+  border-top: 1px solid var(--line);
+  padding: 13px 28px;
+  background: var(--surface);
+  flex-shrink: 0;
+}
+.result-actions > .button.primary {
+  min-width: 190px;
+}
+.result-actions > .button {
+  font-size: 12px;
+  min-height: 44px;
+}
+@media (max-width: 760px) {
+  .result-actions {
+    padding: 11px 16px;
+    gap: 10px;
+  }
+  .result-actions > .button.primary {
+    min-width: 0;
+    flex: 1;
+  }
+  .result-actions > .button {
+    font-size: 12px;
+  }
+}
+
+.result-score {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin: 0 0 20px;
+}
+.result-score > text {
+  font-size: 31px;
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: -1px;
+}
+.result-score > text > text {
+  font-size: 15px;
+  letter-spacing: 0;
+  margin-left: 2px;
+}
+.result-score > view > text:first-child {
+  display: block;
+  font-size: 11px;
+  color: var(--ink);
+}
+.result-score > view > text:last-child {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.breadcrumb-home {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 7px 0;
+}
+.breadcrumb-home:hover {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.navigation-toggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 21px;
+}
+.nav-collapsed .sidebar {
+  display: none;
+}
+.header-result-link {
+  font-size: 11px;
+  color: var(--accent);
+  padding: 7px 9px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+.case-toolbar {
+  grid-template-columns: 36px minmax(0, 1fr) 36px !important;
+}
+.case-heading {
+  grid-column: 2 !important;
+  grid-row: 1 !important;
+}
+.case-toolbar > .icon-button:last-child {
+  grid-column: 3 !important;
+  grid-row: 1 !important;
+}
+
+.sidebar {
+  width: 230px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  padding: 28px 20px 23px;
+}
+.brand {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  text-align: left;
+  margin: 4px 0 42px;
+}
+.brand-mark {
+  width: 43px;
+  height: 43px;
+  border-radius: 14px;
+  background: #216b4b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.brand-name {
+  display: block;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.8px;
+}
+.brand-caption {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+.nav-caption {
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  margin: 0 13px 12px;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 13px 15px;
+  border-radius: 12px;
+  font-size: 14px;
+  margin: 3px 0;
+  color: var(--muted);
+  min-height: 48px;
+}
+.nav-item.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 550;
+}
+.sidebar-bottom {
+  border-top: 1px solid var(--line);
+  padding: 16px 10px 0;
+}
+.nav-settings {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  min-height: 38px;
+}
+.sidebar-bottom .fine-print {
+  font-size: 9px;
+  margin-top: 8px;
+}
+.main-shell {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+.topbar {
+  height: 76px;
+  min-height: 76px;
+  padding: 0 32px;
+  border-bottom: 1px solid var(--line);
+  background: var(--glass);
+  backdrop-filter: blur(20px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  z-index: 40;
+  flex-shrink: 0;
+}
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  font-size: 12px;
+  min-width: 0;
+}
+.crumb-divider {
+  color: var(--line);
+}
+.topbar-title {
+  font-weight: 550;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.login-button {
+  font-size: 12px;
+  font-weight: 550;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 7px 14px;
+  background: var(--surface);
+  white-space: nowrap;
+  min-height: 37px;
+}
+.account-button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 40px;
+}
+.avatar {
+  width: 31px;
+  height: 31px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 600;
+}
+.account-name {
+  font-size: 12px;
+  max-width: 75px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  overflow: hidden;
+}
+.page-scroll {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+}
+.page-content {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 30px 34px 20px;
+}
+.selected .crop-radio {
+  color: var(--accent);
+}
+.page-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  color: var(--muted);
+  font-size: 9px;
+  padding: 27px 2px 8px;
+}
+.page-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin: 6px 0 30px;
+}
+.page-title {
+  font-size: 28px;
+  font-weight: 650;
+  letter-spacing: -0.6px;
+  display: block;
+  line-height: 1.6;
+  margin: 7px 0 5px;
+}
+.page-heading .muted {
+  font-size: 12px;
+}
+.list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 14px;
+}
+.filter-tabs {
+  display: flex;
+  gap: 6px;
+}
+.filter-tabs > button {
+  font-size: 12px;
+  padding: 7px 13px;
+  border-radius: 9px;
+  color: var(--muted);
+  min-height: 35px;
+}
+.filter-tabs > button.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 550;
+}
+.search-field {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  width: 270px;
+  max-width: 100%;
+}
+.search-field input {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  height: 25px;
+}
+.history-panel {
+  padding: 22px 25px;
+}
+.history-row {
+  border-top: 1px solid var(--line);
+  padding: 19px 0;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.history-main {
+  display: flex;
+  align-items: center;
+  gap: 17px;
+  text-align: left;
+  flex: 1;
+  min-width: 0;
+}
+.history-main > image {
+  width: 64px;
+  height: 64px;
+  background: var(--subtle);
+  border-radius: 13px;
+  flex-shrink: 0;
+}
+.history-title {
+  display: block;
+  font-size: 14px;
+  font-weight: 550;
+  margin-bottom: 5px;
+}
+.history-main .small {
+  font-size: 11px;
+}
+.case-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.case-toolbar {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto 40px;
+  align-items: center;
+  gap: 14px;
+  padding: 15px 29px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.case-heading > .strong {
+  display: block;
+  font-size: 13px;
+}
+.case-heading > .muted {
+  display: block;
+  font-size: 11px;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.result-content {
+  width: 100%;
+  padding-top: 15px;
+}
+.result-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.65fr) minmax(0, 1.35fr);
+  gap: 23px;
+  align-items: start;
+}
+.photo-panel {
+  padding: 22px;
+}
+.photo-panel .section-title {
+  font-size: 15px;
+}
+.case-photo {
+  display: block;
+  width: 100%;
+  height: 245px;
+  background: var(--subtle);
+  border-radius: 13px;
+  margin: 18px 0;
+}
+.case-photo > image {
+  width: 100%;
+  height: 100%;
+}
+.case-context {
+  margin-top: 21px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.case-note {
+  font-size: 12px;
+  line-height: 1.9;
+}
+.case-context > .text-button {
+  font-size: 11px;
+}
+.result-panel {
+  padding: 28px;
+}
+.result-title {
+  font-size: 25px;
+  font-weight: 650;
+  letter-spacing: -0.4px;
+  line-height: 1.65;
+  display: block;
+  margin: 12px 0;
+}
+.result-summary {
+  display: block;
+  font-size: 14px;
+  line-height: 1.95;
+  color: var(--muted);
+  margin-bottom: 27px;
+}
+.subheading {
+  display: block;
+  font-size: 14px;
+  font-weight: 650;
+  margin: 24px 0 12px;
+}
+.product-section {
+  border-top: 1px solid var(--line);
+  margin-top: 23px;
+}
+.product-section .muted {
+  display: block;
+  line-height: 1.9;
+  font-size: 12px;
+}
+.product-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  margin: 13px 0;
+}
+.result-sources,
+.candidate-section {
+  border-top: 1px solid var(--line);
+  margin-top: 23px;
+}
+.candidate-section {
+  padding-top: 18px;
+}
+.continue-button {
+  margin-top: 27px;
+  justify-content: space-between;
+}
+.guest-save {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin-top: 9px;
+  font-size: 11px;
+}
+.chat-workspace {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.chat-mode-note {
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 10px;
+  color: var(--muted);
+  padding: 8px 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.chat-mode-note > button {
+  color: var(--accent);
+  font-size: 10px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+.message-scroll {
+  flex: 1;
+  min-height: 0;
+  height: 0;
+  width: 100%;
+}
+.message-stream {
+  max-width: 840px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 25px 27px 10px;
+}
+.chat-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 510px;
+  margin: 35px auto 22px;
+  gap: 14px;
+}
+.welcome-mark {
+  font-size: 29px;
+  width: 70px;
+  height: 70px;
+  border-radius: 23px;
+  background: var(--accent-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.welcome-title {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  margin-top: 4px;
+}
+.chat-welcome > .muted {
+  font-size: 13px;
+  line-height: 1.9;
+  max-width: 390px;
+}
+.welcome-topics {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 15px 0;
+}
+.welcome-topics > button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 12px 17px;
+  font-size: 12px;
+  text-align: left;
+}
+.welcome-topics > button > text {
+  color: var(--muted);
+}
+.message-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  margin: 0 0 30px;
+  max-width: 94%;
+}
+.assistant-avatar {
+  width: 31px;
+  height: 31px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.message-content {
+  min-width: 0;
+  max-width: 100%;
+}
+.message-author {
+  font-size: 12px;
+  font-weight: 550;
+  display: block;
+  margin: 3px 0 10px;
+}
+.message-author > text {
+  font-weight: 400;
+  font-size: 10px;
+  color: var(--muted);
+  margin-left: 8px;
+}
+.message-bubble {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.95;
+  display: block;
+  user-select: text;
+}
+.message-row.user {
+  margin-left: auto;
+  justify-content: flex-end;
+  max-width: 83%;
+  margin-bottom: 29px;
+}
+.user .message-bubble {
+  background: var(--accent-soft);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 19px 19px 4px 19px;
+  padding: 12px 17px;
+}
+.message-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.source-chip {
+  font-size: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 4px 8px;
+  color: var(--muted);
+  text-align: left;
+}
+.copy-button {
+  font-size: 10px;
+  color: var(--muted);
+  padding: 5px 8px;
+}
+.responding {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 10px 0 25px 40px;
+}
+.chat-end {
+  height: 1px;
+}
+.composer-dock {
+  flex-shrink: 0;
+  z-index: 10;
+  background: var(--bg);
+  padding: 12px 25px max(13px, env(safe-area-inset-bottom));
+  border-top: 1px solid transparent;
+}
+.composer-wrap {
+  max-width: 790px;
+  margin: 0 auto;
+  width: 100%;
+}
+.manual-region {
+  margin-top: 18px;
+}
+.info-photos {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 15px 0 20px;
+}
+.info-photos > button,
+.info-photos > image {
+  width: 95px;
+  height: 95px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--subtle);
+  overflow: hidden;
+}
+.info-photos image {
+  width: 95px;
+  height: 95px;
+}
+.confirm-actions {
+  display: flex;
+  gap: 12px;
+}
+.confirm-actions > .button {
+  flex: 1;
+}
+@media (min-width: 1550px) {
+  .page-content {
+    padding-top: 37px;
+  }
+}
+@media (max-width: 1190px) {
+  .sidebar {
+    width: 205px;
+    padding-left: 15px;
+    padding-right: 15px;
+  }
+  .brand-name {
+    font-size: 20px;
+  }
+  .brand-mark {
+    width: 39px;
+    height: 39px;
+  }
+  .brand {
+    gap: 9px;
+  }
+  .topbar {
+    padding: 0 24px;
+  }
+  .page-content {
+    padding: 25px;
+  }
+  .result-grid {
+    grid-template-columns: 230px minmax(0, 1fr);
+    gap: 18px;
+  }
+  .result-panel {
+    padding: 23px;
+  }
+  .photo-panel {
+    padding: 18px;
+  }
+  .case-toolbar {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  .message-stream {
+    padding-left: 30px;
+    padding-right: 30px;
+  }
+}
+@media (max-width: 1000px) and (min-width: 761px) {
+  .sidebar {
+    width: 78px;
+    padding: 28px 10px;
+  }
+  .brand {
+    justify-content: center;
+    margin-bottom: 35px;
+  }
+  .brand > view:last-child,
+  .nav-caption,
+  .nav-item > text,
+  .sidebar-bottom {
+    display: none;
+  }
+  .nav-item {
+    justify-content: center;
+    padding: 12px;
+  }
+  .topbar-actions {
+    gap: 9px;
+  }
+}
+@media (max-width: 760px) {
+  .desktop-only,
+  .sidebar {
+    display: none !important;
+  }
+  .topbar {
+    height: 62px;
+    min-height: 62px;
+    padding: 0 16px;
+    gap: 10px;
+    background: var(--glass);
+  }
+  .topbar-title {
+    font-size: 15px;
+  }
+  .breadcrumb {
+    gap: 8px;
+    min-width: 0;
+  }
+  .topbar-actions {
+    gap: 6px;
+  }
+  .login-button {
+    font-size: 12px;
+    padding: 5px 12px;
+    min-height: 34px;
+    border-radius: 9px;
+  }
+  .account-button {
+    gap: 4px;
+  }
+  .account-name {
+    display: none;
+  }
+  .account-button .avatar {
+    width: 30px;
+    height: 30px;
+  }
+  .account-button .app-icon {
+    display: none;
+  }
+  .page-content {
+    padding: 17px 16px 10px;
+  }
+  .page-footer {
+    font-size: 8px;
+    gap: 8px;
+    padding: 24px 2px 15px;
+  }
+  .page-heading {
+    margin: 5px 0 24px;
+    align-items: center;
+    gap: 10px;
+  }
+  .page-title {
+    font-size: 24px;
+    margin: 7px 0 6px;
+    line-height: 1.6;
+  }
+  .page-heading .muted {
+    font-size: 12px;
+    line-height: 1.9;
+    display: block;
+  }
+  .page-heading > .button {
+    font-size: 11px;
+    padding: 7px 11px;
+    min-height: 39px;
+    white-space: nowrap;
+  }
+  .page-heading > .badge {
+    font-size: 9px;
+    padding: 4px 6px;
+    flex-shrink: 0;
+  }
+  .history-panel {
+    padding: 17px;
+  }
+  .list-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 15px;
+    margin-bottom: 15px;
+  }
+  .filter-tabs {
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .filter-tabs > button {
+    font-size: 12px;
+    padding: 6px 14px;
+  }
+  .search-field {
+    width: 100%;
+    padding: 9px 12px;
+  }
+  .search-field input {
+    font-size: 13px;
+  }
+  .history-row {
+    padding: 18px 0;
+    gap: 6px;
+  }
+  .history-main {
+    gap: 11px;
+    flex-wrap: wrap;
+    position: relative;
+  }
+  .history-main > image {
+    width: 52px;
+    height: 59px;
+    border-radius: 10px;
+  }
+  .history-title {
+    font-size: 13px;
+    line-height: 1.8;
+    margin-bottom: 4px;
+  }
+  .history-main .small {
+    font-size: 10px;
+  }
+  .history-main > .badge {
+    font-size: 8px;
+    margin-left: 63px;
+    margin-top: -7px;
+    display: none;
+  }
+  .history-row > .icon-button {
+    width: 32px;
+    min-width: 32px;
+  }
+  .case-toolbar {
+    grid-template-columns: 36px minmax(0, 1fr) 36px;
+    padding: 11px 15px 12px;
+    gap: 8px;
+  }
+  .case-back {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 36px;
+    width: 36px;
+    height: 36px;
+  }
+  .case-heading {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .case-heading > .strong {
+    font-size: 12px;
+  }
+  .case-heading > .muted {
+    font-size: 10px;
+    max-width: 240px;
+  }
+  .case-toolbar > .icon-button:last-child {
+    grid-column: 3;
+    grid-row: 1;
+    min-width: 36px;
+    width: 36px;
+    height: 36px;
+  }
+  .chat-mode-note {
+    font-size: 9px;
+    line-height: 1.6;
+    padding: 9px 12px;
+    gap: 8px;
+    justify-content: space-between;
+  }
+  .chat-mode-note > button {
+    font-size: 9px;
+  }
+  .message-stream {
+    padding: 20px 17px 10px;
+  }
+  .chat-welcome {
+    margin: 14px auto 5px;
+    gap: 12px;
+  }
+  .welcome-mark {
+    width: 58px;
+    height: 58px;
+    border-radius: 20px;
+    font-size: 26px;
+  }
+  .welcome-title {
+    font-size: 20px;
+    line-height: 1.6;
+    margin: 5px 0;
+  }
+  .chat-welcome > .muted {
+    font-size: 12px;
+    max-width: 280px;
+    line-height: 1.9;
+  }
+  .welcome-topics {
+    margin: 9px 0 15px;
+    gap: 9px;
+  }
+  .welcome-topics > button {
+    font-size: 12px;
+    padding: 11px 14px;
+  }
+  .message-row {
+    gap: 8px;
+    max-width: 100%;
+    margin-bottom: 25px;
+  }
+  .assistant-avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 9px;
+    font-size: 14px;
+  }
+  .message-content {
+    max-width: calc(100% - 34px);
+  }
+  .message-author {
+    font-size: 11px;
+    margin: 2px 0 8px;
+  }
+  .message-author > text {
+    font-size: 9px;
+    margin-left: 6px;
+  }
+  .message-bubble {
+    font-size: 14px;
+    line-height: 1.95;
+  }
+  .user .message-bubble {
+    padding: 11px 14px;
+  }
+  .message-row.user {
+    max-width: 90%;
+  }
+  .user .message-content {
+    max-width: 100%;
+  }
+  .message-tools {
+    gap: 6px;
+  }
+  .source-chip {
+    font-size: 9px;
+    line-height: 1.8;
+    padding: 4px 7px;
+  }
+  .copy-button {
+    font-size: 10px;
+  }
+  .composer-dock {
+    padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
+    border-top-color: var(--line);
+  }
+  .result-content {
+    padding-top: 0;
+  }
+  .result-content .inline-alert {
+    margin-top: 15px;
+    margin-bottom: 15px;
+    font-size: 11px;
+  }
+  .result-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 17px;
+  }
+  .photo-panel {
+    order: 2;
+    width: 100%;
+    padding: 21px;
+  }
+  .result-panel {
+    order: 1;
+    width: 100%;
+    padding: 23px 21px;
+  }
+  .result-title {
+    font-size: 23px;
+    line-height: 1.6;
+  }
+  .result-summary {
+    font-size: 13px;
+    line-height: 2;
+  }
+  .subheading {
+    font-size: 14px;
+  }
+  .action-row {
+    font-size: 13px;
+  }
+  .product-section .muted {
+    font-size: 12px;
+  }
+  .source-button {
+    font-size: 11px;
+    line-height: 1.9;
+  }
+  .case-photo {
+    height: 240px;
+  }
+  .case-context {
+    margin-top: 18px;
+  }
+  .case-note {
+    font-size: 13px;
+  }
+  .guest-save {
+    font-size: 12px;
+  }
+  .is-chat .toast {
+    bottom: 125px;
+  }
+  .info-photos {
+    gap: 8px;
+  }
+  .info-photos > button,
+  .info-photos > image,
+  .info-photos image {
+    width: 90px;
+    height: 90px;
+  }
+}
 /* #ifdef MP-WEIXIN */
-.topbar{padding-top:calc(var(--status-bar-height) + 42px);min-height:calc(104px + var(--status-bar-height));height:calc(104px + var(--status-bar-height))}
+.topbar {
+  padding-top: calc(var(--status-bar-height) + 42px);
+  min-height: calc(104px + var(--status-bar-height));
+  height: calc(104px + var(--status-bar-height));
+}
 /* #endif */
-.new-chat-button{margin-bottom:24px;font-size:12px}.hero-chat-link{margin-top:12px;color:var(--hero-ink);font-size:11px;text-align:left;min-height:24px}.context-choice{margin:17px 0 8px;padding:15px;background:var(--surface);border:1px solid var(--line);border-radius:14px}.context-prompt{font-size:12px;font-weight:550;display:block;margin-bottom:11px}.context-options{display:flex;flex-wrap:wrap;gap:8px}.context-options>button{padding:7px 11px;border:1px solid var(--line);border-radius:9px;color:var(--ink);background:var(--subtle);font-size:12px;min-height:35px}.context-options>button:hover{border-color:var(--focus)}.message-attachments{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.message-image,.message-image>image{width:120px;height:110px;border-radius:12px;overflow:hidden}.message-file{font-size:11px;padding:7px 10px;border:1px solid var(--line);border-radius:9px;background:var(--subtle);overflow-wrap:anywhere}.chat-photo-preview{width:100%;height:180px;border-radius:13px;background:var(--subtle);margin:0 0 20px}.photo-crop-choices{display:flex;gap:9px;margin-bottom:22px}.photo-crop-choices>button{flex:1;border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center;font-size:13px;background:var(--subtle)}.photo-crop-choices>button.active{border-color:var(--focus);background:var(--accent-soft);color:var(--ink)}.image-privacy-note{margin-top:18px}.experiment-badge{margin-left:8px;font-size:9px}@media(max-width:760px){.hero{min-height:220px}.hero-chat-link{margin-top:10px;font-size:11px}.mobile-nav>button{width:70px}.new-chat-button{display:none}.context-choice{padding:12px}.context-options{gap:7px}.context-options>button{font-size:11px;padding:7px 9px}.experiment-badge{display:flex;margin:9px 0 0;font-size:9px}.message-image,.message-image>image{width:110px;height:100px}}
+.context-choice {
+  margin: 17px 0 8px;
+  padding: 15px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.context-prompt {
+  font-size: 12px;
+  font-weight: 550;
+  display: block;
+  margin-bottom: 11px;
+}
+.context-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.context-options > button {
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--ink);
+  background: var(--subtle);
+  font-size: 12px;
+  min-height: 35px;
+}
+.context-options > button:hover {
+  border-color: var(--focus);
+}
+.message-attachments {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.message-image,
+.message-image > image {
+  width: 120px;
+  height: 110px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.message-file {
+  font-size: 11px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--subtle);
+  overflow-wrap: anywhere;
+}
+.chat-photo-preview {
+  width: 100%;
+  height: 180px;
+  border-radius: 13px;
+  background: var(--subtle);
+  margin: 0 0 20px;
+}
+.photo-crop-choices {
+  display: flex;
+  gap: 9px;
+  margin-bottom: 22px;
+}
+.photo-crop-choices > button {
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  text-align: center;
+  font-size: 13px;
+  background: var(--subtle);
+}
+.photo-crop-choices > button.active {
+  border-color: var(--focus);
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+.experiment-badge {
+  margin-left: 8px;
+  font-size: 9px;
+}
+@media (max-width: 760px) {
+  .context-choice {
+    padding: 12px;
+  }
+  .context-options {
+    gap: 7px;
+  }
+  .context-options > button {
+    font-size: 11px;
+    padding: 7px 9px;
+  }
+  .experiment-badge {
+    display: flex;
+    margin: 9px 0 0;
+    font-size: 9px;
+  }
+  .message-image,
+  .message-image > image {
+    width: 110px;
+    height: 100px;
+  }
+}
+.result-photo-thumbs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 11px 0 15px;
+}
+.result-photo-thumbs > button {
+  position: relative;
+  width: 62px;
+  height: 62px;
+  overflow: hidden;
+  border-radius: 9px;
+}
+.result-photo-thumbs image {
+  width: 100%;
+  height: 100%;
+}
+.result-photo-thumbs text {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  font-size: 9px;
+  background: #0008;
+  color: #fff;
+  text-align: center;
+}
+@media (max-width: 760px) {
+}
 </style>

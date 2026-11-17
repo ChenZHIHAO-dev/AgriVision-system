@@ -1,0 +1,65 @@
+{
+  "version": "1.2.1-dev.1",
+  "checked_at": "2026-11-17T15:03:43.905297+00:00",
+  "scope": "local functional check; internal held-out image, not a new accuracy evaluation",
+  "credential_access": "HTTP API only; no credential-file access",
+  "dialogue": [
+    {
+      "model": "deepseek-flash",
+      "thinking": false,
+      "web_requested": false,
+      "provider": "deepseek",
+      "characters": 152,
+      "source_count": 3,
+      "web_search_used": false,
+      "notice_code": null,
+      "seconds": 1.58
+    },
+    {
+      "model": "deepseek-v4-pro",
+      "thinking": true,
+      "web_requested": false,
+      "provider": "deepseek",
+      "characters": 105,
+      "source_count": 3,
+      "web_search_used": false,
+      "notice_code": null,
+      "seconds": 3.56
+    },
+    {
+      "model": "deepseek-flash",
+      "thinking": false,
+      "web_requested": true,
+      "provider": "deepseek",
+      "characters": 195,
+      "source_count": 4,
+      "web_search_used": true,
+      "notice_code": null,
+      "seconds": 3.85
+    }
+  ],
+  "standalone": {
+    "status": "identified",
+    "disease_id": "wheat_powdery_mildew",
+    "model_version": "20261117-092348",
+    "transcript_provider": "recognition",
+    "dialogue_provider_called": false,
+    "persistence": "temporary"
+  },
+  "multi_image": {
+    "outcome": "partial_support",
+    "per_image_status": [
+      "identified",
+      "needs_retake"
+    ],
+    "aggregate_probability": false,
+    "second_input": "synthetic quality control",
+    "photo_upload_triggered_dialogue": false
+  },
+  "context_collection": {
+    "provider": "program",
+    "selection_added_messages": false,
+    "selection_called_dialogue_provider": false
+  },
+  "passed": true
+}

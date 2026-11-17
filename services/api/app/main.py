@@ -190,10 +190,47 @@ def create_app(settings=None):
             result["advice"]["actions"] = (
                 result["recognition"]["next_steps"] or result["advice"]["actions"]
             )
+        if result["recognition"].get("outcome") == "different_hypotheses":
+            sources = {}
+            for hypothesis in result["recognition"].get("hypotheses", []):
+                card = knowledge.get(hypothesis["disease_id"])
+                for source in card["sources"] if card else []:
+                    sources[source["url"]] = source
+            result["advice"]["sources"] = list(sources.values())
         result["messages"] = store.messages(case["id"])
         return result
 
-    def base_case(crop, location="河南省 / 南阳市", stage="不清楚", note=""):
+    def seed_photo_transcript(case):
+        receipt = recognition_state(case)
+        advice = serialize(case)["advice"]
+        assistant = {
+            "role": "assistant",
+            "provider": "recognition",
+            "created_at": now(),
+            "text": "### 初步识别\n\n"
+            + receipt["summary"]
+            + "\n\n### 建议\n\n"
+            + "\n".join("- " + action for action in advice["actions"][:3])
+            + "\n\n如需进一步排查或了解处理方法，可以继续提问。",
+            "sources": advice["sources"],
+            "products": [],
+            "thinking": False,
+            "recognition": receipt,
+        }
+        user_message = {
+            "role": "user",
+            "provider": "photo",
+            "created_at": now(),
+            "text": "上传了一张" + case["crop_name"] + "照片",
+            "sources": [],
+            "products": [],
+            "attachments": [
+                {"id": case["images"][0]["id"], "name": "症状照片", "kind": "image"}
+            ],
+        }
+        store.add_exchange(case["id"], user_message, assistant)
+
+    def base_case(crop, location="", stage="不清楚", note=""):
         timestamp = now()
         return {
             "id": uuid.uuid4().hex,
@@ -336,7 +373,7 @@ def create_app(settings=None):
     async def create_case(
         file: UploadFile = File(...),
         crop: Crop = Form(...),
-        location: str = Form(default="河南省 / 南阳市", max_length=120),
+        location: str = Form(default="", max_length=120),
         stage: str = Form(default="不清楚", max_length=40),
         note: str = Form(default="", max_length=2000),
         x_client_id: str = Header(default=""),
@@ -344,6 +381,7 @@ def create_app(settings=None):
         client = owner(x_client_id)
         case = await apply_upload(base_case(crop, location, stage, note), file, client)
         store.save(client, case)
+        seed_photo_transcript(case)
         return serialize(case)
 
     @app.post("/api/consultations", status_code=201)
@@ -415,6 +453,100 @@ def create_app(settings=None):
             if not case.get("crop"):
                 raise HTTPException(422, "请先选择照片中的作物")
             case = await apply_upload(case, file, owner(x_client_id))
+            store.save(x_client_id, case)
+            return serialize(case)
+
+    @app.delete("/api/cases/{case_id}/images/{image_id}")
+    def remove_unsent_image(
+        case_id: str, image_id: str, x_client_id: str = Header(default="")
+    ):
+        with mutation(case_id):
+            case = get_case(x_client_id, case_id)
+            if not any(image["id"] == image_id for image in case["images"]):
+                raise HTTPException(404, "照片不存在")
+            for message in store.messages(case_id):
+                references = message.get("attachments", []) + (
+                    message.get("recognition") or {}
+                ).get("image_results", [])
+                if any(
+                    item.get("id", item.get("image_id")) == image_id
+                    for item in references
+                ):
+                    raise HTTPException(
+                        409, "这张照片已用于对话，请新建问诊来调整判断范围"
+                    )
+            case["images"] = [
+                image for image in case["images"] if image["id"] != image_id
+            ]
+            case["versions"] = [
+                version
+                for version in case["versions"]
+                if version.get("image_id") != image_id
+            ]
+            if store.temporary_owner(x_client_id):
+                store.remove_image(case_id, image_id)
+            else:
+                (settings.runtime / "images" / case_id / (image_id + ".jpg")).unlink(
+                    missing_ok=True
+                )
+            if case["images"]:
+                case.update(aggregate_images(case))
+            else:
+                case.update(
+                    status="awaiting_image",
+                    title=CROP_NAMES.get(case["crop"], "作物") + "种植咨询",
+                    candidates=[],
+                    disease_id=None,
+                    model_version=None,
+                    experimental=False,
+                )
+                case.pop("evidence", None)
+            case["updated_at"] = now()
+            store.save(x_client_id, case)
+            return serialize(case)
+
+    @app.post("/api/cases/{case_id}/retry")
+    async def retry_recognition(case_id: str, x_client_id: str = Header(default="")):
+        from starlette.concurrency import run_in_threadpool
+
+        with mutation(case_id):
+            case = get_case(x_client_id, case_id)
+            if case["is_demo"] or not case["images"]:
+                raise HTTPException(409, "请先添加真实症状照片")
+            inputs = []
+            for image in case["images"]:
+                if image.get("quality", {}).get("issues"):
+                    continue
+                if store.temporary_owner(x_client_id):
+                    content = store.get_image(x_client_id, case_id, image["id"])
+                    if content is None:
+                        raise HTTPException(410, "照片已过期，请重新上传")
+                    model_input = BytesIO(content)
+                else:
+                    model_input = (
+                        settings.runtime / "images" / case_id / (image["id"] + ".jpg")
+                    )
+                    if not model_input.is_file():
+                        raise HTTPException(410, "原始照片已不可用，请重新上传")
+                inputs.append((image, model_input))
+            if not inputs:
+                raise HTTPException(422, "现有照片均需要补拍，请上传更清晰的照片")
+            for image, model_input in inputs:
+                prediction = await run_in_threadpool(
+                    registry.predict, case["crop"], model_input
+                )
+                case["versions"].append(
+                    {
+                        **prediction,
+                        "image_id": image["id"],
+                        "crop": case["crop"],
+                        "stage": case["stage"],
+                        "created_at": now(),
+                        "trigger": "retry",
+                    }
+                )
+            case.update(aggregate_images(case))
+            case["updated_at"] = now()
             store.save(x_client_id, case)
             return serialize(case)
 

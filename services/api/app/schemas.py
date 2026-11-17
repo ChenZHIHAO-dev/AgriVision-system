@@ -33,7 +33,7 @@ class GuestEndRequest(BaseModel):
 
 class ConsultationRequest(BaseModel):
     crop: Crop | None = None
-    location: str = Field(default="河南省 / 南阳市", max_length=120)
+    location: str = Field(default="", max_length=120)
     stage: str = Field(default="不清楚", max_length=40)
     variety: str = Field(default="", max_length=80)
 

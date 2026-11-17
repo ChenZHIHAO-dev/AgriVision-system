@@ -20,6 +20,26 @@ MISSING_IMAGE = re.compile(
 )
 
 
+def remove_repeated_stage_question(reply, case):
+    if case.get("stage") in (None, "", "不清楚"):
+        return reply
+    request = (
+        r"(?:请(?:问)?|麻烦(?:你)?|能否|方便)[^\n。！？?]{0,8}"
+        r"(?:补充|告知|提供|说明|说一下|告诉我)[^\n。！？?]{0,16}"
+        r"(?:生育期|生长阶段|生长时期)(?:信息|情况)?"
+    )
+    direct = r"(?:现在|目前|当前)[^\n。！？?]{0,12}(?:哪个|什么|哪一)[^\n。！？?]{0,4}(?:生育期|生长阶段|生长时期)"
+    return re.sub(
+        r"(?m)(?:^|(?<=[\n。！？?]))[ \t]*(?:"
+        + request
+        + "|"
+        + direct
+        + r")(?=$|[\n。！？?])[。！？?]?",
+        "",
+        reply,
+    ).strip()
+
+
 class Chat:
     def __init__(self, settings, knowledge):
         self.settings = settings
@@ -37,7 +57,7 @@ class Chat:
             raise ValueError("Web search requires DeepSeek Flash")
         if not case.get("crop"):
             return {
-                "text": "先确认一下，这次主要咨询哪种作物？选好后，我会结合你的问题和种植情况继续说明。",
+                "text": "请先补充种植信息，再继续这个问题。",
                 "provider": "clarification",
                 "sources": [],
                 "products": [],
@@ -95,6 +115,16 @@ class Chat:
                 "thinking": False,
             }
 
+        missing = follow_up(case)
+        if missing:
+            return {
+                "text": "请先补充种植信息，也可以选择暂不确定。填写后点击继续回答。",
+                "provider": "clarification",
+                "sources": [],
+                "products": [],
+                "thinking": False,
+                "follow_up": missing,
+            }
         documents = document_context(case.get("documents", []), text)
         local = self.local_answer(case, cards, documents)
         key = self.settings.get_deepseek_key()
@@ -126,6 +156,8 @@ class Chat:
             "你是宛农植保助手，服务河南南阳及周边农户，用简洁自然的中文对话。"
             "重点回答农作物病虫害、种植管理和农业资料问题；无关问题简短说明业务范围并引导回农业咨询。"
             "你代表整个软件与用户对话。照片由独立分类网络处理，你接收的是识别回执而不是原图；不能声称亲自看图。"
+            "分类回执只有标签与分数，未提供图像中可见症状的描述。不得据此断言照片里出现了某种颜色、斑点或形态；"
+            "资料中的典型症状应写为请用户核对是否存在的观察建议。"
             "必须依据本轮最新recognition回执回答，不能因为没有原图而说软件没有收到图片或没有返回识别结果。"
             "image_received=true表示照片已经上传成功；identified表示已有初步识别结果，要明确引用该结果；"
             "uncertain是有效的不确定结果，不等于上传失败；needs_retake说明画质原因，needs_model和model_error分别说明模型未就绪或服务错误。"
@@ -150,6 +182,9 @@ class Chat:
             for message in history[-10:]
             if message["role"] in {"user", "assistant"}
             and not (
+                message.get("provider") == "clarification" and follow_up(case) is None
+            )
+            and not (
                 receipt["image_received"]
                 and message["role"] == "assistant"
                 and MISSING_IMAGE.search(message["text"])
@@ -158,7 +193,7 @@ class Chat:
         messages.append(
             {
                 "role": "system",
-                "content": "本轮识别服务的最新回执如下，优先于旧对话中的旧识别结论。不要把未匹配病名说成未收到图片。\n"
+                "content": "本轮最新识别回执及context已确认信息如下，优先于旧对话。已填写的作物、生育期不再追问，暂不确定表示跳过该字段。不要把未匹配病名说成未收到图片。\n"
                 + json.dumps(receipt, ensure_ascii=False),
             }
         )
@@ -215,7 +250,12 @@ class Chat:
                         if receipt["image_received"] and MISSING_IMAGE.search(reply):
                             failure = "inconsistent_recognition"
                             raise ValueError("Provider contradicted the image receipt")
-                        reply = reply.strip()
+                        reply = remove_repeated_stage_question(reply, case)
+                        if not reply:
+                            failure = "unverified_response"
+                            raise ValueError(
+                                "Only a redundant context question was returned"
+                            )
                     provider_message = result["choices"][0]["message"]
                     web_sources = []
                     for annotation in provider_message.get("annotations", []):
@@ -298,12 +338,6 @@ class Chat:
         receipt = recognition_state(case)
         if receipt["image_received"]:
             prefix += receipt["summary"] + "\n\n"
-            if receipt["next_steps"]:
-                return (
-                    prefix
-                    + "建议先做：\n"
-                    + "\n".join("• " + step for step in receipt["next_steps"])
-                )
         elif case["status"] not in ("identified", "demo"):
             prefix += "当前是文字资料咨询，还没有可靠的自动识别结论。\n\n"
         if documents:
@@ -311,6 +345,12 @@ class Chat:
             return (
                 prefix
                 + f"\n\n已读取「{excerpt['name']}」中的相关文字：\n{excerpt['text'][:1000]}\n\n以上是上传资料的摘录，尚需结合当前作物和适用条件核对。"
+            )
+        if receipt["image_received"] and receipt["next_steps"]:
+            return (
+                prefix
+                + "建议先做：\n"
+                + "\n".join("• " + step for step in receipt["next_steps"])
             )
         if not cards:
             return (

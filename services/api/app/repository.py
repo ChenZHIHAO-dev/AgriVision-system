@@ -56,6 +56,13 @@ class CaseRepository:
                 "expires": time.time() + self.ttl,
             }
 
+            self._touch_images(case["id"])
+
+    def _touch_images(self, case_id):
+        for (stored_case, _), value in self.image_bytes.items():
+            if stored_case == case_id:
+                value["expires"] = time.time() + self.ttl
+
     def get(self, owner, case_id):
         if not self.temporary_owner(owner):
             return self.persistent.get(owner, case_id)
@@ -65,6 +72,7 @@ class CaseRepository:
             if not value or value["owner"] != owner:
                 return None
             value["expires"] = time.time() + self.ttl
+            self._touch_images(case_id)
             return deepcopy(value["case"])
 
     def list(self, owner, limit=100):
@@ -99,7 +107,8 @@ class CaseRepository:
             if case_id in self.temporary:
                 self.temporary[case_id]["messages"].extend(deepcopy([user, assistant]))
                 return
-        self.persistent.add_exchange(case_id, user, assistant)
+        if self.owner_of(case_id) is not None:
+            self.persistent.add_exchange(case_id, user, assistant)
 
     def delete(self, owner, case_id):
         if not self.temporary_owner(owner):
@@ -115,6 +124,10 @@ class CaseRepository:
                 "content": content,
                 "expires": time.time() + self.ttl,
             }
+
+    def remove_image(self, case_id, image_id):
+        with self.lock:
+            self.image_bytes.pop((case_id, image_id), None)
 
     def get_image(self, owner, case_id, image_id):
         with self.lock:

@@ -163,7 +163,7 @@ async def test_chat_provider_failure_keeps_local_citations(tmp_path, monkeypatch
     async def failed(*args, **kwargs):
         raise httpx.ConnectError("unavailable")
     monkeypatch.setattr(httpx.AsyncClient, "post", failed)
-    response = await chat.answer({"crop":"wheat","location":"南阳","stage":"不清楚","status":"needs_model","is_demo":False,"title":"待识别","note":"","disease_id":None}, "小麦条锈病需要补拍什么？", [])
+    response = await chat.answer({"crop":"wheat","location":"南阳","stage":"苗期","status":"needs_model","is_demo":False,"title":"待识别","note":"","disease_id":None}, "小麦条锈病需要补拍什么？", [])
     assert response["provider"] == "knowledge" and response["sources"]
     assert "没有可靠的自动识别结论" in response["text"]
 

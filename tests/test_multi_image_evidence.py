@@ -99,3 +99,14 @@ def test_different_model_versions_are_not_silently_combined():
         result["status"] == "uncertain"
         and result["evidence"]["outcome"] == "mixed_model_versions"
     )
+
+
+def test_later_context_fills_unknown_stage_without_overwriting_known_capture_stage():
+    case = record(["wheat_powdery_mildew", "healthy"])
+    case["stage"] = "抽穗扬花期"
+    case["images"][0]["stage"] = "不清楚"
+    case["versions"][0]["stage"] = "不清楚"
+    case["images"][1]["stage"] = "苗期"
+    result = aggregate_images(case)
+    assert result["evidence"]["image_results"][0]["stage"] == "抽穗扬花期"
+    assert result["evidence"]["image_results"][1]["stage"] == "苗期"

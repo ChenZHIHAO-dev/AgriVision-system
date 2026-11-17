@@ -1,0 +1,32 @@
+[
+  {
+    "id": "wheat-spring-2026",
+    "title": "2026年冬小麦春季管理技术意见",
+    "source": "农业农村部小麦专家指导组、全国农技中心",
+    "date": "2026-01-30",
+    "crop": "wheat",
+    "category": "技术指导",
+    "summary": "按苗情、墒情分类管理，关注弱苗转化和春季气象风险。具体措施请结合本地农时查阅原文。",
+    "url": "https://www.agri.cn/sc/nszd/202601/t20260130_8808105.htm"
+  },
+  {
+    "id": "wheat-later-2026",
+    "title": "小麦中后期防灾害保稳长技术意见",
+    "source": "农业农村部小麦专家指导组、全国农技中心",
+    "date": "2026-04-03",
+    "crop": "wheat",
+    "category": "技术指导",
+    "summary": "介绍拔节孕穗后田间管理，以及倒春寒、干热风和病虫害等风险的排查方向。",
+    "url": "https://www.agri.cn/sc/nszd/202604/t20260403_8825492.htm"
+  },
+  {
+    "id": "nmc-agriculture",
+    "title": "农业气象影响预报",
+    "source": "中央气象台",
+    "date": "滚动发布",
+    "crop": "general",
+    "category": "官方发布",
+    "summary": "查阅农业气象影响与农事建议。打开官方页面查看当前预报及发布时间。",
+    "url": "https://www.nmc.cn/publish/crop/index.htm"
+  }
+]
