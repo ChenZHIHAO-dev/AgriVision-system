@@ -688,7 +688,7 @@ onBeforeUnmount(() => clearTimeout(idle))
   color: var(--ink);
   font-size: 12px;
 }
-.reading-toggle[aria-expanded='true'] image {
+.reading-toggle[aria-expanded='true'] :deep(.app-icon) {
   transform: rotate(180deg);
 }
 .reading .library-controls {

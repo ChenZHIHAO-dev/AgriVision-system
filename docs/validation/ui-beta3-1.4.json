@@ -1,0 +1,142 @@
+{
+  "version": "1.4.0-beta.3",
+  "desktop": {
+    "coldLight": {
+      "dock": {
+        "file": "camera-white.png",
+        "loaded": true
+      },
+      "mobile": {
+        "file": "menu-light.png",
+        "loaded": true
+      },
+      "rail": {
+        "file": "home-light.png",
+        "loaded": true
+      },
+      "shutter": {
+        "file": "camera-white.png",
+        "loaded": true
+      },
+      "theme": "av-app theme-light",
+      "top": {
+        "file": "sun-light.png",
+        "loaded": true
+      },
+      "upload": {
+        "file": "upload-light.png",
+        "loaded": true
+      }
+    },
+    "switchedDark": {
+      "dock": {
+        "file": "camera-inverse.png",
+        "loaded": true
+      },
+      "mobile": {
+        "file": "menu-dark.png",
+        "loaded": true
+      },
+      "rail": {
+        "file": "home-dark.png",
+        "loaded": true
+      },
+      "shutter": {
+        "file": "camera-inverse.png",
+        "loaded": true
+      },
+      "theme": "av-app theme-dark",
+      "top": {
+        "file": "moon-dark.png",
+        "loaded": true
+      },
+      "upload": {
+        "file": "upload-dark.png",
+        "loaded": true
+      }
+    },
+    "returnedLight": {
+      "dock": {
+        "file": "camera-white.png",
+        "loaded": true
+      },
+      "mobile": {
+        "file": "menu-light.png",
+        "loaded": true
+      },
+      "rail": {
+        "file": "home-light.png",
+        "loaded": true
+      },
+      "shutter": {
+        "file": "camera-white.png",
+        "loaded": true
+      },
+      "theme": "av-app theme-light",
+      "top": {
+        "file": "sun-light.png",
+        "loaded": true
+      },
+      "upload": {
+        "file": "upload-light.png",
+        "loaded": true
+      }
+    }
+  },
+  "mobile": {
+    "dark": {
+      "dock": {
+        "file": "camera-inverse.png",
+        "loaded": true
+      },
+      "mobile": {
+        "file": "menu-dark.png",
+        "loaded": true
+      },
+      "rail": {
+        "file": "home-dark.png",
+        "loaded": true
+      },
+      "shutter": {
+        "file": "camera-inverse.png",
+        "loaded": true
+      },
+      "theme": "av-app theme-dark",
+      "top": {
+        "file": "moon-dark.png",
+        "loaded": true
+      },
+      "upload": {
+        "file": "upload-dark.png",
+        "loaded": true
+      }
+    },
+    "light": {
+      "dock": {
+        "file": "camera-white.png",
+        "loaded": true
+      },
+      "mobile": {
+        "file": "menu-light.png",
+        "loaded": true
+      },
+      "rail": {
+        "file": "home-light.png",
+        "loaded": true
+      },
+      "shutter": {
+        "file": "camera-white.png",
+        "loaded": true
+      },
+      "theme": "av-app theme-light",
+      "top": {
+        "file": "sun-light.png",
+        "loaded": true
+      },
+      "upload": {
+        "file": "upload-light.png",
+        "loaded": true
+      }
+    }
+  }
+}

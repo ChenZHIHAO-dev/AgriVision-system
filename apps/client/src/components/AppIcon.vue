@@ -21,19 +21,37 @@ const source = computed(() => {
 })
 </script>
 <template>
-  <image
+  <!-- #ifdef H5 -->
+  <img
+    :key="source"
     :src="source"
+    :width="size"
+    :height="size"
+    class="app-icon"
+    alt=""
+    aria-hidden="true"
+    draggable="false"
+  />
+  <!-- #endif -->
+  <!-- #ifndef H5 -->
+  <!-- A keyed native node prevents the previous bitmap from surviving a theme change. -->
+  <image
+    v-for="url in [source]"
+    :key="url"
+    :src="url"
     :style="{ width: size + 'px', height: size + 'px' }"
     mode="aspectFit"
     class="app-icon"
     aria-hidden="true"
     :draggable="false"
   />
+  <!-- #endif -->
 </template>
 <style scoped>
 .app-icon {
   display: inline-block;
   flex-shrink: 0;
   vertical-align: middle;
+  object-fit: contain;
 }
 </style>
