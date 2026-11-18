@@ -1,4 +1,4 @@
-> **B 版（1.4.0-beta.4）**。本轮调整咨询侧栏并验证 CPU 识别。
+> **B 版（1.4.0-beta.4）网页已发布。** 本轮调整咨询侧栏并验证 CPU 识别。
 
 # AgriVision 宛农植保助手
 
@@ -12,6 +12,8 @@
 - 手机历史从左侧滑入。顶部为品牌、搜索和关闭，底部为新建咨询与账户。登录后可在已加载的自己的记录中搜标题、作物、地点、备注和对话内容。
 - 咨询顶栏明确显示退出入口。用手机尺寸网页实测相册上传、进入咨询、退出回到原识别结果。
 - 现有小麦模型完成 CPU 推理基准。现有 FastAPI、模型文件、域名与 AppID 配置见 [微信 CPU 联网试测](docs/wechat-deployment.md#cpu-联网试测)。
+
+43 项前端检查、H5 与独立微信构建通过。[网页部署](https://github.com/ChenZHIHAO-dev/AgriVision-system/actions/runs/44246970157)对应源码 a8ae538，[12 项线上资源](docs/validation/pages-beta4-1.4.json)与本机构建一致。
 
 [桌面和手机浏览器验收](docs/validation/ui-beta4-1.4.json)。
 
