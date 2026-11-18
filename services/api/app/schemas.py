@@ -1,6 +1,6 @@
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 Crop = Literal["wheat", "maize", "peanut"]
 
@@ -48,6 +48,10 @@ class ConsultationRequest(BaseModel):
 
 
 class CaseUpdate(BaseModel):
+    conversation_title: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
+        | None
+    ) = None
     crop: Crop | None = None
     variety: str | None = Field(default=None, max_length=80)
     stage: str | None = Field(default=None, max_length=40)

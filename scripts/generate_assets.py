@@ -55,10 +55,71 @@ def crop_art(crop, scale=1):
     return im
 
 
+
+def crop_icon(crop):
+    """Three project-owned pictograms that remain distinct at toolbar size."""
+    image = Image.new("RGBA", (96, 96))
+    draw = ImageDraw.Draw(image)
+    if crop == "wheat":
+        draw.line([(24, 86), (43, 64), (69, 15)], fill="#507753", width=6)
+        draw.polygon([(39, 70), (22, 64), (12, 53), (32, 56)], fill="#659566")
+        for x, y in [(45, 65), (50, 54), (55, 43), (60, 32)]:
+            draw.polygon(
+                [(x, y), (x - 11, y - 3), (x - 16, y - 18), (x - 5, y - 13)],
+                fill="#dcb358",
+                outline="#a17736",
+                width=2,
+            )
+            draw.polygon(
+                [(x, y), (x + 13, y - 1), (x + 22, y - 12), (x + 10, y - 12)],
+                fill="#e8c16b",
+                outline="#a17736",
+                width=2,
+            )
+        draw.polygon(
+            [(63, 33), (59, 20), (71, 7), (74, 20)],
+            fill="#e8c16b",
+            outline="#a17736",
+            width=2,
+        )
+    elif crop == "maize":
+        draw.rounded_rectangle(
+            (28, 8, 68, 77), radius=20, fill="#efbd55", outline="#a9762e", width=3
+        )
+        for row in range(19, 68, 11):
+            for col in (34, 45, 56):
+                draw.rounded_rectangle(
+                    (col, row, col + 7, row + 6), radius=2, fill="#ffe095"
+                )
+        draw.polygon(
+            [(49, 87), (28, 75), (18, 52), (17, 33), (35, 48), (47, 69)],
+            fill="#659d69",
+            outline="#497951",
+            width=3,
+        )
+        draw.polygon(
+            [(48, 87), (68, 75), (78, 51), (78, 34), (61, 49), (50, 68)],
+            fill="#8ab581",
+            outline="#497951",
+            width=3,
+        )
+    else:
+        draw.ellipse((26, 8, 67, 50), fill="#926140")
+        draw.ellipse((26, 46, 70, 89), fill="#926140")
+        draw.rectangle((34, 28, 61, 67), fill="#926140")
+        draw.ellipse((29, 11, 64, 47), fill="#e2b77d")
+        draw.ellipse((29, 49, 67, 86), fill="#e2b77d")
+        draw.rectangle((37, 29, 58, 66), fill="#e2b77d")
+        for x, y in [(35, 25), (38, 37), (40, 50), (35, 63), (37, 74)]:
+            draw.line([(x, y), (x + 12, y + 4), (x + 23, y)], fill="#a87751", width=3)
+        draw.line([(48, 17), (46, 35), (49, 54), (48, 79)], fill="#a87751", width=3)
+        image = image.rotate(27, resample=Image.Resampling.BICUBIC)
+    return image
+
 if __name__=='__main__':
     (STATIC/'icons').mkdir(parents=True,exist_ok=True); (STATIC/'crops').mkdir(exist_ok=True)
     for crop in ['wheat','maize','peanut']:
-        crop_art(crop).resize((64,74),Image.Resampling.LANCZOS).save(STATIC/'icons'/f'{crop}.png')
+        crop_icon(crop).save(STATIC/'icons'/f'{crop}.png', optimize=True)
     for crop in ['wheat','maize','peanut']:crop_art(crop).resize((240,276),Image.Resampling.LANCZOS).save(STATIC/'crops'/f'{crop}.png')
     field=Image.new('RGBA',(900,650))
     for i,(x,y,angle) in enumerate([(10,50,-18),(260,-60,9),(480,30,23)]):

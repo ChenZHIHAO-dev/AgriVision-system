@@ -89,6 +89,7 @@ export interface PendingQuestion {
   web_search?: boolean
 }
 export interface CaseRecord {
+  conversation_title?: string
   pending_question?: PendingQuestion
   id: string
   crop: Crop | null

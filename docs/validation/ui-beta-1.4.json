@@ -1,0 +1,62 @@
+{
+  "version": "1.4.0-beta.1",
+  "scope": "H5 at 390×844 and desktop at 1280×800",
+  "home": {
+    "sectionAfterScroll": "工作台",
+    "stickySearchTop": 54,
+    "compactFilter": "false",
+    "confirmedPeanutFilter": true,
+    "reorderedViaDrag": [
+      "文字咨询",
+      "拍照问诊"
+    ],
+    "restoredViaButton": true
+  },
+  "chat": {
+    "layout": {
+      "available": {
+        "bottom": 742,
+        "top": 54
+      },
+      "bar": {
+        "bottom": 54,
+        "top": 0
+      },
+      "composer": {
+        "bottom": 844,
+        "top": 742
+      },
+      "welcome": {
+        "bottom": 587,
+        "top": 224
+      }
+    },
+    "renamed": "田间观察笔记",
+    "newTitleFromFirstQuestion": "如何拍清楚症状？",
+    "detailsDialog": true
+  },
+  "colors": {
+    "card": [
+      "rgb(228, 235, 230)",
+      "rgb(43, 61, 51)"
+    ],
+    "inactiveTab": [
+      "rgb(176, 190, 181)",
+      "rgba(0, 0, 0, 0)"
+    ],
+    "menu": [
+      "rgb(228, 235, 230)",
+      "rgba(0, 0, 0, 0)"
+    ],
+    "result": [
+      "rgb(228, 235, 230)",
+      "rgb(30, 35, 32)"
+    ]
+  },
+  "desktop": {
+    "desktop": "flex",
+    "mobile": "none",
+    "overflow": false,
+    "width": 1280
+  }
+}

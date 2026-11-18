@@ -12,7 +12,7 @@ const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const compiled = await build({
   stdin: {
     contents:
-      "export { default as Library } from './apps/client/src/components/KnowledgeLibrary.vue'; export { createApp, h, nextTick } from 'vue'",
+      "export { default as Library } from './apps/client/src/components/KnowledgeLibrary.vue'; export { createApp, h, nextTick, ref } from 'vue'",
     resolveDir: repo,
     loader: 'ts',
   },
@@ -78,7 +78,7 @@ test('reading filters remain reachable after scrolling and restart at the first 
     () => (settle = undefined),
   )
 
-  const { createApp, h, nextTick, Library } = module.exports
+  const { createApp, h, nextTick, ref, Library } = module.exports
   const host = document.createElement('div')
   document.body.append(host)
   const cards = [
@@ -86,18 +86,32 @@ test('reading filters remain reachable after scrolling and restart at the first 
     { id: 'p1', title: '花生褐斑病', crop: 'peanut' },
     { id: 'm1', title: '玉米大斑病', crop: 'maize' },
   ].map((card) => ({ ...card, summary: '', sources: [], keywords: [] }))
-  const app = createApp({ render: () => h(Library, { cards, reading: true }) })
+  const readOffset = ref(0)
+  let resets = 0
+  const app = createApp({
+    render: () =>
+      h(Library, {
+        cards,
+        embedded: true,
+        reading: true,
+        readOffset: readOffset.value,
+        onResetScroll: () => {
+          resets++
+          readOffset.value = 0
+        },
+      }),
+  })
   try {
     app.mount(host)
-    const scroller = host.querySelector('scroll-view')
     const controls = host.querySelector('.library-controls')
     const scroll = async (scrollTop) => {
-      scroller.dispatchEvent(new window.CustomEvent('scroll', { detail: { scrollTop } }))
+      readOffset.value = scrollTop
       await nextTick()
     }
     const search = host.querySelector('[aria-label="搜索知识与资讯"]')
     assert.ok(search)
-    assert.equal(scroller.contains(controls), false)
+    assert.equal(host.querySelector('scroll-view'), null)
+    assert.ok(host.querySelector('.library-pin').contains(controls))
     assert.equal(controls.getAttribute('aria-hidden'), 'false')
 
     await scroll(280)
@@ -114,21 +128,14 @@ test('reading filters remain reachable after scrolling and restart at the first 
     assert.equal(controls.getAttribute('aria-hidden'), 'false')
     assert.equal(settle, undefined)
 
-    const targets = []
-    const observer = new window.MutationObserver((items) => {
-      targets.push(...items.map((mutation) => mutation.oldValue))
-    })
-    observer.observe(scroller, { attributeFilter: ['scroll-top'], attributeOldValue: true })
     const peanut = [...controls.querySelectorAll('.library-filters button')].find((button) =>
       button.textContent.includes('花生'),
     )
     peanut.click()
     await nextTick()
     await nextTick()
-    await window.happyDOM.whenAsyncComplete()
-    observer.disconnect()
-    assert.deepEqual(targets, ['0', '180'])
-    assert.equal(scroller.getAttribute('scroll-top'), '0')
+    assert.equal(resets, 1)
+    assert.equal(readOffset.value, 0)
     assert.equal(controls.getAttribute('aria-hidden'), 'false')
     assert.equal(peanut.getAttribute('aria-pressed'), 'true')
     assert.deepEqual(

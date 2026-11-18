@@ -4,22 +4,10 @@ import AppIcon from './AppIcon.vue'
 import type { CaseRecord } from '../lib/api'
 import type { User } from '../lib/auth'
 import { dateLabel } from '../lib/options'
+import { conversationTitle } from '../lib/conversationTitle'
 const props = defineProps<{ records: CaseRecord[]; user: User | null; selected?: string }>()
 const emit = defineEmits<{ open: [id: string]; new: []; login: [] }>()
 const conversations = computed(() => props.records)
-function title(record: CaseRecord) {
-  return (
-    record.messages
-      .find(
-        (item) =>
-          item.role === 'user' &&
-          item.provider !== 'photo' &&
-          item.text.length > 4 &&
-          !/^(这次咨询的作物|目前处于|请结合|照片已上传)/.test(item.text),
-      )
-      ?.text.slice(0, 23) || record.title
-  )
-}
 </script>
 <template>
   <view class="conversation-history"
@@ -39,7 +27,7 @@ function title(record: CaseRecord) {
         :class="{ selected: selected === record.id }"
         @click="emit('open', record.id)"
       >
-        <text>{{ title(record) }}</text
+        <text>{{ conversationTitle(record) }}</text
         ><text>{{ record.crop_name }} · {{ dateLabel(record.updated_at) }}</text>
       </button></scroll-view
     ></view

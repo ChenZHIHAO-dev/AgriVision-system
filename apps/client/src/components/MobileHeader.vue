@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import AppIcon from './AppIcon.vue'
 import AppearanceSwitch from './AppearanceSwitch.vue'
+import ChatTitle from './ChatTitle.vue'
 defineProps<{
   title: string
   page: string
@@ -8,7 +9,7 @@ defineProps<{
   backLabel: string
   userName?: string
   safeTop: number
-  resources: boolean
+  chatOptionsOpen: boolean
   historyOpen: boolean
 }>()
 const emit = defineEmits<{
@@ -16,26 +17,19 @@ const emit = defineEmits<{
   history: []
   login: []
   profile: []
+  options: []
 }>()
 </script>
 <template>
   <view class="mobile-header" :style="{ paddingTop: safeTop ? safeTop + 'px' : undefined }">
     <view class="mobile-primary">
       <button
-        v-if="chat || page === 'settings' || page === 'history' || (page === 'home' && resources)"
+        v-if="chat || page === 'settings' || page === 'history'"
         class="mobile-back"
-        :aria-label="
-          chat
-            ? backLabel
-            : page === 'home'
-              ? '返回工作台'
-              : page === 'history'
-                ? '返回首页'
-                : '返回我的'
-        "
+        :aria-label="chat ? backLabel : page === 'history' ? '返回首页' : '返回我的'"
         @click="emit('back')"
       >
-        <AppIcon name="back" :size="21" /><text>返回</text>
+        <AppIcon name="back" :size="21" /><text v-if="!chat">返回</text>
       </button>
       <button
         v-else
@@ -46,7 +40,10 @@ const emit = defineEmits<{
       >
         <AppIcon name="menu" :size="23" />
       </button>
-      <text :key="title" class="mobile-title">{{ title }}</text>
+      <view v-if="chat" class="mobile-chat-title">
+        <ChatTitle :title="title" :expanded="chatOptionsOpen" @open="emit('options')" />
+      </view>
+      <text v-else :key="title" class="mobile-title">{{ title }}</text>
       <view class="mobile-actions">
         <button
           v-if="chat"
@@ -58,8 +55,13 @@ const emit = defineEmits<{
           <AppIcon name="history" :size="21" />
         </button>
         <AppearanceSwitch v-if="page === 'profile' && !chat" />
-        <button v-if="!userName" class="mobile-login" @click="emit('login')">登录</button>
-        <button v-else class="mobile-account" aria-label="用户中心" @click="emit('profile')">
+        <button v-if="!chat && !userName" class="mobile-login" @click="emit('login')">登录</button>
+        <button
+          v-else-if="!chat && userName"
+          class="mobile-account"
+          aria-label="用户中心"
+          @click="emit('profile')"
+        >
           {{ userName.slice(0, 1).toUpperCase() }}
         </button>
       </view>
@@ -116,6 +118,12 @@ const emit = defineEmits<{
     white-space: nowrap;
     text-overflow: ellipsis;
     animation: header-title 0.16s ease;
+  }
+  .mobile-chat-title {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    justify-content: center;
   }
   .mobile-actions {
     display: flex;

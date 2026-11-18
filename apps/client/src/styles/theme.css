@@ -3,8 +3,8 @@ page {
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 14px;
   line-height: 1.65;
-  background: #f3f4f6;
-  color: #262a30;
+  background: #e9edeb;
+  color: #253029;
 }
 view,
 text,
@@ -51,6 +51,23 @@ textarea:focus-visible,
   outline-offset: 3px;
 }
 /* #ifdef H5 */
+/* The H5 runtime ships its own uni-button stylesheet after the app CSS in dev. */
+.av-app :where(uni-button),
+.choice-layer :where(uni-button) {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  border-radius: 0;
+}
+.av-app :where(uni-button)::after,
+.choice-layer :where(uni-button)::after {
+  border: 0;
+}
+
 html,
 body,
 #app,
@@ -86,26 +103,28 @@ body {
 }
 /* #endif */
 .av-app {
-  --bg: #f3f4f6;
-  --surface: #f8f9fb;
-  --elevated: #f6f7f9;
-  --subtle: #eceef1;
-  --ink: #262a30;
-  --muted: #626b75;
-  --line: #e1e4e9;
-  --hover: #e8ebef;
-  --pressed: #e1e5ea;
-  --accent: #216b4b;
-  --accent-ink: #fff;
-  --accent-soft: #e8f2eb;
+  --bg: #e9edeb;
+  --surface: #eff2ef;
+  --elevated: #f0f3f1;
+  --subtle: #e1e7e3;
+  --ink: #253029;
+  --muted: #4d5b53;
+  --line: #d3dcd6;
+  --hover: #dfe7e2;
+  --pressed: #d1dfd6;
+  --accent: #246747;
+  --accent-ink: #f0f6f1;
+  --accent-hover: #1d5b3d;
+  --accent-pressed: #194c35;
+  --accent-soft: #dcebe0;
   --hero: #174b36;
   --hero-ink: #f6faf1;
-  --glass: rgba(247, 248, 250, 0.96);
+  --glass: rgba(234, 239, 235, 0.97);
   --danger: #b34038;
-  --danger-soft: #fff0ed;
+  --danger-soft: #f4e4e0;
   --warning: #805d25;
   --warning-soft: #faf2e1;
-  --focus: #77a88c;
+  --focus: #518360;
   --shadow: 0 8px 32px #233b2910;
   position: fixed;
   inset: 0;
@@ -119,26 +138,28 @@ body {
   color-scheme: light;
 }
 .av-app.theme-dark {
-  --bg: #101114;
-  --surface: #191a1e;
-  --elevated: #24262b;
-  --subtle: #222328;
-  --ink: #f4f4f5;
-  --muted: #c0c3cb;
-  --line: #303239;
-  --hover: #292b31;
-  --pressed: #33353c;
-  --accent: #f0f0f2;
-  --accent-ink: #17181c;
-  --accent-soft: #303239;
+  --bg: #151917;
+  --surface: #1e2320;
+  --elevated: #262c28;
+  --subtle: #242a26;
+  --ink: #e4ebe6;
+  --muted: #b0beb5;
+  --line: #344139;
+  --hover: #313d35;
+  --pressed: #3a4a40;
+  --accent: #87c3a0;
+  --accent-ink: #17271e;
+  --accent-hover: #99cfaf;
+  --accent-pressed: #79b38e;
+  --accent-soft: #2b3d33;
   --hero: #23272b;
   --hero-ink: #f5f5f7;
-  --glass: rgba(20, 21, 24, 0.97);
+  --glass: rgba(26, 31, 28, 0.97);
   --danger: #f1aaa4;
   --danger-soft: #38282a;
   --warning: #e5c895;
   --warning-soft: #322e26;
-  --focus: #a7b0bd;
+  --focus: #82af91;
   --shadow: 0 12px 32px #0004;
   color-scheme: dark;
 }
@@ -891,13 +912,13 @@ body {
 }
 
 .button-hover {
-  background-color: var(--subtle) !important;
+  background-color: var(--pressed) !important;
   color: var(--ink) !important;
 }
-.button.primary.button-hover {
-  background-color: var(--accent) !important;
+.button.primary.button-hover,
+.composer-send.button-hover {
+  background-color: var(--accent-pressed) !important;
   color: var(--accent-ink) !important;
-  opacity: 0.88;
 }
 .button.danger.button-hover {
   background-color: var(--danger-soft) !important;
@@ -921,10 +942,10 @@ uni-button {
   .av-app uni-button:not([disabled]):hover {
     background-color: var(--hover);
   }
-  .av-app .primary:not([disabled]):hover {
-    background-color: var(--accent);
+  .av-app .primary:not([disabled]):hover,
+  .av-app .composer-send:not([disabled]):hover {
+    background-color: var(--accent-hover);
     color: var(--accent-ink);
-    opacity: 0.9;
   }
   .av-app .rail-brand:hover {
     background-color: #34775d;
@@ -938,10 +959,10 @@ uni-button {
 .av-app uni-button:not([disabled]):active {
   background-color: var(--pressed);
 }
-.av-app .primary:not([disabled]):active {
-  background-color: var(--accent);
+.av-app .primary:not([disabled]):active,
+.av-app .composer-send:not([disabled]):active {
+  background-color: var(--accent-pressed);
   color: var(--accent-ink);
-  opacity: 0.84;
 }
 .dialog-close {
   display: inline-flex;
@@ -1041,9 +1062,9 @@ uni-button {
     border: 1px solid var(--control-line);
   }
   .av-app {
-    --control-line: #c5ccd4;
+    --control-line: #b7c6bc;
   }
   .av-app.theme-dark {
-    --control-line: #606570;
+    --control-line: #53685b;
   }
 }

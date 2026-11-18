@@ -49,7 +49,7 @@ def create_app(settings=None):
     case_locks = {}
     lock_guard = Lock()
 
-    app = FastAPI(title="AgriVision API", version="1.3.1-dev.1")
+    app = FastAPI(title="AgriVision API", version="1.4.0-beta.1")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.cors),
@@ -423,7 +423,10 @@ def create_app(settings=None):
                 case["crop_name"] = CROP_NAMES[body.crop]
                 if not case["images"]:
                     case["title"] = CROP_NAMES[body.crop] + "种植咨询"
-            case.update(body.model_dump(exclude_none=True))
+            fields = body.model_dump(exclude_none=True)
+            if body.conversation_title is not None:
+                fields["conversation_title"] = " ".join(body.conversation_title.split())
+            case.update(fields)
             case["updated_at"] = now()
             store.save(x_client_id, case)
             return serialize(case)

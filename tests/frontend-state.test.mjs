@@ -9,7 +9,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const bundled = await build({
   stdin: {
     contents:
-      "export * from './apps/client/src/lib/auth.ts'; export * from './apps/client/src/lib/preview.ts'; export * from './apps/client/src/lib/assets.ts'; export * from './apps/client/src/lib/theme.ts'",
+      "export * from './apps/client/src/lib/auth.ts'; export * from './apps/client/src/lib/preview.ts'; export * from './apps/client/src/lib/assets.ts'; export * from './apps/client/src/lib/theme.ts'; export * from './apps/client/src/lib/conversationTitle.ts'",
     resolveDir: root,
     loader: 'ts',
   },
@@ -222,6 +222,22 @@ test('system theme updates and manual overrides preserve the selected mode', () 
   assert.equal(app.resolvedTheme.value, 'dark')
   dispose()
   assert.equal(app.listeners.size, 0)
+})
+
+test('conversation title is independent of the case label and persists during preview', async () => {
+  const app = fresh()
+  const record = await app.previewRequest('/api/consultations', 'POST', {})
+  const path = '/api/cases/' + record.id
+  assert.equal(app.conversationTitle(record), '新咨询')
+  const updated = await app.previewRequest(path + '/messages', 'POST', {
+    text: '怎么看农药标签？',
+  })
+  assert.equal(app.conversationTitle(updated), '怎么看农药标签？')
+  await app.previewRequest(path + '/context', 'POST', { conversation_title: '  查标签  ' })
+  const renamed = await app.previewRequest(path, 'GET')
+  assert.equal(app.conversationTitle(renamed), '查标签')
+  assert.equal(renamed.title, record.title)
+  assert.equal(renamed.messages.length, updated.messages.length)
 })
 
 test('static preview resumes the original question after selection without a fake user message', async () => {

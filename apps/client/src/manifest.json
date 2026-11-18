@@ -2,8 +2,8 @@
   "name": "宛农植保助手",
   "appid": "__UNI__AGRIVISION",
   "description": "面向南阳的小麦、玉米、花生植保问诊助手",
-  "versionName": "1.3.1",
-  "versionCode": 131,
+  "versionName": "1.4.0",
+  "versionCode": 140,
   "transformPx": false,
   "vueVersion": "3",
   "uniStatistics": {

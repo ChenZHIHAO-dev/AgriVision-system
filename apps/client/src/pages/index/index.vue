@@ -2,6 +2,8 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import AppIcon from '../../components/AppIcon.vue'
 import MobileHeader from '../../components/MobileHeader.vue'
+import ChatTitle from '../../components/ChatTitle.vue'
+import { conversationTitle } from '../../lib/conversationTitle'
 import { safeHeaderTop } from '../../lib/mobileChrome'
 import AppearanceSwitch from '../../components/AppearanceSwitch.vue'
 import GlobalNavigation from '../../components/GlobalNavigation.vue'
@@ -90,6 +92,10 @@ const adminOpen = ref(false),
   regionOpen = ref(false),
   editOpen = ref(false),
   infoOpen = ref(false),
+  chatOptions = ref<'actions' | 'rename' | null>(null),
+  renameValue = ref(''),
+  renaming = ref(false),
+  renameError = ref(''),
   deleteTarget = ref<CaseRecord | null>(null)
 const authOpen = ref(false),
   authMode = ref<'login' | 'register'>('login'),
@@ -105,15 +111,13 @@ const editStage = ref('不清楚'),
   editLocation = ref(''),
   editNote = ref(''),
   keyboardHeight = ref(0)
-const homeSection = ref<'recent' | 'resources'>('recent')
+const homeSection = ref<'recent' | 'resources' | 'news'>('recent')
 const mobileSafeTop = ref(0)
 const leavingChat = ref(false)
 let backTimer: ReturnType<typeof setTimeout> | undefined
 function mobileBack() {
   if (chatMode.value) backView()
-  else if (tab.value === 'home' && homeSection.value === 'resources') {
-    homeSection.value = 'recent'
-  } else navigate(tab.value === 'history' ? 'home' : 'profile')
+  else navigate(tab.value === 'history' ? 'home' : 'profile')
 }
 const isMobile = ref(uni.getSystemInfoSync().windowWidth <= 760)
 const historyDrawerOpen = ref(false),
@@ -197,10 +201,8 @@ const contextNeeded = computed<FollowUp | null>(() => {
 })
 const currentReceipt = computed(() => (current.value ? recognitionFor(current.value) : undefined))
 const title = computed(() =>
-  chatMode.value
-    ? current.value?.crop
-      ? current.value.crop_name + '咨询'
-      : '新咨询'
+  chatMode.value && current.value
+    ? conversationTitle(current.value)
     : {
         home: '首页',
         identify: '拍照问诊',
@@ -210,11 +212,17 @@ const title = computed(() =>
         settings: '设置',
       }[tab.value],
 )
+const emptyChat = computed(
+  () => !current.value?.messages.length && !currentReceipt.value?.image_received && !sending.value,
+)
+const cleanRename = computed(() => renameValue.value.trim().replace(/\s+/g, ' '))
 const filteredRecords = computed(() =>
   records.value.filter(
     (record) =>
       (filter.value === 'all' || record.crop === filter.value) &&
-      (record.title + record.note + record.crop_name).includes(query.value.trim()),
+      (conversationTitle(record) + record.title + record.note + record.crop_name).includes(
+        query.value.trim(),
+      ),
   ),
 )
 const filteredCards = computed(() =>
@@ -570,6 +578,7 @@ async function addPhoto(path: string) {
 }
 async function scrollChat() {
   scrollAnchor.value = ''
+  if (emptyChat.value) return
   await nextTick()
   scrollAnchor.value = 'chat-end'
 }
@@ -882,6 +891,53 @@ async function sendMessage(raw = chatText.value) {
     scrollChat()
   }
 }
+function beginRename() {
+  if (!current.value) return
+  renameValue.value = conversationTitle(current.value)
+  renameError.value = ''
+  chatOptions.value = 'rename'
+}
+async function renameConversation() {
+  const id = current.value?.id
+  if (!id || !cleanRename.value || renaming.value) return
+  renaming.value = true
+  renameError.value = ''
+  try {
+    const updated = await request<CaseRecord>(`/api/cases/${id}/context`, 'POST', {
+      conversation_title: cleanRename.value,
+    })
+    if (current.value?.id === id) current.value = updated
+    if (retainedCase.value?.id === id) retainedCase.value = updated
+    if (lastPhotoCase.value?.id === id) lastPhotoCase.value = updated
+    chatOptions.value = null
+    showToast('对话已重命名')
+    await refresh()
+  } catch (value) {
+    renameError.value = value instanceof Error ? value.message : '保存失败，请重试'
+  } finally {
+    renaming.value = false
+  }
+}
+async function openChatDetails(kind: 'info' | 'result') {
+  chatOptions.value = null
+  await nextTick()
+  if (kind === 'result') inspectResult()
+  else infoOpen.value = true
+}
+function copyConversation() {
+  const record = current.value
+  if (!record?.messages.length) return
+  const transcript = record.messages.map(
+    (message) => (message.role === 'user' ? '我' : '宛农助手') + '：' + message.text,
+  )
+  chatOptions.value = null
+  uni.setClipboardData({
+    data: [conversationTitle(record), ...transcript].join('\n\n'),
+    showToast: false,
+    success: () => showToast('对话文字已复制'),
+    fail: () => showToast('暂时无法复制，请重试'),
+  })
+}
 function editCase() {
   if (!current.value) return
   infoOpen.value = false
@@ -1069,20 +1125,15 @@ function newFromDrawer() {
 
     <view class="main-shell">
       <MobileHeader
-        :title="
-          tab === 'home' && !chatMode
-            ? homeSection === 'resources'
-              ? '参考资料'
-              : '工作台'
-            : title
-        "
+        :title="!chatMode && tab === 'home' ? '工作台' : title"
         :page="tab"
         :chat="chatMode"
         :back-label="backLabel"
         :user-name="user?.name"
         :history-open="historyDrawerOpen"
         :safe-top="mobileSafeTop"
-        :resources="homeSection === 'resources'"
+        :chat-options-open="!!chatOptions"
+        @options="chatOptions = 'actions'"
         @back="mobileBack"
         @history="toggleNavigation"
         @login="openAuth()"
@@ -1106,7 +1157,13 @@ function newFromDrawer() {
               工作台
             </button>
             <text v-if="!chatMode" class="desktop-only crumb-divider">/</text>
-            <text class="topbar-title">{{ title }}</text>
+            <ChatTitle
+              v-if="chatMode"
+              :title="title"
+              :expanded="!!chatOptions"
+              @open="chatOptions = 'actions'"
+            />
+            <text v-else class="topbar-title">{{ title }}</text>
           </view>
         </view>
         <view class="topbar-actions">
@@ -1117,20 +1174,6 @@ function newFromDrawer() {
           <button v-else class="account-button" aria-label="用户中心" @click="navigate('profile')">
             <text class="avatar">{{ user.name.slice(0, 1).toUpperCase() }}</text
             ><text class="account-name">{{ user.name }}</text>
-          </button>
-        </view>
-      </view>
-      <view v-if="chatMode && current" class="chat-context-bar">
-        <text
-          >{{ current.crop ? current.crop_name : '文字咨询'
-          }}<text v-if="current.stage !== '不清楚'"> · {{ current.stage }}</text></text
-        >
-        <view>
-          <button v-if="current.images.length" class="soft-action" @click="inspectResult">
-            <AppIcon name="image" :size="16" /><text>识别结果</text>
-          </button>
-          <button class="soft-action" aria-label="问诊信息" @click="infoOpen = true">
-            <AppIcon name="info" :size="17" /><text>问诊信息</text>
           </button>
         </view>
       </view>
@@ -1146,19 +1189,13 @@ function newFromDrawer() {
       <view class="workspace">
         <view v-if="chatMode && current" class="case-area" :class="{ 'is-leaving': leavingChat }">
           <view class="chat-workspace">
-            <view v-if="mode === 'preview'" class="chat-mode-note"
-              ><text>🌱 当前提供植保资料参考，智能服务暂未连接</text
-              ><button v-if="!user" @click="openAuth('登录后，新的问诊与咨询会保存到你的账户。')">
-                登录保存
-              </button></view
-            >
             <scroll-view
               scroll-y
               class="message-scroll"
               :scroll-into-view="scrollAnchor"
               :scroll-with-animation="true"
             >
-              <view class="message-stream">
+              <view class="message-stream" :class="{ 'is-empty': emptyChat }">
                 <RecognitionSummary
                   v-if="
                     currentReceipt?.image_received &&
@@ -1167,7 +1204,7 @@ function newFromDrawer() {
                   :result="currentReceipt"
                   compact
                 />
-                <view v-if="!current.messages.length && !sending" class="chat-welcome"
+                <view v-if="emptyChat" class="chat-welcome"
                   ><view class="welcome-mark">🌱</view
                   ><text class="welcome-title">咨询作物问题</text
                   ><text class="muted">描述症状、询问种植管理，或添加照片进行识别。</text
@@ -1179,6 +1216,8 @@ function newFromDrawer() {
                     >
                       {{ text }} <text>↗</text>
                     </button></view
+                  ><text v-if="mode === 'preview'" class="welcome-preview"
+                    >预览使用本地植保资料</text
                   ></view
                 >
                 <view
@@ -1289,7 +1328,7 @@ function newFromDrawer() {
                 <view v-if="sending" class="responding"
                   ><view class="spinner" /><text>正在整理资料…</text></view
                 >
-                <view id="chat-end" class="chat-end" />
+                <view v-if="!emptyChat" id="chat-end" class="chat-end" />
               </view>
             </scroll-view>
             <view class="composer-dock"
@@ -1314,24 +1353,31 @@ function newFromDrawer() {
           </view>
         </view>
 
-        <KnowledgeLibrary
-          v-if="isMobile && tab === 'home' && homeSection === 'resources'"
+        <DashboardHome
+          v-if="isMobile && tab === 'home'"
           v-show="!chatMode"
-          reading
+          v-model:section="homeSection"
+          mobile
+          @consult="startConsultation()"
+          :records="records"
           :cards="cards"
-          @open="selectedCard = $event"
+          :logged-in="!!user"
+          @card="selectedCard = $event"
           @source="openSource"
+          @capture="navigate('identify')"
+          @open="openConversation"
+          @history="navigate('history')"
+          @login="openAuth('登录后，后续问诊会保存到你的账户。')"
         />
         <scroll-view
-          v-show="!chatMode && !(isMobile && tab === 'home' && homeSection === 'resources')"
+          v-show="!chatMode && !(isMobile && tab === 'home')"
           scroll-y
           class="page-scroll"
         >
           <view :key="tab" class="page-content">
-            <template v-if="tab === 'home'"
+            <template v-if="tab === 'home' && !isMobile"
               ><DashboardHome
                 v-model:section="homeSection"
-                :mobile="isMobile"
                 @consult="startConsultation()"
                 :records="records"
                 :cards="cards"
@@ -1339,7 +1385,7 @@ function newFromDrawer() {
                 @card="selectedCard = $event"
                 @source="openSource"
                 @capture="navigate('identify')"
-                @open="openCase"
+                @open="openConversation"
                 @history="navigate('history')"
                 @login="openAuth('登录后，后续问诊会保存到你的账户。')"
             /></template>
@@ -1418,7 +1464,7 @@ function newFromDrawer() {
                 ><view v-for="record in filteredRecords" :key="record.id" class="history-row"
                   ><button class="history-main" @click="openCase(record.id)">
                     <image :src="imageUrl(record)" mode="aspectFill" /><view class="flex-one"
-                      ><text class="history-title">{{ record.title }}</text
+                      ><text class="history-title">{{ conversationTitle(record) }}</text
                       ><text class="muted small"
                         >{{ record.crop_name }} · {{ dateLabel(record.updated_at) }}</text
                       ></view
@@ -1649,16 +1695,66 @@ function newFromDrawer() {
       ></UiDialog
     >
     <UiDialog
+      v-if="chatMode && chatOptions && current"
+      :title="chatOptions === 'rename' ? '重命名对话' : '对话选项'"
+      floating
+      :focus-target="chatOptions === 'rename' ? 'conversation-name-field' : ''"
+      @close="!renaming && (chatOptions = null)"
+    >
+      <view v-if="chatOptions === 'actions'" class="chat-action-list">
+        <button @click="beginRename"><AppIcon name="file" :size="18" /><text>重命名</text></button>
+        <button @click="openChatDetails('info')">
+          <AppIcon name="info" :size="18" /><text>问诊资料</text>
+        </button>
+        <button v-if="current.images.length" @click="openChatDetails('result')">
+          <AppIcon name="image" :size="18" /><text>识别结果</text>
+        </button>
+        <button v-if="current.messages.length" @click="copyConversation">
+          <AppIcon name="copy" :size="18" /><text>复制对话文字</text>
+        </button>
+      </view>
+      <view v-else id="conversation-name-field" class="conversation-name-field">
+        <text class="field-label">对话名称</text>
+        <input
+          v-model="renameValue"
+          aria-label="对话名称"
+          type="text"
+          :maxlength="50"
+          :disabled="renaming"
+          :adjust-position="false"
+          confirm-type="done"
+          @confirm="renameConversation"
+        />
+        <text v-if="renameError" class="form-error" role="alert">{{ renameError }}</text>
+      </view>
+      <template v-if="chatOptions === 'rename'" #footer>
+        <button
+          class="button primary full-width"
+          :disabled="!cleanRename || renaming"
+          @click="renameConversation"
+        >
+          {{ renaming ? '正在保存…' : '保存名称' }}
+        </button>
+      </template>
+    </UiDialog>
+    <UiDialog
       v-if="infoOpen && current"
       title="本次问诊资料"
-      :subtitle="current.crop_name + ' · ' + current.location"
+      :subtitle="conversationTitle(current)"
       @close="infoOpen = false"
       ><view class="settings-row"
-        ><text>生育期</text><text>{{ current.stage }}</text></view
+        ><text>作物</text><text>{{ current.crop ? current.crop_name : '未填写' }}</text></view
+      ><view class="settings-row"
+        ><text>生育期</text
+        ><text>{{
+          !current.stage || current.stage === '不清楚' ? '未填写' : current.stage
+        }}</text></view
+      ><view v-if="current.location" class="settings-row"
+        ><text>种植地区</text><text>{{ current.location }}</text></view
       ><view class="settings-row"
         ><text>建立时间</text><text>{{ dateLabel(current.created_at) }}</text></view
       ><text v-if="current.note" class="article-summary">{{ current.note }}</text
-      ><view class="info-photos"
+      ><view v-if="current.images.length" class="info-photos"
         ><button
           v-for="image in current.images"
           :key="image.id"
@@ -1941,24 +2037,6 @@ function newFromDrawer() {
   min-height: 0;
   overflow: hidden;
 }
-.chat-mode-note {
-  flex-shrink: 0;
-  text-align: center;
-  font-size: 10px;
-  color: var(--muted);
-  padding: 8px 15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-}
-.chat-mode-note > button {
-  color: var(--accent);
-  font-size: 10px;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  white-space: nowrap;
-}
 .message-scroll {
   flex: 1;
   min-height: 0;
@@ -1971,13 +2049,58 @@ function newFromDrawer() {
   margin: 0 auto;
   padding: 25px 27px 10px;
 }
+.message-stream.is-empty {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.welcome-preview {
+  font-size: 11px;
+  color: var(--muted);
+}
+.chat-action-list {
+  display: grid;
+  gap: 5px;
+}
+.chat-action-list > button {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  gap: 11px;
+  text-align: left;
+  padding: 9px 12px;
+  border-radius: 10px;
+  color: var(--ink);
+}
+.chat-action-list > button:hover {
+  background: var(--hover);
+}
+.chat-action-list > button:active {
+  background: var(--pressed);
+}
+.conversation-name-field {
+  display: grid;
+  gap: 8px;
+}
+.conversation-name-field input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--control-line);
+  border-radius: 10px;
+  background: var(--subtle);
+  color: var(--ink);
+}
 .chat-welcome {
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
   max-width: 510px;
-  margin: 35px auto 22px;
+  width: 100%;
+  margin: 12px auto 25px;
   gap: 14px;
 }
 .welcome-mark {
@@ -2296,16 +2419,6 @@ function newFromDrawer() {
     width: 32px;
     min-width: 32px;
   }
-  .chat-mode-note {
-    font-size: 9px;
-    line-height: 1.6;
-    padding: 9px 12px;
-    gap: 8px;
-    justify-content: space-between;
-  }
-  .chat-mode-note > button {
-    font-size: 9px;
-  }
   .message-stream {
     padding: 20px 17px 10px;
   }
@@ -2572,30 +2685,6 @@ function newFromDrawer() {
   padding: 8px;
   border-radius: 9px;
 }
-.chat-context-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  padding: 5px 26px;
-  border-bottom: 1px solid var(--line);
-  flex-shrink: 0;
-  color: var(--muted);
-  font-size: 11px;
-}
-.chat-context-bar > view {
-  display: flex;
-  gap: 4px;
-}
-.soft-action {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 34px;
-  padding: 7px 9px;
-  border-radius: 9px;
-  font-size: 11px;
-}
 .context-options > button {
   border-color: transparent;
   background: var(--subtle);
@@ -2660,15 +2749,6 @@ function newFromDrawer() {
   .is-chat :deep(.appearance-switch > text) {
     display: none;
   }
-  .chat-context-bar {
-    padding: 3px 12px 6px 15px;
-    font-size: 10px;
-  }
-  .soft-action {
-    font-size: 10px;
-    gap: 4px;
-    padding: 6px 7px;
-  }
   .composer-dock {
     padding-bottom: max(12px, env(safe-area-inset-bottom));
   }
@@ -2680,10 +2760,6 @@ function newFromDrawer() {
   }
   .main-shell {
     padding-top: calc(54px + var(--mobile-safe-top, env(safe-area-inset-top, 0px)));
-  }
-  .chat-context-bar {
-    min-height: 39px;
-    padding-top: 2px;
   }
   .keyboard-open .composer-dock {
     transform: translateY(calc(-1 * var(--keyboard-inset, 0px)));

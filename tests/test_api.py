@@ -63,6 +63,25 @@ def test_demo_chat_context_and_deletion_are_bound_to_owner(client):
     assert client.get(f'/api/cases/{case["id"]}', headers=OWNER).status_code == 404
 
 
+def test_conversation_rename_is_saved_for_owner_without_changing_diagnosis(client):
+    token = client.post(
+        "/api/auth/login", headers=OWNER, json={"username": "admin", "password": "admin123"}
+    ).json()["access_token"]
+    headers = {**OWNER, "Authorization": "Bearer " + token}
+    record = client.post("/api/cases/demo", headers=headers, json={"crop": "maize"}).json()
+    path = "/api/cases/" + record["id"]
+    rename = {"conversation_title": "  秋季玉米叶片观察  "}
+    assert client.post(path + "/context", headers=OTHER, json=rename).status_code == 404
+    assert client.post(
+        path + "/context", headers=headers, json={"conversation_title": "   "}
+    ).status_code == 422
+    updated = client.post(path + "/context", headers=headers, json=rename).json()
+    assert updated["conversation_title"] == "秋季玉米叶片观察"
+    assert updated["title"] == record["title"]
+    assert client.get(path, headers=headers).json()["conversation_title"] == updated["conversation_title"]
+    assert client.get("/api/cases", headers=headers).json()["items"][0]["conversation_title"] == updated["conversation_title"]
+
+
 def test_invalid_images_and_crop_fail_before_case_creation(client):
     assert client.post("/api/cases", headers=OWNER, data={"crop": "wheat"}, files={"file": ("bad.jpg", b"not an image", "image/jpeg")}).status_code == 422
     assert client.post("/api/cases", headers=OWNER, data={"crop": "rice"}, files={"file": ("leaf.jpg", picture(), "image/jpeg")}).status_code == 422

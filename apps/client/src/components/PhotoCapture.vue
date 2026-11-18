@@ -2,7 +2,6 @@
 import { computed } from 'vue'
 import AppIcon from './AppIcon.vue'
 import { imageUrl, type Crop, type Meta, type CaseRecord } from '../lib/api'
-import { asset } from '../lib/assets'
 const props = defineProps<{
   crop: Crop
   models: Meta['models']
@@ -49,7 +48,7 @@ const scope = computed(() =>
           :aria-pressed="crop === id"
           @click="emit('crop', id)"
         >
-          <image :src="asset('crops/' + id + '.png')" mode="aspectFit" /><text>{{ name }}</text>
+          <AppIcon :name="id" :size="27" /><text>{{ name }}</text>
         </button></view
       >
       <view class="camera-stage"
@@ -119,21 +118,6 @@ const scope = computed(() =>
   margin-top: 9px;
   line-height: 1.8;
 }
-.consult-shortcut {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  min-height: 42px;
-  padding: 9px 13px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  color: var(--ink);
-  font-size: 13px;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
 .photo-panel {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -161,14 +145,9 @@ const scope = computed(() =>
   border: 1px solid transparent;
 }
 .crop-choices > button.selected {
-  background: var(--surface);
-  color: var(--ink);
+  background: var(--accent-soft);
+  color: var(--accent);
   border-color: var(--line);
-  box-shadow: 0 2px 5px #00000005;
-}
-.crop-choices image {
-  width: 22px;
-  height: 27px;
 }
 .camera-stage {
   display: flex;
@@ -258,12 +237,6 @@ const scope = computed(() =>
     font-size: 11px;
     line-height: 1.8;
   }
-  .consult-shortcut {
-    min-height: 40px;
-    padding: 8px 11px;
-    font-size: 12px;
-    gap: 5px;
-  }
   .crop-choices {
     margin: 15px 15px 0;
   }
@@ -337,7 +310,8 @@ const scope = computed(() =>
   align-items: center;
   gap: 13px;
   text-align: left;
-  background: var(--accent-soft);
+  background: var(--surface);
+  border: 1px solid var(--line);
   padding: 17px;
   width: 100%;
   border-radius: 16px;
@@ -347,7 +321,7 @@ const scope = computed(() =>
   width: 43px;
   height: 43px;
   border-radius: 13px;
-  background: var(--surface);
+  background: var(--subtle);
   display: flex;
   align-items: center;
   justify-content: center;

@@ -217,6 +217,11 @@ export async function previewRequest(
     return { ok: true }
   }
   if (match[2] === 'context') {
+    if (data.conversation_title !== undefined) {
+      const title = data.conversation_title.trim().replace(/\s+/g, ' ')
+      if (!title || Array.from(title).length > 50) throw new Error('请输入 1–50 字的对话名称')
+      record.conversation_title = title
+    }
     for (const key of ['stage', 'location', 'note', 'variety'] as const)
       if (data[key] !== undefined) record[key] = data[key]
     if (data.crop) {

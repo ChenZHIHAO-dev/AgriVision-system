@@ -111,13 +111,16 @@ const html = computed(() => renderMarkdown(props.content))
 .markdown-message :deep(.md-th),
 .markdown-message :deep(.md-td) {
   border: 1px solid var(--line);
-  padding: 8px 11px;
+  padding: 10px 12px;
+  line-height: 1.7;
   text-align: left;
+  vertical-align: middle;
   white-space: normal;
   min-width: 90px;
 }
 .markdown-message :deep(.md-th) {
   background: var(--subtle);
+  padding-block: 12px;
   font-weight: 600;
 }
 .markdown-message :deep(.md-hr) {
