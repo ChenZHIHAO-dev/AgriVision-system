@@ -34,9 +34,9 @@ const glassStyle = computed(() => ({
     (glassPhase.value === 'dragging' ? '1.035' : '1') +
     ')',
   background:
-    resolvedTheme.value === 'dark' ? 'rgba(129, 145, 169, .26)' : 'rgba(255, 255, 255, .56)',
+    resolvedTheme.value === 'dark' ? 'rgba(149, 149, 149, .26)' : 'rgba(255, 255, 255, .56)',
   borderColor:
-    resolvedTheme.value === 'dark' ? 'rgba(206, 221, 242, .27)' : 'rgba(255, 255, 255, .82)',
+    resolvedTheme.value === 'dark' ? 'rgba(223, 223, 223, .27)' : 'rgba(255, 255, 255, .82)',
 }))
 type Point = { x: number; y: number }
 let bounds: DockBounds | null = null

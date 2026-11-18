@@ -56,8 +56,8 @@ defineProps<{ src: string }>()
   right: 10px;
   height: 2px;
   top: 0;
-  background: #b1d8c5;
-  box-shadow: 0 0 15px #c1e4d5;
+  background: var(--scan-beam);
+  box-shadow: 0 0 15px var(--scan-glow);
   animation: photo-scan 1.8s ease-in-out infinite alternate;
 }
 .scan-corners {

@@ -110,6 +110,7 @@ body {
   --ink: #253029;
   --muted: #4d5b53;
   --line: #d3dcd6;
+  --control-line: #b7c6bc;
   --hover: #dfe7e2;
   --pressed: #d1dfd6;
   --accent: #246747;
@@ -119,6 +120,10 @@ body {
   --accent-soft: #dcebe0;
   --hero: #174b36;
   --hero-ink: #f6faf1;
+  --brand-fill: #28654e;
+  --brand-hover: #34775d;
+  --scan-beam: #b1d8c5;
+  --scan-glow: #c1e4d5;
   --glass: rgba(234, 239, 235, 0.97);
   --danger: #b34038;
   --danger-soft: #f4e4e0;
@@ -138,28 +143,33 @@ body {
   color-scheme: light;
 }
 .av-app.theme-dark {
-  --bg: #151917;
-  --surface: #1e2320;
-  --elevated: #262c28;
-  --subtle: #242a26;
-  --ink: #e4ebe6;
-  --muted: #b0beb5;
-  --line: #344139;
-  --hover: #313d35;
-  --pressed: #3a4a40;
-  --accent: #87c3a0;
-  --accent-ink: #17271e;
-  --accent-hover: #99cfaf;
-  --accent-pressed: #79b38e;
-  --accent-soft: #2b3d33;
-  --hero: #23272b;
-  --hero-ink: #f5f5f7;
-  --glass: rgba(26, 31, 28, 0.97);
+  --bg: #111111;
+  --surface: #1a1a1a;
+  --elevated: #232323;
+  --subtle: #242424;
+  --ink: #e6e6e6;
+  --muted: #b4b4b4;
+  --line: #353535;
+  --control-line: #555555;
+  --hover: #303030;
+  --pressed: #3b3b3b;
+  --accent: #dedede;
+  --accent-ink: #1a1a1a;
+  --accent-hover: #ececec;
+  --accent-pressed: #cccccc;
+  --accent-soft: #2b2b2b;
+  --hero: #242424;
+  --hero-ink: #efefef;
+  --brand-fill: #333333;
+  --brand-hover: #454545;
+  --scan-beam: #cccccc;
+  --scan-glow: #cccccc80;
+  --glass: rgba(25, 25, 25, 0.97);
   --danger: #f1aaa4;
   --danger-soft: #38282a;
   --warning: #e5c895;
   --warning-soft: #322e26;
-  --focus: #82af91;
+  --focus: #a3a3a3;
   --shadow: 0 12px 32px #0004;
   color-scheme: dark;
 }
@@ -948,7 +958,7 @@ uni-button {
     color: var(--accent-ink);
   }
   .av-app .rail-brand:hover {
-    background-color: #34775d;
+    background-color: var(--brand-hover);
   }
   .av-app .profile-logout:hover {
     background-color: var(--danger-soft);
@@ -1060,11 +1070,5 @@ uni-button {
   .back-button,
   .mobile-back {
     border: 1px solid var(--control-line);
-  }
-  .av-app {
-    --control-line: #b7c6bc;
-  }
-  .av-app.theme-dark {
-    --control-line: #53685b;
   }
 }

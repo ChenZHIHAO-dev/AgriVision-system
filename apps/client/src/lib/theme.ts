@@ -26,7 +26,7 @@ export function observeSystemTheme() {
       document.documentElement.style.colorScheme = value
       document
         .querySelector('meta[name="theme-color"]')
-        ?.setAttribute('content', value === 'dark' ? '#151917' : '#e9edeb')
+        ?.setAttribute('content', value === 'dark' ? '#111111' : '#e9edeb')
     },
     { immediate: true, flush: 'sync' },
   )

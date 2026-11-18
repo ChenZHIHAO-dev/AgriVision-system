@@ -82,7 +82,7 @@ const emit = defineEmits<{ navigate: [page: MainPage]; consult: []; toggle: [] }
   align-items: center;
   justify-content: center;
   border-radius: 14px;
-  background: #28654e;
+  background: var(--brand-fill);
   margin-bottom: 29px;
 }
 .rail-primary,
