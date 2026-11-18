@@ -1,4 +1,4 @@
-> **1.3 手机交互已完成本地验证，发布核验中。** 当前规则与真机待办见 [1.3 清单](docs/mobile-interactions-v1.3.md)。
+> **1.3 手机交互已发布并完成验证。** 当前规则与真机待办见 [1.3 清单](docs/mobile-interactions-v1.3.md)。
 
 # AgriVision 宛农植保助手
 
@@ -25,7 +25,7 @@
 
 浏览器检查：390×844、390×650、1280×800；键盘以 390×480 可视区域模拟。实际 iOS / Android 软键盘、触摸长按、微信胶囊和相机仍需真机验收。数据见 [UI 验证](docs/validation/ui-1.3.json)。
 
-本轮只更新客户端，服务端接口版本仍为 1.2.2-dev.1，识别模型与 DeepSeek 服务沿用现有实现。发布状态：本地验证完成，GitHub 部署待本轮推送后核验。
+本轮只更新客户端，服务端接口版本仍为 1.2.2-dev.1，识别模型与 DeepSeek 服务沿用现有实现。发布来源：`61cdb3f`。[GitHub 构建与部署](https://github.com/ChenZHIHAO-dev/AgriVision-system/actions/runs/44227095684)成功，12 项线上资源与本机构建一致，见 [公开资源校验](docs/validation/pages-1.3.json)。Pages 仍为前端预览。
 
 ## 开发记录 · 2026-11-18 / 1.2.2
 
