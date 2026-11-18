@@ -14,7 +14,7 @@ from .attachments import extract_document
 from .auth import AuthManager
 from .chat import Chat
 from .config import Settings
-from .context import STAGES, fill_explicit_context, follow_up
+from .context import STAGES, fill_explicit_context, follow_up, is_general_question
 from .evidence import aggregate_images
 from .imaging import prepare_image
 from .intake import context_reply, pending_question
@@ -49,7 +49,7 @@ def create_app(settings=None):
     case_locks = {}
     lock_guard = Lock()
 
-    app = FastAPI(title="AgriVision API", version="1.2.2-dev.1")
+    app = FastAPI(title="AgriVision API", version="1.3.1-dev.1")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.cors),
@@ -724,7 +724,8 @@ def create_app(settings=None):
                 and case.get("crop")
             ):
                 case["stage"] = "暂不确定"
-            fill_explicit_context(case, text)
+            if not is_general_question(text):
+                fill_explicit_context(case, text)
             documents = [
                 document
                 for document in case.get("documents", [])
@@ -739,7 +740,7 @@ def create_app(settings=None):
                 raise HTTPException(422, "附件不属于这次问诊")
             if case.get("stage") in ("", "不清楚"):
                 for previous in reversed(history):
-                    if previous["role"] == "user":
+                    if previous["role"] == "user" and not is_general_question(previous["text"]):
                         fill_explicit_context(case, previous["text"])
                     if case.get("stage") not in ("", "不清楚"):
                         break

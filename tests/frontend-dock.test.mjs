@@ -43,10 +43,10 @@ test('long press previews a drag but only release chooses its destination once',
   })
 })
 
-test('moving before the hold threshold cancels rather than accidentally changing pages', () => {
+test('vertical motion before the hold threshold cancels accidental navigation', () => {
   const gesture = new DockGesture()
   gesture.start(0, 73, 795, bounds, 0)
-  gesture.move(120, 795, 100)
+  gesture.move(75, 755, 100)
   assert.equal(gesture.phase, 'cancelled')
   assert.equal(gesture.activate(500), false)
   assert.deepEqual(gesture.finish(317, 795, 600), {

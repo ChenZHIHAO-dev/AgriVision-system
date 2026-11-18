@@ -15,14 +15,12 @@ const options = [
   {
     value: 'deepseek-flash',
     label: 'DeepSeek Flash',
-    symbol: '⚡',
-    description: '日常种植咨询，轻快响应',
+    description: '日常咨询与公开资料检索',
   },
   {
     value: 'deepseek-v4-pro',
     label: 'DeepSeek V4 Pro',
-    symbol: '✦',
-    description: '复杂问题分析与资料问答',
+    description: '复杂问题与长资料分析',
   },
 ]
 </script>
@@ -31,7 +29,7 @@ const options = [
     :model-value="modelValue"
     :options="options"
     label="选择对话模型"
-    caption="切换模型后，当前对话继续保留"
+    caption=""
     compact
     above
     :disabled="disabled"
@@ -62,7 +60,6 @@ const options = [
           </view>
         </button>
       </view>
-      <text class="web-footnote">图像由独立识别模型处理；对话模型只接收文字与识别回执。</text>
     </template>
   </ChoicePicker>
 </template>
@@ -142,13 +139,6 @@ const options = [
 .web-switch.on > .web-knob {
   transform: translateX(14px);
   background: var(--accent-ink);
-}
-.web-footnote {
-  display: block;
-  margin-top: 7px;
-  font-size: 10px;
-  color: var(--muted);
-  line-height: 1.8;
 }
 @media (prefers-reduced-motion: reduce) {
   .web-switch,

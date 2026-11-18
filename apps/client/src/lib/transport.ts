@@ -7,36 +7,64 @@ href = typeof window !== 'undefined' ? window.location?.href || '' : ''
 // #endif
 const initial = resolveConnection({
   href,
+  // #ifndef MP-WEIXIN
   savedMode: uni.getStorageSync('agrivision.connection.mode.v2'),
   savedBase: uni.getStorageSync('agrivision.connection.api.v2'),
+  // #endif
   environmentMode: import.meta.env.VITE_DATA_MODE,
   environmentBase: import.meta.env.VITE_API_BASE_URL,
 })
+// #ifndef MP-WEIXIN
 if (initial.explicit) {
   uni.setStorageSync('agrivision.connection.mode.v2', initial.mode)
   uni.setStorageSync('agrivision.connection.api.v2', initial.base)
 }
+// #endif
+// #ifdef MP-WEIXIN
+if (import.meta.env.VITE_WECHAT_PACKAGE && initial.mode === 'live') {
+  const sessionOriginKey = 'agrivision.session.origin.v1'
+  if (uni.getStorageSync(sessionOriginKey) !== initial.base) {
+    uni.removeStorageSync(SESSION)
+    uni.setStorageSync(sessionOriginKey, initial.base)
+  }
+}
+// #endif
 const temporaryClient =
   'av_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 16)
 export function clientId() {
   return temporaryClient
 }
 export function dataMode(): DataMode {
-  return uni.getStorageSync('agrivision.connection.mode.v2') || initial.mode
+  // #ifndef MP-WEIXIN
+  const saved = uni.getStorageSync('agrivision.connection.mode.v2')
+  if (saved === 'preview' || saved === 'live') return saved
+  // #endif
+  return initial.mode
 }
 export function setDataMode(mode: DataMode) {
+  // #ifdef MP-WEIXIN
+  if (mode !== initial.mode) throw new Error('小程序的连接模式由打包配置指定')
+  // #endif
+  // #ifndef MP-WEIXIN
   uni.setStorageSync('agrivision.connection.mode.v2', mode)
+  // #endif
 }
 export function apiBase() {
-  return String(uni.getStorageSync('agrivision.connection.api.v2') || initial.base).replace(
-    /\/$/,
-    '',
-  )
+  // #ifndef MP-WEIXIN
+  const saved = uni.getStorageSync('agrivision.connection.api.v2')
+  if (typeof saved === 'string' && saved) return saved.replace(/\/$/, '')
+  // #endif
+  return initial.base.replace(/\/$/, '')
 }
 export function setApiBase(url: string) {
+  // #ifdef MP-WEIXIN
+  if (url.replace(/\/$/, '') !== apiBase()) throw new Error('小程序的服务器地址由打包配置指定')
+  // #endif
+  // #ifndef MP-WEIXIN
   if (!/^https?:\/\/[^\s/?#]+(?::\d+)?(?:\/[^?#]*)?$/.test(url))
     throw new Error('请输入有效的 http 或 https 服务地址')
   uni.setStorageSync('agrivision.connection.api.v2', url.replace(/\/$/, ''))
+  // #endif
 }
 export function storedSession(): { user: unknown; expires: number; accessToken?: string } | null {
   try {

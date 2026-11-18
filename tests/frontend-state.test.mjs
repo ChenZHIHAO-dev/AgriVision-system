@@ -162,6 +162,19 @@ test('medication questions do not invent a product or dose in the local fallback
 })
 test('asset URLs keep the GitHub Pages base path', () =>
   assert.equal(fresh().asset('crops/wheat.png'), '/AgriVision-system/static/crops/wheat.png'))
+test('general questions can be sent from an empty consultation without crop intake', async () => {
+  const app = fresh()
+  const record = await app.previewRequest('/api/consultations', 'POST', {})
+  for (const text of ['如何拍清楚症状？', '怎么看农药标签？', '生育期是什么意思？']) {
+    const updated = await app.previewRequest('/api/cases/' + record.id + '/messages', 'POST', {
+      text,
+    })
+    assert.equal(updated.crop, null)
+    assert.equal(updated.messages.at(-1).provider, 'preview')
+    assert.equal(updated.messages.at(-1).follow_up, undefined)
+    assert.equal(updated.pending_question, undefined)
+  }
+})
 test('text consultation collects crop and growth stage without repeating a filled field', async () => {
   const app = fresh()
   let record = await app.previewRequest('/api/consultations', 'POST', {})

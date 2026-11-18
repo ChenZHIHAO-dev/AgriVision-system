@@ -40,19 +40,24 @@ export class DockGesture {
   move(x: number, y: number, now: number) {
     if (this.phase === 'idle' || this.phase === 'cancelled') return
     this.latestX = x
-    this.activate(now)
-    if (this.phase === 'pressing' && Math.hypot(x - this.startX, y - this.startY) > 12) {
-      this.phase = 'cancelled'
-      return
+    if (this.phase === 'pressing' && !this.activate(now)) {
+      const horizontal = Math.abs(x - this.startX)
+      const vertical = Math.abs(y - this.startY)
+      if (vertical > 12 && vertical > horizontal) {
+        this.phase = 'cancelled'
+        return
+      }
+      if (horizontal <= 12) return
+      this.phase = 'dragging'
     }
-    if (this.phase === 'dragging') this.position(x)
+    this.position(x)
   }
   private position(x: number) {
     this.offset = Math.max(
       0,
       Math.min(this.slotWidth * 2, this.origin * this.slotWidth + x - this.startX),
     )
-    this.preview = Math.max(0, Math.min(2, Math.round(this.offset / this.slotWidth)))
+    this.preview = Math.max(0, Math.min(2, Math.floor((x - this.bounds!.left) / this.slotWidth)))
   }
   finish(x: number, y: number, now: number) {
     this.move(x, y, now)

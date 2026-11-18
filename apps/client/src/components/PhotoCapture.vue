@@ -85,7 +85,7 @@ const scope = computed(() =>
       @click="emit('resume')"
     >
       <view class="photo-consult-icon"><AppIcon name="chat" :size="23" /></view>
-      <view><text>不拍照，直接问</text><text>了解药品作用，或继续上次的咨询</text></view>
+      <view><text>不拍照，直接问</text><text>咨询种植问题或了解药品作用</text></view>
       <AppIcon name="right" :size="18" />
     </button>
     <text class="photo-tip">可在同一次问诊中补充叶背和整株照片。单张不超过 8MB。</text>

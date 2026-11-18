@@ -154,6 +154,30 @@ def test_provider_cannot_echo_credential_to_client(tmp_path, monkeypatch):
     assert "fake-secret-do-not-return" not in json.dumps(result)
 
 
+def test_general_questions_do_not_require_crop_or_stage(tmp_path):
+    settings = Settings(
+        root=ROOT, runtime=tmp_path / "runtime", models=tmp_path / "models"
+    )
+    with TestClient(create_app(settings)) as client:
+        case = client.post("/api/consultations", headers=OWNER, json={}).json()
+        path = f"/api/cases/{case['id']}"
+        for text in ("如何拍清楚症状？", "怎么看农药标签？", "生育期是什么意思？"):
+            answer = client.post(
+                path + "/messages", headers=OWNER, json={"text": text}
+            ).json()
+            assert answer["provider"] in ("knowledge", "rules")
+            assert "follow_up" not in answer
+        case = client.get(path, headers=OWNER).json()
+        assert case["crop"] is None
+        assert "pending_question" not in case
+        field_question = client.post(
+            path + "/messages",
+            headers=OWNER,
+            json={"text": "我这块田的叶片有白斑，怎么处理？"},
+        ).json()
+        assert field_question["follow_up"]["field"] == "crop"
+
+
 def test_text_consultation_collects_context_with_choice_cards(tmp_path):
     settings = Settings(
         root=ROOT, runtime=tmp_path / "runtime", models=tmp_path / "models"

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref } from 'vue'
 import AppIcon from './AppIcon.vue'
+import { syncModalInert } from '../lib/modal'
 const props = withDefaults(
   defineProps<{
     modelValue: string
@@ -25,7 +26,10 @@ const selected = computed(
 function close() {
   open.value = false
   // #ifdef H5
-  document.getElementById(id + '-trigger')?.focus()
+  nextTick(() => {
+    syncModalInert()
+    document.getElementById(id + '-trigger')?.focus()
+  })
   // #endif
 }
 async function show() {
@@ -60,17 +64,12 @@ async function show() {
     const height = viewport?.height || window.innerHeight,
       width = window.innerWidth
     if (width > 760) {
-      const rect = trigger.getBoundingClientRect(),
-        estimated = Math.min(430, 91 + props.options.length * 62 + (props.footer ? 48 : 0))
-      const above =
-        props.above || (height - rect.bottom < estimated && rect.top > height - rect.bottom)
+      const rect = trigger.getBoundingClientRect()
       style.left = Math.max(12, Math.min(rect.left, width - 336)) + 'px'
       style.width = Math.min(324, width - 24) + 'px'
-      style.top =
-        (above
-          ? Math.max(12, rect.top - estimated - 10)
-          : Math.min(height - 100, rect.bottom + 10)) + 'px'
-      style.maxHeight = Math.max(100, height - parseFloat(style.top) - 12) + 'px'
+      style.top = '12px'
+      style.maxHeight = Math.max(100, height - 24) + 'px'
+      style.visibility = 'hidden'
     }
     panelStyle.value = style
     paletteStyle.value = colors
@@ -79,6 +78,27 @@ async function show() {
   open.value = true
   await nextTick()
   // #ifdef H5
+  const anchor = document.getElementById(id + '-trigger')
+  if (window.innerWidth > 760 && anchor) {
+    const panel = document.getElementById(id)
+    const rect = anchor.getBoundingClientRect()
+    const height = window.visualViewport?.height || window.innerHeight
+    const size = panel?.offsetHeight || 200
+    const below = height - rect.bottom - 22
+    const above = rect.top - 22
+    const preferAbove = (props.above || below < size) && above > below
+    const available = Math.max(100, preferAbove ? above : below)
+    panelStyle.value = {
+      ...panelStyle.value,
+      visibility: '',
+      maxHeight: available + 'px',
+      top:
+        Math.max(12, preferAbove ? rect.top - Math.min(size, available) - 10 : rect.bottom + 10) +
+        'px',
+    }
+    await nextTick()
+  }
+  syncModalInert()
   document.querySelector<HTMLElement>(`#${id} [aria-selected="true"]`)?.focus()
   // #endif
 }
@@ -122,7 +142,10 @@ function keyboard(event: KeyboardEvent) {
 }
 // #ifdef H5
 document.addEventListener('keydown', keyboard)
-onUnmounted(() => document.removeEventListener('keydown', keyboard))
+onUnmounted(() => {
+  document.removeEventListener('keydown', keyboard)
+  nextTick(syncModalInert)
+})
 // #endif
 </script>
 <template>
@@ -154,7 +177,7 @@ onUnmounted(() => document.removeEventListener('keydown', keyboard))
           ><view class="choice-heading"
             ><view
               ><text class="choice-title">{{ label }}</text
-              ><text class="choice-caption">{{ caption }}</text></view
+              ><text v-if="caption" class="choice-caption">{{ caption }}</text></view
             ><button class="choice-close" tabindex="0" :aria-label="'关闭' + label" @click="close">
               <AppIcon name="close" :size="18" /></button></view
           ><scroll-view scroll-y class="choice-options" role="listbox" :aria-label="label"
@@ -287,7 +310,7 @@ onUnmounted(() => document.removeEventListener('keydown', keyboard))
 .choice-options {
   min-height: 0;
   max-height: 340px;
-  flex: 1;
+  flex: 1 1 auto;
 }
 .choice-option {
   width: 100%;

@@ -8,6 +8,7 @@ defineProps<{
   loggedIn: boolean
   cards: KnowledgeCard[]
   section: 'recent' | 'resources'
+  mobile?: boolean
 }>()
 const emit = defineEmits<{
   consult: []
@@ -98,6 +99,7 @@ const emit = defineEmits<{
       >
     </view>
     <KnowledgeLibrary
+      v-if="!mobile"
       v-show="section === 'resources'"
       embedded
       :cards="cards"

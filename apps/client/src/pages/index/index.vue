@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import AppIcon from '../../components/AppIcon.vue'
 import MobileHeader from '../../components/MobileHeader.vue'
-import { scrollChrome, safeHeaderTop, idleChrome } from '../../lib/mobileChrome'
+import { safeHeaderTop } from '../../lib/mobileChrome'
 import AppearanceSwitch from '../../components/AppearanceSwitch.vue'
 import GlobalNavigation from '../../components/GlobalNavigation.vue'
 import HistorySidebar from '../../components/HistorySidebar.vue'
@@ -106,38 +106,13 @@ const editStage = ref('不清楚'),
   editNote = ref(''),
   keyboardHeight = ref(0)
 const homeSection = ref<'recent' | 'resources'>('recent')
-const chromeOffset = ref(0),
-  chromeScrolling = ref(false),
-  mobileSafeTop = ref(0),
-  pageTop = ref(0),
-  leavingChat = ref(false)
-let chromeTimer: ReturnType<typeof setTimeout> | undefined,
-  backTimer: ReturnType<typeof setTimeout> | undefined
-function settleChrome() {
-  clearTimeout(chromeTimer)
-  chromeTimer = setTimeout(() => {
-    chromeScrolling.value = false
-    chromeOffset.value = idleChrome(pageTop.value)
-  }, 1200)
-}
-function scrollPage(event: { detail: { scrollTop: number } }) {
-  const state = scrollChrome(chromeOffset.value, pageTop.value, event.detail.scrollTop)
-  pageTop.value = state.top
-  chromeScrolling.value = true
-  chromeOffset.value = state.offset
-  settleChrome()
-}
-function resetChrome() {
-  chromeScrolling.value = false
-  chromeOffset.value = 0
-  pageTop.value = 0
-  settleChrome()
-}
+const mobileSafeTop = ref(0)
+const leavingChat = ref(false)
+let backTimer: ReturnType<typeof setTimeout> | undefined
 function mobileBack() {
   if (chatMode.value) backView()
   else if (tab.value === 'home' && homeSection.value === 'resources') {
     homeSection.value = 'recent'
-    resetChrome()
   } else navigate(tab.value === 'history' ? 'home' : 'profile')
 }
 const isMobile = ref(uni.getSystemInfoSync().windowWidth <= 760)
@@ -308,7 +283,6 @@ onMounted(() => {
   const capsule = uni.getMenuButtonBoundingClientRect()
   mobileSafeTop.value = safeHeaderTop(system.statusBarHeight || 0, capsule?.bottom || 0)
   // #endif
-  resetChrome()
   // #ifndef H5
   nativeWindowHeight = uni.getSystemInfoSync().windowHeight
   uni.onKeyboardHeightChange(nativeKeyboard)
@@ -323,7 +297,6 @@ onMounted(() => {
 })
 onUnmounted(() => {
   stopTheme?.()
-  clearTimeout(chromeTimer)
   clearTimeout(backTimer)
   clearTimeout(toastTimer)
   // #ifdef H5
@@ -378,7 +351,6 @@ function navigate(value: Tab) {
   filter.value = 'all'
   query.value = ''
   error.value = ''
-  resetChrome()
 }
 function backView() {
   if (leavingChat.value) return
@@ -839,7 +811,7 @@ function navigateFromDrawer(value: Tab) {
   navigate(value)
 }
 function toggleNavigation() {
-  if (uni.getSystemInfoSync().windowWidth <= 760) historyDrawerOpen.value = true
+  if (isMobile.value) historyDrawerOpen.value = true
   else sidebarExpanded.value = !sidebarExpanded.value
 }
 function clearComposer() {
@@ -1015,6 +987,13 @@ async function openConversation(id: string) {
   await openCase(id)
   if (chatMode.value) scrollChat()
 }
+function openPhotoConsultation() {
+  if (!user.value && (lastPhotoCase.value || current.value)) {
+    openConsultation()
+    return
+  }
+  startConsultation()
+}
 async function openConsultation() {
   if (current.value) {
     if (!viewPath.value.layers.length)
@@ -1094,28 +1073,20 @@ function newFromDrawer() {
           tab === 'home' && !chatMode
             ? homeSection === 'resources'
               ? '参考资料'
-              : pageTop > 160
-                ? '最近问诊'
-                : '工作台'
+              : '工作台'
             : title
         "
         :page="tab"
         :chat="chatMode"
         :back-label="backLabel"
         :user-name="user?.name"
-        :offset="chromeOffset"
-        :settling="!chromeScrolling"
+        :history-open="historyDrawerOpen"
         :safe-top="mobileSafeTop"
         :resources="homeSection === 'resources'"
         @back="mobileBack"
         @history="toggleNavigation"
         @login="openAuth()"
         @profile="navigate('profile')"
-        @consult="startConsultation()"
-        @capture="navigate('identify')"
-        @resources="homeSection = 'resources'"
-        @recent="homeSection = 'recent'"
-        @settings="openSettings"
       />
       <view class="topbar desktop-topbar">
         <view class="header-leading">
@@ -1151,7 +1122,7 @@ function newFromDrawer() {
       </view>
       <view v-if="chatMode && current" class="chat-context-bar">
         <text
-          >{{ current.crop_name
+          >{{ current.crop ? current.crop_name : '文字咨询'
           }}<text v-if="current.stage !== '不清楚'"> · {{ current.stage }}</text></text
         >
         <view>
@@ -1202,11 +1173,7 @@ function newFromDrawer() {
                   ><text class="muted">描述症状、询问种植管理，或添加照片进行识别。</text
                   ><view class="welcome-topics"
                     ><button
-                      v-for="text in [
-                        '还需要补充什么信息？',
-                        '如何拍清楚症状？',
-                        '用药前需要核对什么？',
-                      ]"
+                      v-for="text in ['如何拍清楚症状？', '怎么看农药标签？', '生育期是什么意思？']"
                       :key="text"
                       @click="sendMessage(text)"
                     >
@@ -1347,11 +1314,24 @@ function newFromDrawer() {
           </view>
         </view>
 
-        <scroll-view v-show="!chatMode" scroll-y class="page-scroll" @scroll="scrollPage">
+        <KnowledgeLibrary
+          v-if="isMobile && tab === 'home' && homeSection === 'resources'"
+          v-show="!chatMode"
+          reading
+          :cards="cards"
+          @open="selectedCard = $event"
+          @source="openSource"
+        />
+        <scroll-view
+          v-show="!chatMode && !(isMobile && tab === 'home' && homeSection === 'resources')"
+          scroll-y
+          class="page-scroll"
+        >
           <view :key="tab" class="page-content">
             <template v-if="tab === 'home'"
               ><DashboardHome
                 v-model:section="homeSection"
+                :mobile="isMobile"
                 @consult="startConsultation()"
                 :records="records"
                 :cards="cards"
@@ -1373,7 +1353,7 @@ function newFromDrawer() {
                 @result="restoreResult"
                 @crop="chooseCrop"
                 @capture="choosePhoto"
-                @resume="openConsultation"
+                @resume="openPhotoConsultation"
             /></template>
 
             <template v-else-if="tab === 'history'">
@@ -2705,8 +2685,10 @@ function newFromDrawer() {
     min-height: 39px;
     padding-top: 2px;
   }
-  .composer-dock {
+  .keyboard-open .composer-dock {
     transform: translateY(calc(-1 * var(--keyboard-inset, 0px)));
+  }
+  .composer-dock {
     padding: 8px 12px max(8px, env(safe-area-inset-bottom));
   }
   .message-stream {
@@ -2724,7 +2706,7 @@ function newFromDrawer() {
     animation: mobile-page-enter 0.16s ease;
   }
   .page-content {
-    padding-top: 42px;
+    padding-top: 14px;
     animation: mobile-page-enter 0.16s ease;
   }
   .back-button {

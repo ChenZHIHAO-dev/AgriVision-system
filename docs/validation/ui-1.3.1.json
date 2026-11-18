@@ -1,0 +1,35 @@
+{
+  "viewport": {
+    "mobile": [
+      390,
+      844
+    ],
+    "desktop": [
+      1280,
+      800
+    ]
+  },
+  "historyDrawer": true,
+  "firstCardTop": {
+    "all": 208,
+    "peanut": 208
+  },
+  "searchTopAfterScrolling": 54,
+  "compactToolbar": "matrix(1, 0, 0, 1, 0, -84)",
+  "dragDestination": "profile",
+  "desktopModelPicker": {
+    "anchor": {
+      "bottom": 747.5,
+      "top": 712.5
+    },
+    "desktop": "flex",
+    "height": 800,
+    "panel": {
+      "bottom": 702.5,
+      "left": 459,
+      "right": 783,
+      "top": 431.5
+    },
+    "width": 1280
+  }
+}

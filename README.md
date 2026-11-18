@@ -1,10 +1,26 @@
-> **1.3 手机交互已发布并完成验证。** 当前规则与真机待办见 [1.3 清单](docs/mobile-interactions-v1.3.md)。
+> **1.3.1 手机交互与微信预览包已完成本地验证。** 下方记录本轮改动与验收。
 
 # AgriVision 宛农植保助手
 
-面向河南南阳及周边小麦、玉米、花生种植场景的植保问诊软件。当前客户端版本 **1.3.0-dev.1**，先完善功能与交互，再迭代模型效果。
+面向河南南阳及周边小麦、玉米、花生种植场景的植保问诊软件。当前客户端版本 **1.3.1-dev.1**，先完善功能与交互，再迭代模型效果。
 
 项目路径：`F:\college\AgriVision`。使用 Git 管理改动，直接编辑工作区，不额外保存整套备份副本。
+
+## 开发记录 · 2026-11-18 / 1.3.1
+
+| 项目 | 改动与验收 |
+| --- | --- |
+| 手机顶栏 | 首页与拍照页移除重复的快捷栏。主要操作保留在正文，聊天顶栏同时提供返回和问诊历史 |
+| 资料 | 手机以独立阅读页打开资料。搜索常驻，知识／资讯、筛选和布局工具随滚动收放。分类、搜索和布局切换后列表回到顶部，卡片顶对齐 |
+| 底栏 | 单击直接切页，长按或按住明确横拖时玻璃滑块跟随，松手切换。滑块淡出，只强调当前按钮。390px 浏览器实拖从首页切至我的 |
+| 文字咨询 | 常见术语、标签阅读和拍摄方法可直接提问。田间症状判断仍按需收集必要信息，再续答原问题 |
+| 模型选择 | 手机底部选项面板保留选中状态和清晰描述。桌面菜单按实际高度锚定。联网仍由独立开关控制 |
+| 微信包 | 增加独立预览与联网构建。预览包可导入开发者工具，联网包由 AppID 和 HTTPS 域名定向构建 |
+| 交付范围 | 小程序结构与编译产物通过检查。微信模拟器、胶囊、原生键盘和扫码真机待验收，APP 后续单独打包 |
+
+[浏览器验收记录](docs/validation/ui-1.3.1.json) · [微信构建与部署](docs/wechat-deployment.md)。
+
+界面规则参考 [Apple Toolbars](https://developer.apple.com/design/human-interface-guidelines/toolbars) 和 [Android App bars](https://developer.android.com/develop/ui/compose/components/app-bars) 组织页面工具与阅读空间；参照 [Android Menus](https://developer.android.com/develop/ui/compose/components/menu) 和 [WAI 模态对话框](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/) 明确选项、关闭与焦点；按 [W3C 拖动规范](https://www.w3.org/WAI/WCAG22/Understanding/dragging-movements) 保留单击替代；依据 [GOV.UK 问题页规范](https://design-system.service.gov.uk/patterns/question-pages/) 在应用需要时才收集作物资料。
 
 ## 开发记录 · 2026-11-18 / 1.3 手机交互
 
@@ -130,6 +146,7 @@ npm run typecheck
 npm run format:check
 npm run build
 npm run build:mp
+npm run build:wechat
 npm run build:pages
 .venv\Scripts\python.exe -m pytest -q
 
@@ -137,7 +154,7 @@ npm run build:pages
 .venv\Scripts\python.exe scripts/verify_local_pipeline.py --exercise-provider --web
 ```
 
-推送 main 后由 GitHub Actions 检查、构建并部署 Pages。历史 1.2 发布记录见 [验证记录](docs/validation.md)，当前状态以本 README 和 [1.3 交互与平台清单](docs/mobile-interactions-v1.3.md)为准；原有层级规则保留在 [1.2.2 清单](docs/interaction-hierarchy-v1.2.2.md)。
+推送 main 后由 GitHub Actions 检查、构建并部署 Pages。历史 1.2 发布记录见 [验证记录](docs/validation.md)，当前状态以本 README 为准。历史规则见 [1.3.0 清单](docs/mobile-interactions-v1.3.md) 与 [1.2.2 清单](docs/interaction-hierarchy-v1.2.2.md)。
 
 ## 后续待办
 

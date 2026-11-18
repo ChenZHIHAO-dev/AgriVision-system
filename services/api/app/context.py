@@ -29,3 +29,20 @@ def follow_up(case):
     if case.get('stage') in ('','不清楚'):
         return {'field':'stage','prompt':'目前处于哪个生育期？','options':[{'value':stage,'label':stage} for stage in STAGES[case['crop']]]+[{'value':'暂不确定','label':'先不填写'}]}
     return None
+
+
+# Keep field-specific treatment and diagnosis on the existing intake route.
+GENERAL_QUESTION = re.compile(
+    r"^\s*(?:请问[,，：:\s]*)?什么是.{1,30}[?？。！!]*$|"
+    r"^\s*.{1,30}(?:是什么|是什么意思|有什么作用|是做什么的|有何区别|有什么区别)[?？。！!]*$|"
+    r"^\s*(?:请问[,，：:\s]*)?(?:怎么(?:看|读|核对)|如何(?:看|读|核对))(?:农药|产品)?标签[?？。！!]*$|"
+    r"^\s*(?:怎么|如何)(?:拍清楚症状|拍摄症状照片)|"
+    r"^\s*需要拍哪些照片[?？。！!]*$"
+)
+FIELD_DECISION = re.compile(
+    r"我家|我这|我种|这块田|这株|这张|这次|现在|怎么治|如何治|用量|剂量|多少|混配|兑水|喷什么|用什么药"
+)
+
+
+def is_general_question(text):
+    return bool(GENERAL_QUESTION.search(text) and not FIELD_DECISION.search(text))

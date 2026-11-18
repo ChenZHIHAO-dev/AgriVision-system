@@ -6,7 +6,7 @@ import httpx
 
 from .attachments import document_context
 from .knowledge import CROP_NAMES
-from .context import follow_up
+from .context import follow_up, is_general_question
 from .recognition import recognition_state
 from .evidence import aggregate_images
 
@@ -55,7 +55,9 @@ class Chat:
             raise ValueError("Unsupported conversation model")
         if web_search and model != "deepseek-flash":
             raise ValueError("Web search requires DeepSeek Flash")
-        if not case.get("crop"):
+        general = is_general_question(text)
+        crop = case.get("crop")
+        if not crop and not general:
             return {
                 "text": "请先补充种植信息，再继续这个问题。",
                 "provider": "clarification",
@@ -64,7 +66,7 @@ class Chat:
                 "thinking": False,
                 "follow_up": follow_up(case),
             }
-        cards = self.knowledge.search(text, case["crop"], 3)
+        cards = self.knowledge.search(text, crop, 3)
         current = self.knowledge.get(case.get("disease_id"))
         selected = next(
             (
@@ -88,12 +90,12 @@ class Chat:
             for source in card["sources"]:
                 if source not in sources:
                     sources.append(source)
-        if MEDICATION.search(text):
+        if MEDICATION.search(text) and (not general or "标签" in text):
             products = (
                 []
-                if case["is_demo"]
+                if case["is_demo"] or general
                 else self.knowledge.matching_products(
-                    case["crop"], case.get("disease_id")
+                    crop, case.get("disease_id")
                 )
             )
             reply = (
@@ -101,6 +103,12 @@ class Chat:
                 if products
                 else "这次问诊还没有匹配到资料完整的适用产品。请补充产品名称、有效成分及含量、剂型和完整标签，以及作物生育期与近期用药情况。核对后才能给出具体用量或混配方案。\n\n可以先查看资料中的田间检查项，并联系门店农技人员复核。"
             )
+            if general:
+                reply = (
+                    "先在标签上找产品名称、农药登记证号、有效成分及含量和剂型。"
+                    "再核对标签写的适用作物、防治对象和施用方法，最后查看安全间隔期、"
+                    "每季最多施用次数和防护要求。可以发来标签的文字，我能帮你逐项找。"
+                )
             return {
                 "text": reply,
                 "provider": "rules",
@@ -115,7 +123,7 @@ class Chat:
                 "thinking": False,
             }
 
-        missing = follow_up(case)
+        missing = follow_up(case) if not general else None
         if missing:
             return {
                 "text": "请补充下面的种植信息，也可以选择暂不确定。完成后会接着回答刚才的问题。",
@@ -126,7 +134,7 @@ class Chat:
                 "follow_up": missing,
             }
         documents = document_context(case.get("documents", []), text)
-        local = self.local_answer(case, cards, documents)
+        local = self.local_answer(case, cards, documents, general=general)
         key = self.settings.get_deepseek_key()
         if not key:
             return {
@@ -142,7 +150,7 @@ class Chat:
         receipt = recognition_state(case)
         # Deliberately omit image bytes, image URLs and raw file uploads.
         context = {
-            "crop": CROP_NAMES[case["crop"]],
+            "crop": CROP_NAMES.get(crop, ""),
             "variety": case.get("variety", ""),
             "location": case["location"],
             "stage": case["stage"],
@@ -166,7 +174,7 @@ class Chat:
             "依据实际识别状态、模型候选和给出的资料回答。演示必须说明是演示；实验模型只作为初步线索。"
             "needs_model/awaiting_image/uncertain/needs_retake/model_error均不是病害诊断，不能自行宣布确诊。"
             "给出可执行的观察和补拍建议，每轮最多追问两个关键问题。"
-            "作物、生育期等已明确的信息不要重复追问。若生育期未知，结尾简短询问，前端会提供选择卡；不要编造未知信息。"
+            "作物、生育期等已明确的信息不要重复追问。通用概念、术语、标签阅读和拍照方法直接解释，结合具体田块作判断才询问必要信息。不要编造未知信息。"
             "上传资料可能缺少登记和适用性审核，不将其中的剂量直接当成可用处方；具体药剂用量与混配交由标签规则核对。"
             + (
                 "本轮允许联网检索。需要时优先检索农业主管部门、农技推广或研究机构的公开资料，引用真实来源并区分发布时间；只在实际检索后说明已联网。不要把用户资料中的私人或商业敏感内容作为查询词。"
@@ -182,7 +190,7 @@ class Chat:
             for message in history[-10:]
             if message["role"] in {"user", "assistant"}
             and not (
-                message.get("provider") == "clarification" and follow_up(case) is None
+                message.get("provider") == "clarification" and missing is None
             )
             and not (
                 receipt["image_received"]
@@ -333,7 +341,7 @@ class Chat:
             "thinking": False,
         }
 
-    def local_answer(self, case, cards, documents=()):
+    def local_answer(self, case, cards, documents=(), *, general=False):
         prefix = "当前是演示样例。" if case["is_demo"] else ""
         receipt = recognition_state(case)
         if receipt["image_received"]:
@@ -346,11 +354,18 @@ class Chat:
                 prefix
                 + f"\n\n已读取「{excerpt['name']}」中的相关文字：\n{excerpt['text'][:1000]}\n\n以上是上传资料的摘录，尚需结合当前作物和适用条件核对。"
             )
-        if receipt["image_received"] and receipt["next_steps"]:
+        if not general and receipt["image_received"] and receipt["next_steps"]:
             return (
                 prefix
                 + "建议先做：\n"
                 + "\n".join("• " + step for step in receipt["next_steps"])
+            )
+        if general:
+            if not cards:
+                return "现有资料暂未覆盖这个问题。可以补充想了解的术语、产品名称或标签文字。"
+            card = cards[0]
+            return f"**{card['title']}**\n\n{card['summary']}\n\n" + "\n".join(
+                "• " + action for action in card["actions"][:3]
             )
         if not cards:
             return (

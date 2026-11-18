@@ -10,20 +10,7 @@ const output = await build({
 })
 const module = { exports: {} }
 new Function('module', 'exports', output.outputFiles[0].text)(module, module.exports)
-const { scrollChrome, safeHeaderTop, viewportFrame, idleChrome } = module.exports
-test('top and shallow scroll retain tools; only deeper scrolling tucks by distance', () => {
-  assert.equal(scrollChrome(46, 200, 0).offset, 0)
-  assert.equal(scrollChrome(0, 0, 40).offset, 0)
-  assert.equal(idleChrome(0), 0)
-  assert.equal(idleChrome(80), 0)
-  assert.equal(idleChrome(120), 46)
-  let state = scrollChrome(0, 0, 100)
-  assert.equal(state.offset, 20)
-  state = scrollChrome(state.offset, state.top, 200)
-  assert.equal(state.offset, 46)
-  state = scrollChrome(state.offset, state.top, 180)
-  assert.equal(state.offset, 26)
-})
+const { safeHeaderTop, viewportFrame } = module.exports
 test('WeChat capsule and status bar cannot overlap the app header', () => {
   assert.equal(safeHeaderTop(44, 76), 82)
   assert.equal(safeHeaderTop(24), 24)

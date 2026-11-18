@@ -7,6 +7,7 @@ on:
       - 'apps/client/**'
       - 'package*.json'
       - 'scripts/build-pages.mjs'
+      - 'scripts/build-wechat.mjs'
       - 'tests/frontend-*.test.mjs'
       - 'knowledge/**'
       - '.prettierrc.json'
@@ -35,7 +36,7 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run test:frontend
       - run: npm run typecheck
-      - run: npm run build:mp
+      - run: npm run build:wechat
       - run: npm run build:pages
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4

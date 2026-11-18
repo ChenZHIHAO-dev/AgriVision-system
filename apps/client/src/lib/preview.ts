@@ -71,8 +71,16 @@ function create(data: Record<string, string>, demo = false): CaseRecord {
     },
   }
 }
+function isGeneralQuestion(text: string) {
+  const fieldDecision =
+    /我家|我这|我种|这块田|这株|这张|这次|现在|怎么治|如何治|用量|剂量|多少|混配|兑水|喷什么|用什么药/
+  const overview =
+    /^\s*(?:请问[,，：:\s]*)?什么是.{1,30}[?？。！!]*$|^\s*.{1,30}(?:是什么|是什么意思|有什么作用|是做什么的|有何区别|有什么区别)[?？。！!]*$|^\s*(?:请问[,，：:\s]*)?(?:怎么(?:看|读|核对)|如何(?:看|读|核对))(?:农药|产品)?标签[?？。！!]*$|^\s*(?:怎么|如何)(?:拍清楚症状|拍摄症状照片)|^\s*需要拍哪些照片[?？。！!]*$/
+  return overview.test(text) && !fieldDecision.test(text)
+}
 function reply(record: CaseRecord, text: string): Message {
-  if (!record.crop)
+  const general = isGeneralQuestion(text)
+  if (!record.crop && !general)
     return {
       role: 'assistant',
       text: '先确认一下，这次主要咨询哪种作物？选好后，我们结合你的问题继续说明。',
@@ -83,7 +91,9 @@ function reply(record: CaseRecord, text: string): Message {
       follow_up: clarification(record)!,
     }
   let card = previewCards.find((item) => item.id === record.disease_id)
-  const scoped = previewCards.filter((item) => item.crop === record.crop || item.crop === 'general')
+  const scoped = previewCards.filter(
+    (item) => !record.crop || item.crop === record.crop || item.crop === 'general',
+  )
   card =
     scoped.find(
       (item) =>
@@ -94,10 +104,13 @@ function reply(record: CaseRecord, text: string): Message {
     card = previewCards.find((item) => item.id === 'photo_guide')
   const medicine = /用药|药物|配方|剂量|用量|混配|农药|打药|喷什么|用什么药/.test(text)
   let answer: string
-  if (medicine)
+  if (general && medicine && text.includes('标签'))
+    answer =
+      '先找产品名称、登记证号和有效成分，再核对标签上的适用作物、防治对象和施用方法，最后看安全间隔期与防护要求。'
+  else if (medicine && !general)
     answer =
       '目前还没有录入公司的产品标签资料。请先核对产品名称、有效成分和含量、剂型、适用作物与防治对象，以及标签用法。\n\n准备好完整标签、生育期和近期施药记录后，再由农技人员确认用量与混配方案。你可以先查看这次问诊中的田间检查建议。'
-  else if (clarification(record))
+  else if (!general && clarification(record))
     return {
       role: 'assistant',
       text: '请先补充种植信息，也可以选择暂不确定。',
@@ -107,6 +120,15 @@ function reply(record: CaseRecord, text: string): Message {
       products: [],
       follow_up: clarification(record)!,
     }
+  else if (general)
+    answer = card
+      ? card.summary +
+        '\n\n' +
+        card.actions
+          .slice(0, 3)
+          .map((action) => '• ' + action)
+          .join('\n')
+      : '现有预览资料暂未覆盖这个问题。可以补充想了解的术语、产品名称或标签文字。'
   else if (card)
     answer = `${record.is_demo ? '这是一条演示问诊。' : '目前还没有自动识别结论。'}以下是「${card.title}」的资料参考：\n\n${card.summary}\n\n${card.actions.map((action) => '• ' + action).join('\n')}\n\n症状大约出现了多久？是零星发生还是成片出现？`
   else
@@ -119,7 +141,7 @@ function reply(record: CaseRecord, text: string): Message {
     provider: 'preview',
     sources: medicine ? [] : card?.sources || [],
     products: [],
-    follow_up: clarification(record) || undefined,
+    follow_up: general ? undefined : clarification(record) || undefined,
   }
 }
 function clarification(record: CaseRecord): FollowUp | null {
@@ -223,7 +245,8 @@ export async function previewRequest(
   }
   if (match[2] === 'messages') {
     if (!data.text?.trim()) throw new Error('请先填写咨询内容')
-    if (!record.crop) {
+    const general = isGeneralQuestion(data.text)
+    if (!general && !record.crop) {
       const mentions = (Object.entries(cropNames) as [Crop, string][]).filter(([, name]) =>
         data.text.includes(name),
       )
@@ -233,7 +256,7 @@ export async function previewRequest(
         record.title = record.crop_name + '种植咨询'
       }
     }
-    if (record.crop && (!record.stage || record.stage === '不清楚')) {
+    if (!general && record.crop && (!record.stage || record.stage === '不清楚')) {
       const found = stages[record.crop].find(
         (stage) => stage !== '不清楚' && data.text.includes(stage),
       )

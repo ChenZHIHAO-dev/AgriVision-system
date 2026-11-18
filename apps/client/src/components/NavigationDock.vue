@@ -22,47 +22,54 @@ const id = 'dock-' + Math.random().toString(36).slice(2, 9)
 const instance = getCurrentInstance()
 const gesture = new DockGesture()
 const glassPhase = ref<'idle' | 'dragging' | 'settling'>('idle')
-const preview = ref(1),
-  offset = ref(0),
-  slotWidth = ref(0)
+const preview = ref(1)
+const offset = ref(0)
+const slotWidth = ref(0)
 const glassStyle = computed(() => ({
   width: Math.max(0, slotWidth.value - 4) + 'px',
-  left: 14 + offset.value + 'px',
+  transform:
+    'translate3d(' +
+    offset.value +
+    'px,0,0) scale(' +
+    (glassPhase.value === 'dragging' ? '1.035' : '1') +
+    ')',
   background:
     resolvedTheme.value === 'dark' ? 'rgba(129, 145, 169, .26)' : 'rgba(255, 255, 255, .56)',
   borderColor:
     resolvedTheme.value === 'dark' ? 'rgba(206, 221, 242, .27)' : 'rgba(255, 255, 255, .82)',
 }))
+type Point = { x: number; y: number }
 let bounds: DockBounds | null = null
 let generation = 0
-let inputActive = false,
-  source: 'touch' | 'mouse' | null = null
+let inputActive = false
 let holdTimer: ReturnType<typeof setTimeout> | undefined
 let fadeTimer: ReturnType<typeof setTimeout> | undefined
-let suppressUntil = 0,
-  lastTouch = 0
-let latest = { x: 0, y: 0 }
+let suppressUntil = 0
+let latest: Point = { x: 0, y: 0 }
+let usePointerEvents = false
+let pointerId: number | null = null
+let pointerTarget: HTMLElement | null = null
+let dockSurface: HTMLElement | null = null
 
 function measure(done?: (value: DockBounds) => void) {
-  // #ifdef H5
-  const rect = document.getElementById(id)?.getBoundingClientRect()
-  if (rect && rect.width > 24) {
-    bounds = { left: rect.left + 12, top: rect.top + 6, width: rect.width - 24, height: 54 }
+  const accept = (rect: DockBounds | null) => {
+    if (!rect || rect.width <= 0 || rect.height <= 0) {
+      bounds = null
+      return
+    }
+    const { left, top, width, height } = rect
+    bounds = { left, top, width, height }
     done?.(bounds)
   }
-  return
+  // #ifdef H5
+  accept(dockSurface?.getBoundingClientRect() ?? null)
   // #endif
   // #ifndef H5
   uni
     .createSelectorQuery()
     .in(instance?.proxy)
-    .select('.av-dock')
-    .boundingClientRect((raw) => {
-      const rect = raw as { left: number; top: number; width: number }
-      if (!rect || rect.width <= 24) return
-      bounds = { left: rect.left + 12, top: rect.top + 6, width: rect.width - 24, height: 54 }
-      done?.(bounds)
-    })
+    .select('.dock-tabs')
+    .boundingClientRect((rect) => accept(rect as DockBounds | null))
     .exec()
   // #endif
 }
@@ -73,64 +80,73 @@ function syncGlass() {
   offset.value = gesture.offset
   slotWidth.value = gesture.slotWidth
 }
-function begin(index: number, point: { x: number; y: number }, kind: 'touch' | 'mouse') {
-  if (props.keyboardOpen || inputActive) return
+function begin(index: number, point: Point) {
+  if (props.keyboardOpen || inputActive) return false
   suppressUntil = 0
   clearTimeout(fadeTimer)
   glassPhase.value = 'idle'
   inputActive = true
-  source = kind
   latest = point
   const beganAt = Date.now()
   const token = ++generation
   const ready = (rect: DockBounds) => {
-    if (!inputActive || source !== kind || token !== generation) return
+    if (!inputActive || token !== generation) return
     if (!gesture.start(index, point.x, point.y, rect, beganAt)) return
     gesture.move(latest.x, latest.y, Date.now())
-    holdTimer = setTimeout(
-      () => {
-        gesture.activate(Date.now())
-        syncGlass()
-      },
-      Math.max(0, DOCK_HOLD_MS - (Date.now() - beganAt)),
-    )
+    syncGlass()
+    if (gesture.phase === 'pressing')
+      holdTimer = setTimeout(
+        () => {
+          gesture.activate(Date.now())
+          syncGlass()
+        },
+        Math.max(0, DOCK_HOLD_MS - (Date.now() - beganAt)),
+      )
   }
-  // H5 measures synchronously. Mini-programs remeasure the component through their native selector API.
-  measure(ready)
+  // H5 can measure synchronously on each pointerdown. Native selectors cross the rendering bridge,
+  // so reuse the measured surface when available and remeasure on window resize.
+  if (!usePointerEvents && bounds) ready(bounds)
+  else measure(ready)
+  return true
 }
-function move(point: { x: number; y: number }) {
+function move(point: Point) {
   if (!inputActive) return
   latest = point
   gesture.move(point.x, point.y, Date.now())
-  if (gesture.phase === 'cancelled') clearTimeout(holdTimer)
+  if (gesture.phase !== 'pressing') clearTimeout(holdTimer)
   syncGlass()
 }
 function settle(target: number) {
-  clearTimeout(holdTimer)
   offset.value = target * slotWidth.value
   glassPhase.value = 'settling'
   fadeTimer = setTimeout(() => {
     glassPhase.value = 'idle'
-  }, 460)
+  }, 320)
 }
-function finish(point: { x: number; y: number }) {
-  if (!inputActive) return
-  clearTimeout(holdTimer)
-  const result = gesture.finish(point.x, point.y, Date.now())
+function releaseInput() {
   generation++
   inputActive = false
-  source = null
+  clearTimeout(holdTimer)
+  // #ifdef H5
+  const target = pointerTarget
+  const id = pointerId
+  pointerTarget = null
+  pointerId = null
+  if (id !== null && target?.hasPointerCapture?.(id)) target.releasePointerCapture(id)
+  // #endif
+}
+function finish(point: Point) {
+  if (!inputActive) return
+  const result = gesture.finish(point.x, point.y, Date.now())
+  releaseInput()
   if (result.suppressClick) suppressUntil = Date.now() + 650
-  if (result.dragged) settle(result.target ?? selected.value)
+  if (result.dragged && glassPhase.value === 'dragging') settle(result.target ?? selected.value)
   else glassPhase.value = 'idle'
   if (result.target !== null) emit('navigate', tabs[result.target].page)
 }
 function cancel() {
-  generation++
-  clearTimeout(holdTimer)
   if (gesture.cancel() || inputActive) suppressUntil = Date.now() + 650
-  inputActive = false
-  source = null
+  releaseInput()
   if (glassPhase.value === 'dragging') settle(selected.value)
 }
 function select(index: number) {
@@ -142,42 +158,64 @@ type TouchInput = {
   changedTouches?: ArrayLike<{ clientX: number; clientY: number }>
 }
 function touchStart(event: TouchInput, index: number) {
-  lastTouch = Date.now()
+  if (usePointerEvents) return
   if (event.touches?.length !== 1) {
     cancel()
     return
   }
-  const touch = event.touches[0]
-  begin(index, { x: touch.clientX, y: touch.clientY }, 'touch')
+  const { clientX, clientY } = event.touches[0]
+  begin(index, { x: clientX, y: clientY })
 }
 function touchMove(event: TouchInput) {
-  if (source !== 'touch') return
+  if (usePointerEvents || !inputActive) return
   if (event.touches?.length !== 1) {
     cancel()
     return
   }
-  move({ x: event.touches[0].clientX, y: event.touches[0].clientY })
+  const { clientX, clientY } = event.touches[0]
+  move({ x: clientX, y: clientY })
 }
 function touchEnd(event: TouchInput) {
-  lastTouch = Date.now()
-  if (source !== 'touch') return
+  if (usePointerEvents) return
   const point = event.changedTouches?.[0]
   finish(point ? { x: point.clientX, y: point.clientY } : latest)
 }
-function mouseStart(event: MouseEvent, index: number) {
-  // #ifdef H5
-  if (event.button !== 0 || Date.now() - lastTouch < 800) return
-  event.preventDefault()
-  document.getElementById(id + '-' + index)?.focus()
-  begin(index, { x: event.clientX, y: event.clientY }, 'mouse')
-  // #endif
+function touchCancel() {
+  if (!usePointerEvents) cancel()
 }
-function mouseMove(event: MouseEvent) {
-  if (source === 'mouse') move({ x: event.clientX, y: event.clientY })
+// #ifdef H5
+function pointerStart(event: PointerEvent) {
+  if (!event.isPrimary) {
+    cancel()
+    return
+  }
+  if (event.button !== 0) return
+  const target = (event.target as Element).closest<HTMLElement>('.dock-tab')
+  if (!target) return
+  const index = Number(target.dataset.dockIndex)
+  if (!Number.isInteger(index) || !tabs[index]) return
+  if (!begin(index, { x: event.clientX, y: event.clientY })) return
+  pointerId = event.pointerId
+  pointerTarget = target
+  if (event.pointerType === 'mouse') target.focus({ preventScroll: true })
+  // Capture on the originating button so a short press keeps its ordinary click target.
+  // The window listeners also handle browsers that fail to capture the pointer.
+  try {
+    target.setPointerCapture?.(event.pointerId)
+  } catch {
+    // The active pointer may already have left the viewport.
+  }
 }
-function mouseEnd(event: MouseEvent) {
-  if (source === 'mouse') finish({ x: event.clientX, y: event.clientY })
+function pointerMove(event: PointerEvent) {
+  if (event.pointerId === pointerId) move({ x: event.clientX, y: event.clientY })
 }
+function pointerEnd(event: PointerEvent) {
+  if (event.pointerId === pointerId) finish({ x: event.clientX, y: event.clientY })
+}
+function pointerCancel(event: PointerEvent) {
+  if (event.pointerId === pointerId) cancel()
+}
+// #endif
 function keyboard(event: KeyboardEvent, index: number) {
   // #ifdef H5
   if (['Enter', ' '].includes(event.key)) {
@@ -206,13 +244,18 @@ watch(
   () => props.keyboardOpen,
   (hidden) => {
     if (hidden) cancel()
+    else measure()
   },
 )
 onMounted(() => {
-  measure()
   // #ifdef H5
-  window.addEventListener('mousemove', mouseMove)
-  window.addEventListener('mouseup', mouseEnd)
+  dockSurface = document.getElementById(id)
+  usePointerEvents = typeof window.PointerEvent === 'function'
+  dockSurface?.addEventListener('pointerdown', pointerStart)
+  dockSurface?.addEventListener('lostpointercapture', pointerCancel)
+  window.addEventListener('pointermove', pointerMove)
+  window.addEventListener('pointerup', pointerEnd)
+  window.addEventListener('pointercancel', pointerCancel)
   window.addEventListener('blur', cancel)
   document.addEventListener('mouseleave', cancel)
   window.addEventListener('resize', resized)
@@ -220,13 +263,17 @@ onMounted(() => {
   // #ifndef H5
   uni.onWindowResize(resized)
   // #endif
+  measure()
 })
 onUnmounted(() => {
-  clearTimeout(holdTimer)
+  releaseInput()
   clearTimeout(fadeTimer)
   // #ifdef H5
-  window.removeEventListener('mousemove', mouseMove)
-  window.removeEventListener('mouseup', mouseEnd)
+  dockSurface?.removeEventListener('pointerdown', pointerStart)
+  dockSurface?.removeEventListener('lostpointercapture', pointerCancel)
+  window.removeEventListener('pointermove', pointerMove)
+  window.removeEventListener('pointerup', pointerEnd)
+  window.removeEventListener('pointercancel', pointerCancel)
   window.removeEventListener('blur', cancel)
   document.removeEventListener('mouseleave', cancel)
   window.removeEventListener('resize', resized)
@@ -238,58 +285,54 @@ onUnmounted(() => {
 </script>
 <template>
   <view
-    :id="id"
     class="av-dock"
-    :class="{
-      'keyboard-hidden': keyboardOpen,
-      'has-glass': glassPhase !== 'idle',
-      'is-dragging': glassPhase === 'dragging',
-    }"
+    :class="{ 'keyboard-hidden': keyboardOpen, 'is-dragging': glassPhase === 'dragging' }"
     :aria-hidden="keyboardOpen"
     :inert="keyboardOpen || undefined"
     role="navigation"
     aria-label="主页面导航"
   >
-    <view
-      v-if="glassPhase !== 'idle'"
-      class="dock-glass"
-      :class="{ settling: glassPhase === 'settling' }"
-      :style="glassStyle"
-      aria-hidden="true"
-    />
-    <button
-      v-for="(tab, index) in tabs"
-      :id="id + '-' + index"
-      :key="tab.page"
-      class="dock-tab"
-      :class="[
-        {
-          active: selected === index,
-          'drag-preview': glassPhase === 'dragging' && preview === index,
-        },
-        'dock-' + tab.page,
-      ]"
-      :aria-label="tab.accessible"
-      :aria-current="selected === index ? 'page' : undefined"
-      hover-class="dock-hover"
-      @click="select(index)"
-      @touchstart="touchStart($event, index)"
-      @touchmove.stop.prevent="touchMove"
-      @touchend="touchEnd"
-      @touchcancel="cancel"
-      @mousedown="mouseStart($event, index)"
-      @keydown="keyboard($event, index)"
-      @contextmenu.prevent
-    >
-      <view class="dock-icon" :class="{ 'camera-core': tab.page === 'identify' }"
-        ><AppIcon
-          :name="tab.icon"
-          :size="tab.page === 'identify' ? 24 : 22"
-          :white="selected === index"
-      /></view>
-      <text>{{ tab.label }}</text
-      ><view v-if="selected === index" class="dock-active-mark" aria-hidden="true" />
-    </button>
+    <view :id="id" class="dock-tabs">
+      <view
+        v-if="glassPhase !== 'idle'"
+        class="dock-glass"
+        :class="{ settling: glassPhase === 'settling' }"
+        :style="glassStyle"
+        aria-hidden="true"
+      />
+      <button
+        v-for="(tab, index) in tabs"
+        :id="id + '-' + index"
+        :key="tab.page"
+        :data-dock-index="index"
+        class="dock-tab"
+        :class="[
+          {
+            active: selected === index,
+            'drag-preview': glassPhase === 'dragging' && preview === index,
+          },
+          'dock-' + tab.page,
+        ]"
+        :aria-label="tab.accessible"
+        :aria-current="selected === index ? 'page' : undefined"
+        hover-class="dock-hover"
+        @click="select(index)"
+        @touchstart="touchStart($event, index)"
+        @touchmove.stop="touchMove"
+        @touchend="touchEnd"
+        @touchcancel="touchCancel"
+        @keydown="keyboard($event, index)"
+        @contextmenu.prevent
+      >
+        <view class="dock-icon" :class="{ 'camera-core': tab.page === 'identify' }"
+          ><AppIcon
+            :name="tab.icon"
+            :size="tab.page === 'identify' ? 24 : 22"
+            :white="selected === index"
+        /></view>
+        <text>{{ tab.label }}</text>
+      </button>
+    </view>
   </view>
 </template>
 <style scoped>
@@ -299,9 +342,7 @@ onUnmounted(() => {
 @media (max-width: 760px) {
   .av-dock {
     position: relative;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    align-items: stretch;
+    display: block;
     min-height: 74px;
     max-height: 112px;
     flex-shrink: 0;
@@ -320,7 +361,13 @@ onUnmounted(() => {
       padding 0.18s ease,
       transform 0.18s ease;
   }
-  .av-dock > .dock-tab {
+  .dock-tabs {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    touch-action: none;
+  }
+  .dock-tabs > .dock-tab {
     position: relative;
     display: grid;
     grid-template-rows: 36px 16px;
@@ -340,17 +387,14 @@ onUnmounted(() => {
     transition:
       background-color 0.22s ease,
       color 0.22s ease;
+    touch-action: none;
     -webkit-touch-callout: none;
   }
-  .av-dock > .dock-tab.active {
-    background: var(--accent-soft);
+  .dock-tabs > .dock-tab.active {
     color: var(--accent);
     font-weight: 650;
   }
-  .av-dock.has-glass > .dock-tab.active {
-    background: transparent;
-  }
-  .av-dock > .dock-tab.drag-preview {
+  .dock-tabs > .dock-tab.drag-preview {
     color: var(--ink);
     font-weight: 650;
   }
@@ -375,19 +419,11 @@ onUnmounted(() => {
     background: var(--accent);
     box-shadow: 0 2px 7px #00000012;
   }
-  .dock-active-mark {
-    position: absolute;
-    bottom: 0;
-    width: 14px;
-    height: 2px;
-    border-radius: 2px;
-    background: var(--accent);
-    opacity: 0.8;
-  }
   .dock-glass {
     position: absolute;
-    top: 5px;
-    height: 60px;
+    top: -1px;
+    left: 2px;
+    height: calc(100% + 2px);
     border: 1.3px solid;
     border-radius: 19px;
     backdrop-filter: blur(14px) saturate(1.3);
@@ -398,22 +434,16 @@ onUnmounted(() => {
     pointer-events: none;
     z-index: 1;
     opacity: 1;
-    transform: scale(1.045);
-    transition:
-      opacity 0.42s ease,
-      transform 0.25s ease;
-    will-change: left;
+    will-change: transform;
   }
   .dock-glass.settling {
     opacity: 0;
-    transform: scale(1);
     transition:
-      left 0.24s ease,
-      opacity 0.42s ease,
-      transform 0.25s ease;
+      opacity 0.28s ease,
+      transform 0.22s ease;
   }
-  .av-dock .dock-hover {
-    background: var(--hover);
+  .av-dock:not(.is-dragging) .dock-hover .dock-icon {
+    transform: scale(0.94);
   }
   .av-dock.keyboard-hidden {
     min-height: 0;
@@ -433,9 +463,6 @@ onUnmounted(() => {
   .dock-glass,
   .dock-glass.settling {
     transition: none;
-  }
-  .dock-glass {
-    transform: none;
   }
 }
 </style>

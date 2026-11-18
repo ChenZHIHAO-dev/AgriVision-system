@@ -138,22 +138,25 @@ async function mounted(run) {
   try {
     app.mount(host)
     const bar = host.querySelector('.av-dock')
-    bar.getBoundingClientRect = () => ({
-      left: 0,
-      top: 770,
-      width: 390,
-      height: 68,
-      right: 390,
-      bottom: 838,
-      x: 0,
-      y: 770,
+    bar.querySelector('.dock-tabs').getBoundingClientRect = () => ({
+      left: 12,
+      top: 776,
+      width: 366,
+      height: 58,
+      right: 378,
+      bottom: 834,
+      x: 12,
+      y: 776,
       toJSON() {
         return {}
       },
     })
-    const mouse = (target, type, x = 73, y = 795) =>
+    const point = (target, type, x = 73, y = 795, pointerType = 'mouse', pointerId = 9) =>
       target.dispatchEvent(
-        new window.MouseEvent(type, {
+        new window.PointerEvent('pointer' + type, {
+          isPrimary: true,
+          pointerId,
+          pointerType,
           bubbles: true,
           cancelable: true,
           button: 0,
@@ -169,7 +172,7 @@ async function mounted(run) {
       changes,
       clock,
       tick: nextTick,
-      mouse,
+      point,
       hidden,
     })
   } finally {
@@ -183,8 +186,8 @@ async function mounted(run) {
 }
 
 test('actual dock renders held glass and commits one release destination, ignoring the trailing click', () =>
-  mounted(async ({ window, host, bar, buttons, changes, clock, tick, mouse }) => {
-    mouse(buttons[0], 'mousedown')
+  mounted(async ({ window, host, bar, buttons, changes, clock, tick, point }) => {
+    point(buttons[0], 'down')
     clock.advance(279)
     await tick()
     assert.equal(host.querySelector('.dock-glass'), null)
@@ -192,11 +195,11 @@ test('actual dock renders held glass and commits one release destination, ignori
     await tick()
     assert.ok(host.querySelector('.dock-glass'))
     assert.equal(bar.classList.contains('is-dragging'), true)
-    mouse(window, 'mousemove', 317, 795)
+    point(window, 'move', 317, 795)
     await tick()
     assert.equal(buttons[2].classList.contains('drag-preview'), true)
     assert.deepEqual(changes, [])
-    mouse(window, 'mouseup', 317, 795)
+    point(window, 'up', 317, 795)
     await tick()
     assert.deepEqual(changes, ['profile'])
     assert.equal(buttons[2].getAttribute('aria-current'), 'page')
@@ -209,24 +212,24 @@ test('actual dock renders held glass and commits one release destination, ignori
     assert.equal(host.querySelector('.dock-glass'), null)
   }))
 
-test('actual dock cancels an early swipe or a held pointer leaving the page without navigation', () =>
-  mounted(async ({ window, host, buttons, changes, clock, tick, mouse }) => {
-    mouse(buttons[0], 'mousedown')
+test('actual dock cancels a vertical swipe or a held pointer leaving the page without navigation', () =>
+  mounted(async ({ window, host, buttons, changes, clock, tick, point }) => {
+    point(buttons[0], 'down')
     clock.advance(100)
-    mouse(window, 'mousemove', 195, 795)
+    point(window, 'move', 74, 754)
     clock.advance(300)
-    mouse(window, 'mouseup', 195, 795)
+    point(window, 'up', 195, 795)
     buttons[0].click()
     await tick()
     assert.deepEqual(changes, [])
     assert.equal(host.querySelector('.dock-glass'), null)
     // A genuinely new press must not inherit the previous click suppression.
-    mouse(buttons[0], 'mousedown')
+    point(buttons[0], 'down')
     clock.advance(280)
     await tick()
     assert.ok(host.querySelector('.dock-glass'))
     document.dispatchEvent(new window.MouseEvent('mouseleave'))
-    mouse(window, 'mouseup', 317, 795)
+    point(window, 'up', 317, 795)
     buttons[0].click()
     await tick()
     assert.deepEqual(changes, [])
@@ -236,12 +239,33 @@ test('actual dock cancels an early swipe or a held pointer leaving the page with
   }))
 
 test('actual dock ordinary mouse tap still switches immediately once', () =>
-  mounted(async ({ window, buttons, changes, clock, tick, mouse }) => {
-    mouse(buttons[0], 'mousedown')
+  mounted(async ({ window, buttons, changes, clock, tick, point }) => {
+    point(buttons[0], 'down')
     clock.advance(50)
-    mouse(window, 'mouseup')
+    point(window, 'up')
     buttons[0].click()
     await tick()
     assert.deepEqual(changes, ['home'])
     assert.equal(buttons[0].getAttribute('aria-current'), 'page')
+  }))
+
+test('an intentional touch drag follows the finger across the three tabs before the hold timer', () =>
+  mounted(async ({ window, host, buttons, changes, clock, tick, point }) => {
+    point(buttons[1].querySelector('span'), 'down', 240, 795, 'touch')
+    clock.advance(60)
+    point(window, 'move', 260, 795, 'touch')
+    await tick()
+    assert.ok(host.querySelector('.dock-glass'))
+    assert.equal(buttons[2].classList.contains('drag-preview'), true)
+    assert.deepEqual(changes, [])
+    point(window, 'move', 110, 795, 'touch')
+    await tick()
+    assert.equal(buttons[0].classList.contains('drag-preview'), true)
+    point(window, 'up', 110, 795, 'touch')
+    await tick()
+    assert.deepEqual(changes, ['home'])
+    assert.equal(buttons[0].getAttribute('aria-current'), 'page')
+    clock.advance(320)
+    await tick()
+    assert.equal(host.querySelector('.dock-glass'), null)
   }))

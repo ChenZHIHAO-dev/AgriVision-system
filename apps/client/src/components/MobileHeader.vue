@@ -7,21 +7,15 @@ defineProps<{
   chat: boolean
   backLabel: string
   userName?: string
-  offset: number
   safeTop: number
   resources: boolean
-  settling: boolean
+  historyOpen: boolean
 }>()
 const emit = defineEmits<{
   back: []
   history: []
   login: []
   profile: []
-  consult: []
-  capture: []
-  resources: []
-  recent: []
-  settings: []
 }>()
 </script>
 <template>
@@ -43,55 +37,31 @@ const emit = defineEmits<{
       >
         <AppIcon name="back" :size="21" /><text>返回</text>
       </button>
-      <button v-else class="mobile-menu" aria-label="打开问诊历史" @click="emit('history')">
+      <button
+        v-else
+        class="mobile-menu"
+        aria-label="打开问诊历史"
+        :aria-expanded="historyOpen"
+        @click="emit('history')"
+      >
         <AppIcon name="menu" :size="23" />
       </button>
       <text :key="title" class="mobile-title">{{ title }}</text>
       <view class="mobile-actions">
+        <button
+          v-if="chat"
+          class="mobile-menu"
+          aria-label="打开问诊历史"
+          :aria-expanded="historyOpen"
+          @click="emit('history')"
+        >
+          <AppIcon name="history" :size="21" />
+        </button>
         <AppearanceSwitch v-if="page === 'profile' && !chat" />
         <button v-if="!userName" class="mobile-login" @click="emit('login')">登录</button>
         <button v-else class="mobile-account" aria-label="用户中心" @click="emit('profile')">
           {{ userName.slice(0, 1).toUpperCase() }}
         </button>
-      </view>
-    </view>
-    <view
-      v-if="!chat && page !== 'settings' && page !== 'history' && !(page === 'home' && resources)"
-      class="mobile-toolbar-clip"
-    >
-      <view
-        class="mobile-toolbar"
-        :class="{ settling }"
-        :style="{ transform: 'translateY(-' + offset + 'px)', opacity: 1 - offset / 46 }"
-        :inert="offset >= 44 || undefined"
-        :aria-hidden="offset >= 44"
-      >
-        <template v-if="page === 'home'">
-          <button v-if="resources" @click="emit('recent')">
-            <AppIcon name="history" :size="18" /><text>最近问诊</text>
-          </button>
-          <button v-else @click="emit('resources')">
-            <AppIcon name="book" :size="18" /><text>参考资料</text>
-          </button>
-          <button @click="emit('consult')">
-            <AppIcon name="chat" :size="18" /><text>文字咨询</text>
-          </button>
-          <button @click="emit('capture')">
-            <AppIcon name="camera" :size="18" /><text>拍照</text>
-          </button>
-        </template>
-        <template v-else-if="page === 'identify'">
-          <text class="toolbar-hint">拍照识别，也可直接提问</text
-          ><button @click="emit('consult')">
-            <AppIcon name="chat" :size="18" /><text>文字咨询</text>
-          </button>
-        </template>
-        <template v-else
-          ><text class="toolbar-hint">账户与使用偏好</text
-          ><button @click="emit('settings')">
-            <AppIcon name="settings" :size="18" /><text>设置</text>
-          </button></template
-        >
       </view>
     </view>
   </view>
@@ -170,52 +140,6 @@ const emit = defineEmits<{
     font-size: 12px;
     font-weight: 550;
   }
-  .mobile-toolbar-clip {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    height: 46px;
-    overflow: hidden;
-    pointer-events: none;
-  }
-  .mobile-toolbar {
-    height: 46px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 5px;
-    padding: 4px 14px;
-    background: var(--glass);
-    backdrop-filter: blur(16px);
-    border-bottom: 1px solid var(--line);
-    will-change: transform;
-  }
-  .mobile-toolbar > button {
-    pointer-events: auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    border-radius: 10px;
-    padding: 7px 9px;
-    min-height: 36px;
-    font-size: 11px;
-  }
-  .mobile-toolbar[aria-hidden='true'] > button {
-    pointer-events: none;
-  }
-  .mobile-toolbar.settling {
-    transition:
-      transform 0.22s ease,
-      opacity 0.22s ease;
-  }
-  .toolbar-hint {
-    font-size: 11px;
-    color: var(--muted);
-    overflow: hidden;
-    white-space: nowrap;
-  }
 }
 @keyframes header-title {
   from {
@@ -230,11 +154,6 @@ const emit = defineEmits<{
 @media (prefers-reduced-motion: reduce) {
   .mobile-title {
     animation: none;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .mobile-toolbar.settling {
-    transition: none;
   }
 }
 </style>

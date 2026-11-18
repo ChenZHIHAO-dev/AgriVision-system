@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import AppIcon from './AppIcon.vue'
 import type { KnowledgeCard, Source } from '../lib/api'
 import { crops } from '../lib/options'
 import newsData from '../../../../knowledge/news.json'
-const props = defineProps<{ cards: KnowledgeCard[]; embedded?: boolean }>()
+const props = defineProps<{ cards: KnowledgeCard[]; embedded?: boolean; reading?: boolean }>()
 const emit = defineEmits<{ open: [card: KnowledgeCard]; source: [source: Source] }>()
 const section = ref<'library' | 'news'>('library'),
   filter = ref('all'),
@@ -28,110 +28,223 @@ const news = computed(() =>
       (item.title + item.summary + item.source).includes(query.value.trim()),
   ),
 )
+const TOOLS_HEIGHT = 84
+const TOP_MARGIN = 24
+const toolsOffset = ref(0)
+const scrollTarget = ref(0)
+const settling = ref(false)
+const openedByButton = ref(false)
+const toolsId = 'library-tools-' + Math.random().toString(36).slice(2, 8)
+const isCompact = computed(() => toolsOffset.value >= TOOLS_HEIGHT / 2)
+const filterLabel = computed(() => crops.find((crop) => crop.id === filter.value)?.name || '筛选')
+let scrollTop = 0
+let idle: ReturnType<typeof setTimeout> | undefined
+
+function scrollReading(event: { detail: { scrollTop: number } }) {
+  if (!props.reading) return
+  const nextTop = Math.max(0, event.detail.scrollTop)
+  if (nextTop === scrollTop) return
+  clearTimeout(idle)
+  openedByButton.value = false
+  settling.value = false
+  const delta = nextTop - Math.max(TOP_MARGIN, scrollTop)
+  toolsOffset.value =
+    nextTop <= TOP_MARGIN ? 0 : Math.min(TOOLS_HEIGHT, Math.max(0, toolsOffset.value + delta))
+  scrollTop = nextTop
+  if (nextTop > TOOLS_HEIGHT + TOP_MARGIN && toolsOffset.value < TOOLS_HEIGHT) {
+    idle = setTimeout(() => {
+      settling.value = true
+      toolsOffset.value = TOOLS_HEIGHT
+    }, 1200)
+  }
+}
+
+function toggleTools() {
+  clearTimeout(idle)
+  settling.value = true
+  openedByButton.value = !openedByButton.value
+  toolsOffset.value = openedByButton.value ? 0 : TOOLS_HEIGHT
+}
+
+function restartReading() {
+  if (!props.reading) return
+  clearTimeout(idle)
+  openedByButton.value = false
+  settling.value = false
+  toolsOffset.value = 0
+  if (scrollTop > 0) {
+    // Change the scroll-top binding even when the requested destination remains zero.
+    scrollTarget.value = scrollTop
+    nextTick(() => {
+      scrollTarget.value = 0
+    })
+    scrollTop = 0
+  }
+}
+
+watch([filter, section, query, layout], restartReading)
+onBeforeUnmount(() => clearTimeout(idle))
 </script>
 <template>
-  <view class="library" :class="{ embedded }">
-    <view class="library-controls">
-      <view class="library-heading"
-        ><view
-          ><text class="library-title">{{ embedded ? '参考资料' : '植保知识' }}</text
-          ><text class="library-subtitle">病虫害资料、种植管理与公开资讯</text></view
-        ><view class="layout-switch" aria-label="资料显示方式"
-          ><button
-            aria-label="网格视图"
-            :aria-pressed="layout === 'grid'"
-            :class="{ active: layout === 'grid' }"
-            @click="setLayout('grid')"
-          >
-            <AppIcon name="grid" :size="17" /></button
-          ><button
-            aria-label="列表视图"
-            :aria-pressed="layout === 'list'"
-            :class="{ active: layout === 'list' }"
-            @click="setLayout('list')"
-          >
-            <AppIcon name="list" :size="17" /></button></view
-      ></view>
-      <view class="library-tabs" role="tablist" aria-label="知识栏目"
-        ><button
-          role="tab"
-          :aria-selected="section === 'library'"
-          :class="{ active: section === 'library' }"
-          @click="section = 'library'"
-        >
-          知识库<text>{{ cards.length }}</text></button
-        ><button
-          role="tab"
-          :aria-selected="section === 'news'"
-          :class="{ active: section === 'news' }"
-          @click="section = 'news'"
-        >
-          农业资讯
-        </button></view
-      >
-      <view class="library-tools"
-        ><view class="library-filters"
-          ><button :class="{ active: filter === 'all' }" @click="filter = 'all'">全部</button
-          ><button
-            v-for="crop in crops"
-            :key="crop.id"
-            :class="{ active: filter === crop.id }"
-            @click="filter = crop.id"
-          >
-            {{ crop.name }}
-          </button></view
-        ><view class="library-search"
-          ><AppIcon name="search" :size="16" /><input
-            v-model="query"
-            aria-label="搜索知识与资讯"
-            placeholder="搜索病害、症状或标题" /></view
-      ></view>
-    </view>
-    <view v-if="section === 'library'" class="library-items" :class="layout">
+  <view class="library" :class="{ embedded, reading }">
+    <view v-if="reading" class="reading-search">
+      <view class="library-search">
+        <AppIcon name="search" :size="17" />
+        <input
+          v-model="query"
+          :adjust-position="false"
+          aria-label="搜索知识与资讯"
+          placeholder="搜索病害、症状或标题"
+        />
+      </view>
       <button
-        v-for="card in filtered"
-        :key="card.id"
-        class="library-card"
-        @click="emit('open', card)"
+        v-if="isCompact || openedByButton"
+        class="reading-toggle"
+        :aria-label="openedByButton ? '收起资料工具' : '展开作物筛选与资料工具'"
+        :aria-controls="toolsId"
+        :aria-expanded="openedByButton"
+        @click="toggleTools"
       >
-        <view class="library-card-top"
-          ><view class="library-card-icon"
-            ><AppIcon :name="card.crop === 'general' ? 'camera' : card.crop" :size="23" /></view
-          ><text>{{ card.category }}</text></view
-        ><view class="library-copy"
-          ><text class="library-card-title">{{ card.title }}</text
-          ><text class="library-card-summary">{{ card.summary }}</text></view
-        ><view class="library-card-footer"
-          ><text>{{ card.sources.length ? '附参考来源' : '拍摄与操作指南' }}</text
-          ><text>↗</text></view
-        >
+        <text>{{ openedByButton ? '收起' : filterLabel }}</text>
+        <AppIcon name="chevron" :size="13" />
       </button>
     </view>
-    <template v-else
-      ><text class="news-note">精选公开资讯，点击查看原文。请按原文发布时间和本地农时参考。</text
-      ><view class="library-items" :class="layout"
-        ><button
-          v-for="item in news"
-          :key="item.id"
-          class="library-card news-card"
-          @click="emit('source', { title: item.title, url: item.url, date: item.date })"
-        >
-          <view class="library-card-top"
-            ><text class="news-category">{{ item.category }}</text
-            ><text>{{ item.date }}</text></view
-          ><view class="library-copy"
-            ><text class="library-card-title">{{ item.title }}</text
-            ><text class="library-card-summary">{{ item.summary }}</text></view
-          ><view class="library-card-footer"
-            ><text>{{ item.source }}</text
-            ><text>↗</text></view
+
+    <view
+      :id="toolsId"
+      class="library-controls"
+      :aria-hidden="reading && toolsOffset >= TOOLS_HEIGHT"
+      :inert="(reading && toolsOffset >= TOOLS_HEIGHT) || undefined"
+    >
+      <view
+        class="library-toolbar"
+        :class="{ settling }"
+        :style="reading ? { transform: 'translateY(-' + toolsOffset + 'px)' } : undefined"
+      >
+        <view class="library-heading">
+          <view v-if="!reading">
+            <text class="library-title">{{ embedded ? '参考资料' : '植保知识' }}</text>
+            <text class="library-subtitle">病虫害资料、种植管理与公开资讯</text>
+          </view>
+          <view class="layout-switch" aria-label="资料显示方式">
+            <button
+              aria-label="网格视图"
+              :aria-pressed="layout === 'grid'"
+              :class="{ active: layout === 'grid' }"
+              @click="setLayout('grid')"
+            >
+              <AppIcon name="grid" :size="17" />
+            </button>
+            <button
+              aria-label="列表视图"
+              :aria-pressed="layout === 'list'"
+              :class="{ active: layout === 'list' }"
+              @click="setLayout('list')"
+            >
+              <AppIcon name="list" :size="17" />
+            </button>
+          </view>
+        </view>
+        <view class="library-tabs" role="tablist" aria-label="知识栏目">
+          <button
+            role="tab"
+            :aria-selected="section === 'library'"
+            :class="{ active: section === 'library' }"
+            @click="section = 'library'"
           >
-        </button></view
-      ></template
+            知识库<text v-if="!reading">{{ cards.length }}</text>
+          </button>
+          <button
+            role="tab"
+            :aria-selected="section === 'news'"
+            :class="{ active: section === 'news' }"
+            @click="section = 'news'"
+          >
+            农业资讯
+          </button>
+        </view>
+        <view class="library-tools">
+          <view class="library-filters" aria-label="按作物筛选">
+            <button
+              :class="{ active: filter === 'all' }"
+              :aria-pressed="filter === 'all'"
+              @click="filter = 'all'"
+            >
+              全部
+            </button>
+            <button
+              v-for="crop in crops"
+              :key="crop.id"
+              :class="{ active: filter === crop.id }"
+              :aria-pressed="filter === crop.id"
+              @click="filter = crop.id"
+            >
+              {{ crop.name }}
+            </button>
+          </view>
+          <view v-if="!reading" class="library-search">
+            <AppIcon name="search" :size="16" />
+            <input v-model="query" aria-label="搜索知识与资讯" placeholder="搜索病害、症状或标题" />
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <scroll-view
+      class="library-scroll"
+      :scroll-y="reading"
+      :scroll-top="reading ? scrollTarget : undefined"
+      @scroll="scrollReading"
     >
-    <view v-if="section === 'library' ? !filtered.length : !news.length" class="library-empty"
-      ><text>没有找到相关内容</text><text>试试其他关键词，或切换作物分类。</text></view
-    >
+      <view class="library-results">
+        <view v-if="section === 'library'" class="library-items" :class="layout">
+          <button
+            v-for="card in filtered"
+            :key="card.id"
+            class="library-card"
+            @click="emit('open', card)"
+          >
+            <view class="library-card-top"
+              ><view class="library-card-icon"
+                ><AppIcon :name="card.crop === 'general' ? 'camera' : card.crop" :size="23" /></view
+              ><text>{{ card.category }}</text></view
+            ><view class="library-copy"
+              ><text class="library-card-title">{{ card.title }}</text
+              ><text class="library-card-summary">{{ card.summary }}</text></view
+            ><view class="library-card-footer"
+              ><text>{{ card.sources.length ? '附参考来源' : '拍摄与操作指南' }}</text
+              ><text>↗</text></view
+            >
+          </button>
+        </view>
+        <template v-else
+          ><text class="news-note"
+            >精选公开资讯，点击查看原文。请按原文发布时间和本地农时参考。</text
+          ><view class="library-items" :class="layout"
+            ><button
+              v-for="item in news"
+              :key="item.id"
+              class="library-card news-card"
+              @click="emit('source', { title: item.title, url: item.url, date: item.date })"
+            >
+              <view class="library-card-top"
+                ><text class="news-category">{{ item.category }}</text
+                ><text>{{ item.date }}</text></view
+              ><view class="library-copy"
+                ><text class="library-card-title">{{ item.title }}</text
+                ><text class="library-card-summary">{{ item.summary }}</text></view
+              ><view class="library-card-footer"
+                ><text>{{ item.source }}</text
+                ><text>↗</text></view
+              >
+            </button></view
+          ></template
+        >
+        <view v-if="section === 'library' ? !filtered.length : !news.length" class="library-empty"
+          ><text>没有找到相关内容</text><text>试试其他关键词，或切换作物分类。</text></view
+        >
+      </view>
+    </scroll-view>
   </view>
 </template>
 <style scoped>
@@ -272,6 +385,7 @@ const news = computed(() =>
 .library-items.grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
   gap: 17px;
 }
 .library-card {
@@ -284,6 +398,7 @@ const news = computed(() =>
   background: var(--surface);
   padding: 22px;
   min-width: 0;
+  width: 100%;
   transition:
     border-color 0.15s ease,
     background 0.15s ease;
@@ -509,39 +624,123 @@ const news = computed(() =>
 .embedded {
   margin-top: 22px;
 }
-@media (max-width: 760px) {
-  .library-controls {
-    position: sticky;
-    top: 0;
-    z-index: 12;
-    padding: 10px 0 9px;
-    background: var(--bg);
-    border-bottom: 1px solid var(--line);
-    margin-bottom: 16px;
-  }
-  .library-heading {
-    margin-bottom: 10px;
-    align-items: center;
-  }
-  .library-heading > view:first-child {
-    display: none;
-  }
-  .library-heading .layout-switch {
-    margin-left: auto;
-  }
-  .library-tabs {
-    margin-top: -43px;
-    margin-right: 90px;
-    border-bottom: 0;
-    min-height: 40px;
-  }
-  .library-tools {
-    margin-top: 9px;
-    margin-bottom: 0;
-    gap: 9px;
-  }
-  .library-search {
-    min-height: 36px;
+.library.reading {
+  --reading-search-height: 56px;
+  --reading-tools-height: 84px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+}
+.reading-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 var(--reading-search-height);
+  padding: 6px 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  z-index: 3;
+}
+.reading-search .library-search {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  min-height: 42px;
+}
+.reading-search input {
+  width: 100%;
+  flex: 1;
+}
+.reading-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  gap: 4px;
+  min-height: 42px;
+  min-width: 64px;
+  padding: 6px 9px;
+  border-radius: 10px;
+  background: var(--subtle);
+  color: var(--ink);
+  font-size: 12px;
+}
+.reading-toggle[aria-expanded='true'] image {
+  transform: rotate(180deg);
+}
+.reading .library-controls {
+  position: absolute;
+  z-index: 2;
+  top: var(--reading-search-height);
+  left: 0;
+  right: 0;
+  height: var(--reading-tools-height);
+  overflow: hidden;
+  pointer-events: none;
+}
+.reading .library-toolbar {
+  display: grid;
+  grid-template-rows: 42px 42px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  height: var(--reading-tools-height);
+  padding: 0 16px;
+  background: var(--bg);
+  box-shadow: inset 0 -1px var(--line);
+  pointer-events: auto;
+}
+.reading .library-toolbar.settling {
+  transition: transform 0.2s ease-out;
+}
+.reading .library-heading {
+  grid-area: 1 / 2;
+  margin: 0;
+  justify-content: flex-end;
+}
+.reading .layout-switch {
+  padding: 2px;
+}
+.reading .library-tabs {
+  grid-area: 1 / 1;
+  gap: 20px;
+  border: 0;
+}
+.reading .library-tabs > button {
+  min-height: 40px;
+  padding: 0 1px;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.reading .library-tools {
+  grid-area: 2 / 1 / 3 / 3;
+  margin: 0;
+}
+.reading .library-filters {
+  width: 100%;
+}
+.reading .library-filters > button {
+  min-height: 36px;
+}
+.reading .library-scroll {
+  flex: 1;
+  width: 100%;
+  height: 0;
+  min-height: 0;
+  overflow-anchor: none;
+}
+.reading .library-results {
+  padding: calc(var(--reading-tools-height) + 14px) 16px 22px;
+}
+.reading .library-empty {
+  padding: 24px 10px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reading .library-toolbar.settling {
+    transition: none;
   }
 }
 </style>
