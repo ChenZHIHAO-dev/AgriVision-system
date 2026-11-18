@@ -364,7 +364,7 @@ onUnmounted(() => document.removeEventListener('keydown', keyboard))
     top: auto;
     width: auto;
     max-width: none;
-    max-height: calc(var(--app-height, 100dvh) - 24px);
+    max-height: calc(var(--visual-height, var(--app-height, 100dvh)) - 24px);
     padding: 12px;
     border-radius: 22px;
   }

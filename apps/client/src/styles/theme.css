@@ -888,39 +888,6 @@ body {
     transform: translateY(15px);
     pointer-events: none;
   }
-  .keyboard-open .dialog-heading {
-    padding: 14px 18px 10px;
-  }
-  .keyboard-open .dialog-title {
-    font-size: 18px;
-  }
-  .keyboard-open .dialog-subtitle {
-    font-size: 10px;
-    line-height: 1.6;
-  }
-  .keyboard-open .dialog-footer {
-    padding: 10px 18px 12px;
-  }
-  .keyboard-open .dialog-body-inner {
-    padding: 0 18px 16px;
-  }
-  .keyboard-open .is-chat .topbar {
-    height: 46px;
-    min-height: 46px;
-  }
-  .keyboard-open .is-chat .case-toolbar {
-    padding-top: 7px;
-    padding-bottom: 7px;
-  }
-  .keyboard-open .is-chat .case-tabs {
-    display: none;
-  }
-  .keyboard-open .chat-recognition-context {
-    display: none;
-  }
-  .keyboard-open .chat-composer-meta {
-    display: none;
-  }
 }
 
 .button-hover {
@@ -1048,5 +1015,35 @@ uni-button {
   .av-app button,
   .av-app uni-button {
     transition: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .dialog-card {
+    position: absolute;
+    bottom: var(--keyboard-inset, 0px);
+    max-height: calc(var(--visual-height, var(--app-height, 100dvh)) - 14px);
+  }
+  .dialog-body {
+    max-height: calc(var(--visual-height, var(--app-height, 100dvh)) - 175px);
+  }
+  .dialog-floating {
+    position: relative;
+    bottom: auto;
+    max-height: calc(var(--visual-height, var(--app-height, 100dvh)) - 26px);
+    transform: translateY(calc(-0.5 * var(--keyboard-inset, 0px)));
+  }
+  .dialog-floating .dialog-body {
+    max-height: calc(var(--visual-height, var(--app-height, 100dvh)) - 204px);
+  }
+  .back-button,
+  .mobile-back {
+    border: 1px solid var(--control-line);
+  }
+  .av-app {
+    --control-line: #c5ccd4;
+  }
+  .av-app.theme-dark {
+    --control-line: #606570;
   }
 }

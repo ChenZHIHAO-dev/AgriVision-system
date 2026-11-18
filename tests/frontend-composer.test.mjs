@@ -102,17 +102,53 @@ test('Enter sends once while Shift+Enter and Chinese composition preserve editin
     assert.equal(events.sends, 1)
   }))
 
-test('long input uses an internal scroll area under simulated viewport measurements', () =>
+test('empty content stays one line even when a placeholder reports multiple lines', () =>
+  mounted(async ({ window, input, events, tick }) => {
+    Object.defineProperty(input, 'scrollHeight', { value: 96, configurable: true })
+    window.dispatchEvent(new window.Event('resize'))
+    await tick()
+    assert.equal(input.style.height, '24px')
+    assert.equal(input.style.overflowY, 'hidden')
+    assert.equal(events.sends, 0)
+  }))
+
+test('actual text grows to eight lines, scrolls thereafter and does not resize for a keyboard', () =>
   mounted(async ({ window, input, tick }) => {
-    Object.defineProperty(input, 'scrollHeight', { value: 900, configurable: true })
+    Object.defineProperty(input, 'scrollHeight', { value: 72, configurable: true })
+    input.value = '第一行\n第二行\n第三行'
     input.dispatchEvent(new window.Event('input', { bubbles: true }))
     await tick()
-    assert.equal(input.style.height, '180px')
+    assert.equal(input.style.height, '72px')
+    Object.defineProperty(input, 'scrollHeight', { value: 900, configurable: true })
+    input.value = '多行文字\n'.repeat(30)
+    input.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await tick()
+    assert.equal(input.style.height, '192px')
     assert.equal(input.style.overflowY, 'auto')
     window.innerHeight = 300
     window.dispatchEvent(new window.Event('resize'))
-    assert.equal(input.style.height, '84px')
+    assert.equal(input.style.height, '192px')
     assert.equal(input.style.overflowY, 'auto')
+    input.value = ''
+    input.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await tick()
+    assert.equal(input.style.height, '24px')
+    assert.equal(input.style.overflowY, 'hidden')
+  }))
+
+test('mobile Enter leaves room for a newline and does not submit', () =>
+  mounted(async ({ window, input, events }) => {
+    window.innerWidth = 390
+    input.value = '第一行'
+    const uncancelled = input.dispatchEvent(
+      new window.KeyboardEvent('keydown', {
+        key: 'Enter',
+        bubbles: true,
+        cancelable: true,
+      }),
+    )
+    assert.equal(uncancelled, true)
+    assert.equal(events.sends, 0)
   }))
 
 test('paste warns when the remaining message capacity is exceeded', () =>

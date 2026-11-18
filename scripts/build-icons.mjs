@@ -12,13 +12,13 @@ const icons = {
   new: 'square-pen', grid: 'layout-grid', list: 'list', external: 'arrow-up-right',
   thinking: 'brain', shield: 'shield-check', copy: 'copy',
 }
-const colors = { light: '#59636e', dark: '#c5c9d1', white: '#ffffff', inverse: '#202126' }
+const colors = { light: '#4a5561', dark: '#d3d7de', white: '#ffffff', inverse: '#202126' }
 const target = new URL('../apps/client/src/static/icons/ui/', import.meta.url)
 await mkdir(target, { recursive: true })
 for (const [name, source] of Object.entries(icons)) {
   const svg = await readFile(new URL('../node_modules/lucide-static/icons/' + source + '.svg', import.meta.url), 'utf8')
   for (const [tone, color] of Object.entries(colors)) {
-    const painted = svg.replaceAll('currentColor', color).replace(/stroke-width="[^"]+"/, 'stroke-width="1.8"')
+    const painted = svg.replaceAll('currentColor', color).replace(/stroke-width="[^"]+"/, 'stroke-width="2.2"')
     const buffer = new Resvg(painted, { fitTo: { mode: 'width', value: 96 } }).render().asPng()
     await writeFile(new URL(name + '-' + tone + '.png', target), buffer)
   }

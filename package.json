@@ -1,6 +1,6 @@
 {
   "name": "agrivision",
-  "version": "1.2.2-dev.1",
+  "version": "1.3.0-dev.1",
   "private": true,
   "workspaces": [
     "apps/client"
@@ -11,7 +11,7 @@
     "build:mp": "npm run build:mp --workspace @agrivision/client",
     "typecheck": "npm run typecheck --workspace @agrivision/client",
     "build:pages": "node scripts/build-pages.mjs",
-    "test:frontend": "node --test tests/frontend-state.test.mjs tests/frontend-composer.test.mjs tests/frontend-content.test.mjs",
+    "test:frontend": "node --test tests/frontend-*.test.mjs",
     "format": "prettier --write \"apps/client/src/**/*.{vue,ts,css}\" \"tests/frontend-*.test.mjs\"",
     "format:check": "prettier --check \"apps/client/src/**/*.{vue,ts,css}\" \"tests/frontend-*.test.mjs\"",
     "icons": "node scripts/build-icons.mjs"

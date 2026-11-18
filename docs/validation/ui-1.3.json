@@ -1,0 +1,93 @@
+{
+  "version": "1.3.0-dev.1",
+  "checks": [
+    {
+      "name": "login-keyboard",
+      "metrics": {
+        "appHeight": 844,
+        "cardTop": 14,
+        "footerBottom": 480.00001525878906,
+        "headerHeight": 54,
+        "viewport": 480
+      }
+    },
+    {
+      "name": "right-side-web-switch",
+      "checkedAfterSwitch": "true"
+    },
+    {
+      "name": "empty-composer",
+      "metrics": {
+        "bottom": 844,
+        "input": 24,
+        "shell": 84.33333587646484
+      }
+    },
+    {
+      "name": "chat-keyboard",
+      "metrics": {
+        "app": 844,
+        "bottom": 480,
+        "header": 54,
+        "input": 192,
+        "scrollHeight": 312,
+        "viewport": 480
+      }
+    },
+    {
+      "name": "reference-sticky-tools",
+      "metrics": {
+        "controlsTop": 54,
+        "headerBottom": 54,
+        "scroll": [
+          1670.6666259765625
+        ]
+      }
+    },
+    {
+      "name": "my-appearance-and-active",
+      "theme": "av-app theme-dark",
+      "active": "page"
+    },
+    {
+      "name": "appearance-hidden-outside-my",
+      "appearanceButtons": 0
+    },
+    {
+      "name": "top-controls-before-idle",
+      "style": "transform: translateY(0px); opacity: 1;"
+    },
+    {
+      "name": "top-controls-after-idle-stay-visible",
+      "style": "transform: translateY(0px); opacity: 1;",
+      "hidden": "false"
+    },
+    {
+      "name": "small-screen-reading",
+      "metrics": {
+        "headerHeight": 54,
+        "scrolls": [
+          188
+        ],
+        "toolbar": "transform: translateY(-46px); opacity: 0;"
+      }
+    },
+    {
+      "name": "desktop-separate-layout",
+      "metrics": {
+        "desktopHeader": "flex",
+        "mobileHeader": "none",
+        "overflow": false,
+        "width": 1280
+      }
+    }
+  ],
+  "scope": "Responsive H5 browser; keyboard simulated by viewport reduction; native device checks pending",
+  "checkedAt": "2026-11-18",
+  "automatedFrontendTests": 39,
+  "pending": [
+    "Actual iOS / Android keyboard and touch long-press acceptance",
+    "WeChat developer tools and physical-device capsule/camera acceptance",
+    "Native APP packaging and device verification"
+  ]
+}

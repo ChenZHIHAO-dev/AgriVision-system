@@ -34,6 +34,26 @@ const emit = defineEmits<{
   keyboard: [height: number]
 }>()
 const attachOpen = ref(false)
+const nativeHeight = ref(24)
+const nativeText = ref(props.modelValue)
+watch(
+  () => props.modelValue,
+  (value) => {
+    nativeText.value = value
+    if (!value && nativeHeight.value !== 24) {
+      nativeHeight.value = 24
+      emit('resize')
+    }
+  },
+)
+function nativeLines(event: { detail?: { height?: number; lineCount?: number } }) {
+  const measured = event.detail?.height || (event.detail?.lineCount || 1) * 24
+  const height = nativeText.value ? Math.min(192, Math.max(24, measured)) : 24
+  if (height !== nativeHeight.value) {
+    nativeHeight.value = height
+    emit('resize')
+  }
+}
 function attachmentKeyboard(event: KeyboardEvent) {
   if (event.defaultPrevented) return
   // #ifdef H5
@@ -69,7 +89,9 @@ function attach(kind: 'image' | 'document') {
 }
 function input(event: unknown) {
   const value = event as { detail?: { value?: string }; target?: { value?: string } }
-  emit('update:modelValue', value.detail?.value ?? value.target?.value ?? '')
+  const text = value.detail?.value ?? value.target?.value ?? ''
+  nativeText.value = text
+  emit('update:modelValue', text)
 }
 </script>
 <template>
@@ -119,12 +141,17 @@ function input(event: unknown) {
         class="mp-chat-input"
         :value="modelValue"
         :auto-height="false"
+        :style="{ height: nativeHeight + 'px' }"
+        :fixed="true"
+        :disable-default-padding="true"
+        :show-confirm-bar="false"
         :maxlength="12000"
         :disabled="disabled"
         :adjust-position="false"
-        placeholder="描述情况，或添加照片、资料继续问…"
+        placeholder="描述问题，或添加照片…"
         confirm-type="send"
         @input="input"
+        @linechange="nativeLines"
         @confirm="emit('send')"
         @keyboardheightchange="emit('keyboard', $event.detail.height)"
       />
@@ -258,8 +285,8 @@ function input(event: unknown) {
   display: block;
   width: 100%;
   min-width: 0;
-  min-height: 30px;
-  max-height: 180px;
+  min-height: 24px;
+  max-height: 192px;
   border: 0;
   border-radius: 0;
   margin: 0;
@@ -270,7 +297,7 @@ function input(event: unknown) {
   background: transparent;
   font: inherit;
   font-size: 14px;
-  line-height: 1.9;
+  line-height: 24px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   box-sizing: border-box;
@@ -283,10 +310,14 @@ function input(event: unknown) {
   opacity: 1;
 }
 .mp-chat-input {
-  height: 88px;
+  height: 24px;
+  min-height: 24px;
+  max-height: 192px;
+  overflow-y: auto;
+  padding: 0;
   width: 100%;
   font-size: 15px;
-  line-height: 1.8;
+  line-height: 24px;
   color: var(--ink);
 }
 .composer-controls {
@@ -473,26 +504,28 @@ function input(event: unknown) {
 }
 @media (max-width: 760px) {
   .chat-composer-shell {
-    padding: 13px 10px 10px;
+    padding: 10px 10px 8px;
     border-radius: 21px;
   }
   .composer-writing-area {
     padding-left: 4px;
     padding-right: 4px;
+    padding-bottom: 6px;
   }
   .composer-writing-area :deep(.native-chat-input) {
     font-size: 16px;
-    line-height: 1.8;
+    line-height: 24px;
   }
   .composer-controls {
     gap: 5px;
+    min-height: 34px;
   }
   .composer-model {
     max-width: 43%;
     width: 156px;
   }
   .thinking-toggle {
-    font-size: 10px;
+    font-size: 11px;
     padding: 6px 7px;
     gap: 4px;
   }
@@ -509,6 +542,7 @@ function input(event: unknown) {
     display: none;
   }
   .chat-composer-meta {
+    display: none;
     justify-content: center;
     font-size: 10px;
     line-height: 1.8;

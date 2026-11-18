@@ -1,7 +1,10 @@
 import { defineComponent, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
-// H5 uses a real textarea. The uni-app auto-height wrapper lets pasted content
-// escape a CSS max-height; a bounded native scroll area avoids that failure.
+// Keep actual content between one and eight lines. A soft keyboard changes the
+// available viewport, but must not change the text box's own sizing rules.
+const LINE_HEIGHT = 24
+const MAX_LINES = 8
+
 export default defineComponent({
   props: { modelValue: { type: String, default: '' }, disabled: Boolean },
   emits: ['update:modelValue', 'send', 'resize', 'limit'],
@@ -12,15 +15,15 @@ export default defineComponent({
     const resize = () => {
       const input = element.value
       if (!input) return
-      const cap = Math.min(
-        180,
-        Math.max(64, (window.visualViewport?.height || window.innerHeight) * 0.28),
-      )
+      const cap = LINE_HEIGHT * MAX_LINES
       input.style.height = '0px'
-      const height = Math.min(cap, Math.max(30, input.scrollHeight))
+      // An empty textarea's scrollHeight can include a wrapped placeholder.
+      // Placeholder copy must never make an empty composer taller.
+      const contentHeight = input.value ? input.scrollHeight : LINE_HEIGHT
+      const height = Math.min(cap, Math.max(LINE_HEIGHT, contentHeight))
       input.style.height = `${height}px`
       input.style.maxHeight = `${cap}px`
-      input.style.overflowY = input.scrollHeight > height ? 'auto' : 'hidden'
+      input.style.overflowY = contentHeight > cap ? 'auto' : 'hidden'
       if (height !== lastHeight) {
         lastHeight = height
         emit('resize')
@@ -29,11 +32,9 @@ export default defineComponent({
     onMounted(() => {
       resize()
       window.addEventListener('resize', resize)
-      window.visualViewport?.addEventListener('resize', resize)
     })
     onUnmounted(() => {
       window.removeEventListener('resize', resize)
-      window.visualViewport?.removeEventListener('resize', resize)
     })
     watch(
       () => props.modelValue,
@@ -48,7 +49,7 @@ export default defineComponent({
         disabled: props.disabled,
         maxLength: 12000,
         'aria-label': '咨询内容',
-        placeholder: '描述作物情况，或添加照片、资料继续问…',
+        placeholder: '描述问题，或添加照片…',
         onInput: (event: Event) => {
           emit('update:modelValue', (event.target as HTMLTextAreaElement).value)
           resize()
@@ -63,6 +64,7 @@ export default defineComponent({
         },
         onKeydown: (event: KeyboardEvent) => {
           if (
+            window.innerWidth > 760 &&
             event.key === 'Enter' &&
             !event.shiftKey &&
             !event.isComposing &&

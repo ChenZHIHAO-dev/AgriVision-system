@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import AppIcon from '../../components/AppIcon.vue'
+import MobileHeader from '../../components/MobileHeader.vue'
+import { scrollChrome, safeHeaderTop, idleChrome } from '../../lib/mobileChrome'
 import AppearanceSwitch from '../../components/AppearanceSwitch.vue'
 import GlobalNavigation from '../../components/GlobalNavigation.vue'
 import HistorySidebar from '../../components/HistorySidebar.vue'
@@ -103,6 +105,41 @@ const editStage = ref('不清楚'),
   editLocation = ref(''),
   editNote = ref(''),
   keyboardHeight = ref(0)
+const homeSection = ref<'recent' | 'resources'>('recent')
+const chromeOffset = ref(0),
+  chromeScrolling = ref(false),
+  mobileSafeTop = ref(0),
+  pageTop = ref(0),
+  leavingChat = ref(false)
+let chromeTimer: ReturnType<typeof setTimeout> | undefined,
+  backTimer: ReturnType<typeof setTimeout> | undefined
+function settleChrome() {
+  clearTimeout(chromeTimer)
+  chromeTimer = setTimeout(() => {
+    chromeScrolling.value = false
+    chromeOffset.value = idleChrome(pageTop.value)
+  }, 1200)
+}
+function scrollPage(event: { detail: { scrollTop: number } }) {
+  const state = scrollChrome(chromeOffset.value, pageTop.value, event.detail.scrollTop)
+  pageTop.value = state.top
+  chromeScrolling.value = true
+  chromeOffset.value = state.offset
+  settleChrome()
+}
+function resetChrome() {
+  chromeScrolling.value = false
+  chromeOffset.value = 0
+  pageTop.value = 0
+  settleChrome()
+}
+function mobileBack() {
+  if (chatMode.value) backView()
+  else if (tab.value === 'home' && homeSection.value === 'resources') {
+    homeSection.value = 'recent'
+    resetChrome()
+  } else navigate(tab.value === 'history' ? 'home' : 'profile')
+}
 const isMobile = ref(uni.getSystemInfoSync().windowWidth <= 760)
 const historyDrawerOpen = ref(false),
   photoSourceOpen = ref(false),
@@ -214,11 +251,21 @@ const filteredCards = computed(() =>
 )
 const appStyle = computed(() => {
   // #ifndef H5
-  const height = (nativeWindowHeight || uni.getSystemInfoSync().windowHeight) - keyboardHeight.value
-  return keyboardHeight.value ? { height: height + 'px', '--app-height': height + 'px' } : {}
+  const height = nativeWindowHeight || uni.getSystemInfoSync().windowHeight
+  return {
+    height: height + 'px',
+    '--app-height': height + 'px',
+    '--visual-height': Math.max(160, height - keyboardHeight.value) + 'px',
+    '--keyboard-inset': keyboardHeight.value + 'px',
+    '--mobile-safe-top': mobileSafeTop.value + 'px',
+  }
   // #endif
   // #ifdef H5
-  return {}
+  return {
+    '--mobile-safe-top': mobileSafeTop.value
+      ? mobileSafeTop.value + 'px'
+      : 'env(safe-area-inset-top, 0px)',
+  }
   // #endif
 })
 watch(current, (value) => {
@@ -228,7 +275,6 @@ watch(current, (value) => {
 let stopTheme: (() => void) | undefined
 function nativeKeyboard(event: { height: number }) {
   keyboardHeight.value = event.height
-  if (!event.height) nativeWindowHeight = uni.getSystemInfoSync().windowHeight
 }
 function resizedChat() {
   // #ifdef H5
@@ -248,12 +294,21 @@ function resizedChat() {
       ? viewportBaseline - visible
       : 0
   document.documentElement.classList.toggle('keyboard-open', keyboardHeight.value > 0)
-  if (chatMode.value) requestAnimationFrame(() => scrollChat())
+
   // #endif
 }
 onMounted(() => {
   stopTheme = observeSystemTheme()
   auth.restore().then(refresh)
+  const system = uni.getSystemInfoSync()
+  // #ifndef H5
+  mobileSafeTop.value = safeHeaderTop(system.statusBarHeight || 0)
+  // #endif
+  // #ifdef MP-WEIXIN
+  const capsule = uni.getMenuButtonBoundingClientRect()
+  mobileSafeTop.value = safeHeaderTop(system.statusBarHeight || 0, capsule?.bottom || 0)
+  // #endif
+  resetChrome()
   // #ifndef H5
   nativeWindowHeight = uni.getSystemInfoSync().windowHeight
   uni.onKeyboardHeightChange(nativeKeyboard)
@@ -268,6 +323,8 @@ onMounted(() => {
 })
 onUnmounted(() => {
   stopTheme?.()
+  clearTimeout(chromeTimer)
+  clearTimeout(backTimer)
   clearTimeout(toastTimer)
   // #ifdef H5
   window.visualViewport?.removeEventListener('resize', resizedChat)
@@ -321,10 +378,19 @@ function navigate(value: Tab) {
   filter.value = 'all'
   query.value = ''
   error.value = ''
+  resetChrome()
 }
 function backView() {
+  if (leavingChat.value) return
   rememberDraft()
-  viewPath.value = popView(viewPath.value)
+  const top = viewPath.value.layers[viewPath.value.layers.length - 1]
+  if (top === 'chat' && isMobile.value) {
+    leavingChat.value = true
+    backTimer = setTimeout(() => {
+      viewPath.value = popView(viewPath.value)
+      leavingChat.value = false
+    }, 130)
+  } else viewPath.value = popView(viewPath.value)
 }
 function inspectResult() {
   viewPath.value = showInspector(viewPath.value)
@@ -1023,7 +1089,35 @@ function newFromDrawer() {
     />
 
     <view class="main-shell">
-      <view class="topbar">
+      <MobileHeader
+        :title="
+          tab === 'home' && !chatMode
+            ? homeSection === 'resources'
+              ? '参考资料'
+              : pageTop > 160
+                ? '最近问诊'
+                : '工作台'
+            : title
+        "
+        :page="tab"
+        :chat="chatMode"
+        :back-label="backLabel"
+        :user-name="user?.name"
+        :offset="chromeOffset"
+        :settling="!chromeScrolling"
+        :safe-top="mobileSafeTop"
+        :resources="homeSection === 'resources'"
+        @back="mobileBack"
+        @history="toggleNavigation"
+        @login="openAuth()"
+        @profile="navigate('profile')"
+        @consult="startConsultation()"
+        @capture="navigate('identify')"
+        @resources="homeSection = 'resources'"
+        @recent="homeSection = 'recent'"
+        @settings="openSettings"
+      />
+      <view class="topbar desktop-topbar">
         <view class="header-leading">
           <button v-if="chatMode" class="back-button" @click="backView">
             <AppIcon name="back" :size="18" /><text>{{ backLabel }}</text>
@@ -1079,7 +1173,7 @@ function newFromDrawer() {
       >
 
       <view class="workspace">
-        <view v-if="chatMode && current" class="case-area">
+        <view v-if="chatMode && current" class="case-area" :class="{ 'is-leaving': leavingChat }">
           <view class="chat-workspace">
             <view v-if="mode === 'preview'" class="chat-mode-note"
               ><text>🌱 当前提供植保资料参考，智能服务暂未连接</text
@@ -1248,15 +1342,17 @@ function newFromDrawer() {
                   @remove-image="removePendingImage"
                   @resize="resizedChat"
                   @limit="showToast('单条消息最多 12000 字，较长资料可作为文件上传')"
-                  @keyboard="keyboardHeight = $event" /></view
+                  @keyboard="nativeKeyboard({ height: $event })" /></view
             ></view>
           </view>
         </view>
 
-        <scroll-view v-show="!chatMode" scroll-y class="page-scroll">
-          <view class="page-content">
+        <scroll-view v-show="!chatMode" scroll-y class="page-scroll" @scroll="scrollPage">
+          <view :key="tab" class="page-content">
             <template v-if="tab === 'home'"
               ><DashboardHome
+                v-model:section="homeSection"
+                @consult="startConsultation()"
                 :records="records"
                 :cards="cards"
                 :logged-in="!!user"
@@ -2595,6 +2691,63 @@ function newFromDrawer() {
   }
   .composer-dock {
     padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 760px) {
+  .desktop-topbar {
+    display: none;
+  }
+  .main-shell {
+    padding-top: calc(54px + var(--mobile-safe-top, env(safe-area-inset-top, 0px)));
+  }
+  .chat-context-bar {
+    min-height: 39px;
+    padding-top: 2px;
+  }
+  .composer-dock {
+    transform: translateY(calc(-1 * var(--keyboard-inset, 0px)));
+    padding: 8px 12px max(8px, env(safe-area-inset-bottom));
+  }
+  .message-stream {
+    padding-bottom: calc(14px + var(--keyboard-inset, 0px));
+  }
+  .case-area.is-leaving {
+    opacity: 0;
+    transform: translateX(9px);
+    transition:
+      opacity 0.13s ease,
+      transform 0.13s ease;
+    pointer-events: none;
+  }
+  .chat-workspace {
+    animation: mobile-page-enter 0.16s ease;
+  }
+  .page-content {
+    padding-top: 42px;
+    animation: mobile-page-enter 0.16s ease;
+  }
+  .back-button {
+    font-weight: 600;
+  }
+}
+@keyframes mobile-page-enter {
+  from {
+    opacity: 0.5;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-workspace,
+  .page-content {
+    animation: none;
+  }
+  .case-area.is-leaving {
+    transition: none;
   }
 }
 </style>

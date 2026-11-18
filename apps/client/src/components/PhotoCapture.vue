@@ -38,14 +38,7 @@ const scope = computed(() =>
       ><view
         ><text class="photo-title">拍照识别</text
         ><text class="photo-subtitle">选择作物，拍摄或上传症状照片。</text></view
-      ><button
-        class="consult-shortcut"
-        aria-label="打开咨询窗口"
-        :disabled="busy"
-        @click="emit('resume')"
-      >
-        <AppIcon name="chat" :size="18" /><text>咨询</text>
-      </button></view
+      ></view
     >
     <view class="photo-panel">
       <view class="crop-choices" role="group" aria-label="选择照片中的作物"
@@ -83,6 +76,16 @@ const scope = computed(() =>
       <view
         ><text>查看本次识别</text><text>{{ lastResult.title }}</text></view
       >
+      <AppIcon name="right" :size="18" />
+    </button>
+    <button
+      class="photo-consult-entry"
+      :disabled="busy"
+      aria-label="进入文字咨询"
+      @click="emit('resume')"
+    >
+      <view class="photo-consult-icon"><AppIcon name="chat" :size="23" /></view>
+      <view><text>不拍照，直接问</text><text>了解药品作用，或继续上次的咨询</text></view>
       <AppIcon name="right" :size="18" />
     </button>
     <text class="photo-tip">可在同一次问诊中补充叶背和整株照片。单张不超过 8MB。</text>
@@ -328,5 +331,52 @@ const scope = computed(() =>
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.photo-consult-entry {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  text-align: left;
+  background: var(--accent-soft);
+  padding: 17px;
+  width: 100%;
+  border-radius: 16px;
+  margin-top: 17px;
+}
+.photo-consult-icon {
+  width: 43px;
+  height: 43px;
+  border-radius: 13px;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.photo-consult-entry > view:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+.photo-consult-entry > view:nth-child(2) > text:first-child {
+  display: block;
+  font-size: 14px;
+  font-weight: 650;
+}
+.photo-consult-entry > view:nth-child(2) > text:last-child {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+@media (max-width: 760px) {
+  .photo-title {
+    display: none;
+  }
+  .photo-heading {
+    margin-bottom: 19px;
+  }
+  .photo-subtitle {
+    margin-top: 0;
+  }
 }
 </style>

@@ -31,60 +31,62 @@ const news = computed(() =>
 </script>
 <template>
   <view class="library" :class="{ embedded }">
-    <view class="library-heading"
-      ><view
-        ><text class="library-title">{{ embedded ? '参考资料' : '植保知识' }}</text
-        ><text class="library-subtitle">病虫害资料、种植管理与公开资讯</text></view
-      ><view class="layout-switch" aria-label="资料显示方式"
+    <view class="library-controls">
+      <view class="library-heading"
+        ><view
+          ><text class="library-title">{{ embedded ? '参考资料' : '植保知识' }}</text
+          ><text class="library-subtitle">病虫害资料、种植管理与公开资讯</text></view
+        ><view class="layout-switch" aria-label="资料显示方式"
+          ><button
+            aria-label="网格视图"
+            :aria-pressed="layout === 'grid'"
+            :class="{ active: layout === 'grid' }"
+            @click="setLayout('grid')"
+          >
+            <AppIcon name="grid" :size="17" /></button
+          ><button
+            aria-label="列表视图"
+            :aria-pressed="layout === 'list'"
+            :class="{ active: layout === 'list' }"
+            @click="setLayout('list')"
+          >
+            <AppIcon name="list" :size="17" /></button></view
+      ></view>
+      <view class="library-tabs" role="tablist" aria-label="知识栏目"
         ><button
-          aria-label="网格视图"
-          :aria-pressed="layout === 'grid'"
-          :class="{ active: layout === 'grid' }"
-          @click="setLayout('grid')"
+          role="tab"
+          :aria-selected="section === 'library'"
+          :class="{ active: section === 'library' }"
+          @click="section = 'library'"
         >
-          <AppIcon name="grid" :size="17" /></button
+          知识库<text>{{ cards.length }}</text></button
         ><button
-          aria-label="列表视图"
-          :aria-pressed="layout === 'list'"
-          :class="{ active: layout === 'list' }"
-          @click="setLayout('list')"
+          role="tab"
+          :aria-selected="section === 'news'"
+          :class="{ active: section === 'news' }"
+          @click="section = 'news'"
         >
-          <AppIcon name="list" :size="17" /></button></view
-    ></view>
-    <view class="library-tabs" role="tablist" aria-label="知识栏目"
-      ><button
-        role="tab"
-        :aria-selected="section === 'library'"
-        :class="{ active: section === 'library' }"
-        @click="section = 'library'"
-      >
-        知识库<text>{{ cards.length }}</text></button
-      ><button
-        role="tab"
-        :aria-selected="section === 'news'"
-        :class="{ active: section === 'news' }"
-        @click="section = 'news'"
-      >
-        农业资讯
-      </button></view
-    >
-    <view class="library-tools"
-      ><view class="library-filters"
-        ><button :class="{ active: filter === 'all' }" @click="filter = 'all'">全部</button
-        ><button
-          v-for="crop in crops"
-          :key="crop.id"
-          :class="{ active: filter === crop.id }"
-          @click="filter = crop.id"
-        >
-          {{ crop.name }}
+          农业资讯
         </button></view
-      ><view class="library-search"
-        ><AppIcon name="search" :size="16" /><input
-          v-model="query"
-          aria-label="搜索知识与资讯"
-          placeholder="搜索病害、症状或标题" /></view
-    ></view>
+      >
+      <view class="library-tools"
+        ><view class="library-filters"
+          ><button :class="{ active: filter === 'all' }" @click="filter = 'all'">全部</button
+          ><button
+            v-for="crop in crops"
+            :key="crop.id"
+            :class="{ active: filter === crop.id }"
+            @click="filter = crop.id"
+          >
+            {{ crop.name }}
+          </button></view
+        ><view class="library-search"
+          ><AppIcon name="search" :size="16" /><input
+            v-model="query"
+            aria-label="搜索知识与资讯"
+            placeholder="搜索病害、症状或标题" /></view
+      ></view>
+    </view>
     <view v-if="section === 'library'" class="library-items" :class="layout">
       <button
         v-for="card in filtered"
@@ -506,5 +508,40 @@ const news = computed(() =>
 }
 .embedded {
   margin-top: 22px;
+}
+@media (max-width: 760px) {
+  .library-controls {
+    position: sticky;
+    top: 0;
+    z-index: 12;
+    padding: 10px 0 9px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 16px;
+  }
+  .library-heading {
+    margin-bottom: 10px;
+    align-items: center;
+  }
+  .library-heading > view:first-child {
+    display: none;
+  }
+  .library-heading .layout-switch {
+    margin-left: auto;
+  }
+  .library-tabs {
+    margin-top: -43px;
+    margin-right: 90px;
+    border-bottom: 0;
+    min-height: 40px;
+  }
+  .library-tools {
+    margin-top: 9px;
+    margin-bottom: 0;
+    gap: 9px;
+  }
+  .library-search {
+    min-height: 36px;
+  }
 }
 </style>

@@ -1,11 +1,17 @@
 <script setup lang="ts">
-import { ref } from 'vue'
 import AppIcon from './AppIcon.vue'
 import KnowledgeLibrary from './KnowledgeLibrary.vue'
 import { imageUrl, type CaseRecord, type KnowledgeCard, type Source } from '../lib/api'
 import { dateLabel, statusLabel } from '../lib/options'
-defineProps<{ records: CaseRecord[]; loggedIn: boolean; cards: KnowledgeCard[] }>()
+defineProps<{
+  records: CaseRecord[]
+  loggedIn: boolean
+  cards: KnowledgeCard[]
+  section: 'recent' | 'resources'
+}>()
 const emit = defineEmits<{
+  consult: []
+  'update:section': [value: 'recent' | 'resources']
   capture: []
   open: [id: string]
   history: []
@@ -13,7 +19,6 @@ const emit = defineEmits<{
   card: [value: KnowledgeCard]
   source: [value: Source]
 }>()
-const section = ref<'recent' | 'resources'>('recent')
 </script>
 <template>
   <view class="dashboard">
@@ -25,12 +30,17 @@ const section = ref<'recent' | 'resources'>('recent')
       <view><text>拍照问诊</text><text>选择作物，拍摄照片并查看初步结果</text></view>
       <AppIcon name="right" :size="19" />
     </button>
+    <button class="dashboard-consult" @click="emit('consult')">
+      <view class="dashboard-consult-icon"><AppIcon name="chat" :size="25" /></view>
+      <view><text>文字咨询</text><text>不用拍照，也能询问药品作用与种植问题</text></view>
+      <AppIcon name="right" :size="19" />
+    </button>
     <view class="dashboard-tabs" role="tablist" aria-label="首页栏目">
       <button
         role="tab"
         :aria-selected="section === 'recent'"
         :class="{ active: section === 'recent' }"
-        @click="section = 'recent'"
+        @click="emit('update:section', 'recent')"
       >
         <AppIcon name="history" :size="17" /><text>最近问诊</text>
       </button>
@@ -38,7 +48,7 @@ const section = ref<'recent' | 'resources'>('recent')
         role="tab"
         :aria-selected="section === 'resources'"
         :class="{ active: section === 'resources' }"
-        @click="section = 'resources'"
+        @click="emit('update:section', 'resources')"
       >
         <AppIcon name="book" :size="17" /><text>参考资料</text>
       </button>
@@ -357,5 +367,66 @@ const section = ref<'recent' | 'resources'>('recent')
 .dashboard-empty {
   border-color: transparent;
   box-shadow: 0 2px 12px #00000003;
+}
+.dashboard-consult {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 22px 25px;
+  background: var(--accent-soft);
+  width: 100%;
+  border-radius: 19px;
+  margin-top: 13px;
+  text-align: left;
+}
+.dashboard-consult-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 17px;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.dashboard-consult > view:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+.dashboard-consult > view:nth-child(2) > text:first-child {
+  display: block;
+  font-size: 18px;
+  font-weight: 650;
+}
+.dashboard-consult > view:nth-child(2) > text:last-child {
+  display: block;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+  margin-top: 6px;
+}
+@media (max-width: 760px) {
+  .dashboard-heading > text:first-child {
+    display: none;
+  }
+  .dashboard-heading {
+    margin: 0 0 18px;
+  }
+  .dashboard-consult {
+    gap: 13px;
+    padding: 19px 17px;
+    border-radius: 17px;
+  }
+  .dashboard-consult-icon {
+    width: 49px;
+    height: 49px;
+    border-radius: 15px;
+  }
+  .dashboard-consult > view:nth-child(2) > text:first-child {
+    font-size: 17px;
+  }
+  .dashboard-consult > view:nth-child(2) > text:last-child {
+    font-size: 11px;
+  }
 }
 </style>

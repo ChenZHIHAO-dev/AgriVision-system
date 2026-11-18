@@ -1,4 +1,7 @@
 <script lang="ts">
+// #ifdef H5
+import { installViewportMetrics } from './lib/viewport'
+// #endif
 export default {
   onLaunch() {
     // #ifdef H5
@@ -32,19 +35,8 @@ export default {
         button.click()
       }
     })
-    const viewport = () => {
-      const visual = window.visualViewport
-      document.documentElement.style.setProperty(
-        '--app-height',
-        `${visual?.height || window.innerHeight}px`,
-      )
-      document.documentElement.style.setProperty('--viewport-top', `${visual?.offsetTop || 0}px`)
-    }
-    window.addEventListener('resize', viewport)
-    window.visualViewport?.addEventListener('resize', viewport)
-    window.visualViewport?.addEventListener('scroll', viewport)
+    installViewportMetrics()
     enhance()
-    viewport()
     // #endif
   },
 }

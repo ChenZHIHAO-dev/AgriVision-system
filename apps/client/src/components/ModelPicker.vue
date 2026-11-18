@@ -6,6 +6,7 @@ const emit = defineEmits<{
   'update:modelValue': [value: ChatModel]
   'update:webSearch': [value: boolean]
 }>()
+const captionId = 'web-caption-' + Math.random().toString(36).slice(2, 9)
 function choose(value: string) {
   emit('update:modelValue', value as ChatModel)
   if (value !== 'deepseek-flash') emit('update:webSearch', false)
@@ -35,39 +36,49 @@ const options = [
     above
     :disabled="disabled"
     @update:model-value="choose"
-    ><template #footer
-      ><button
-        class="model-web-option"
-        role="switch"
-        tabindex="0"
-        :aria-checked="!!webSearch"
-        :disabled="disabled || modelValue !== 'deepseek-flash'"
-        @click="emit('update:webSearch', !webSearch)"
-      >
-        <view
-          ><text class="web-title">联网检索</text
-          ><text class="web-caption">{{
+  >
+    <template #footer>
+      <view class="model-web-option">
+        <view class="web-copy">
+          <text class="web-title">联网检索</text>
+          <text :id="captionId" class="web-caption">{{
             modelValue === 'deepseek-flash'
               ? '按需检索公开资料，回答附来源'
               : '联网检索目前支持 DeepSeek Flash'
-          }}</text></view
-        ><text class="web-switch" :class="{ on: webSearch }"><text /></text></button
-      ><text class="web-footnote"
-        >图像由独立识别模型处理；对话模型只接收文字与识别回执。</text
-      ></template
-    ></ChoicePicker
-  >
+          }}</text>
+        </view>
+        <button
+          class="web-toggle"
+          role="switch"
+          aria-label="联网检索"
+          :aria-describedby="captionId"
+          :aria-checked="!!webSearch && modelValue === 'deepseek-flash'"
+          :disabled="disabled || modelValue !== 'deepseek-flash'"
+          hover-class="none"
+          @click.stop="emit('update:webSearch', !webSearch)"
+        >
+          <view class="web-switch" :class="{ on: webSearch && modelValue === 'deepseek-flash' }">
+            <view class="web-knob" />
+          </view>
+        </button>
+      </view>
+      <text class="web-footnote">图像由独立识别模型处理；对话模型只接收文字与识别回执。</text>
+    </template>
+  </ChoicePicker>
 </template>
 <style scoped>
 .model-web-option {
-  width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 15px;
-  padding: 5px 0 9px;
+  gap: 14px;
+  padding: 0 0 6px;
   text-align: left;
   color: var(--ink);
+}
+.web-copy {
+  flex: 1;
+  min-width: 0;
 }
 .web-title {
   display: block;
@@ -79,37 +90,70 @@ const options = [
   color: var(--muted);
   font-size: 10px;
   margin-top: 3px;
+  line-height: 1.7;
 }
-.web-switch {
+.web-toggle {
   display: flex;
   align-items: center;
-  width: 34px;
-  min-width: 34px;
-  height: 21px;
+  justify-content: center;
+  width: 48px;
+  min-width: 48px;
+  height: 44px;
   border-radius: 12px;
-  background: var(--line);
-  padding: 3px;
-  box-sizing: border-box;
+  background: transparent !important;
+  padding: 0;
 }
-.web-switch > text {
-  width: 15px;
-  height: 15px;
-  background: var(--surface);
+.web-toggle:hover,
+.web-toggle:active,
+.web-toggle[disabled] {
+  background: transparent !important;
+}
+.web-toggle[disabled] {
+  opacity: 0.5;
+}
+.web-switch {
+  position: relative;
+  display: block;
+  width: 38px;
+  height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--line);
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease;
+}
+.web-knob {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  top: 2px;
+  left: 2px;
+  background: #f8f9fb;
   border-radius: 50%;
-  box-shadow: 0 1px 3px #0002;
+  box-shadow: 0 1px 4px #0003;
+  transform: translateX(0);
+  transition: transform 0.18s ease;
 }
 .web-switch.on {
   background: var(--accent);
-  justify-content: flex-end;
+  border-color: var(--accent);
 }
-.web-switch.on > text {
+.web-switch.on > .web-knob {
+  transform: translateX(14px);
   background: var(--accent-ink);
 }
 .web-footnote {
+  display: block;
+  margin-top: 7px;
   font-size: 10px;
   color: var(--muted);
   line-height: 1.8;
-  display: block;
-  margin-top: 7px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .web-switch,
+  .web-knob {
+    transition: none;
+  }
 }
 </style>
