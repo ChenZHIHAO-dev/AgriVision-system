@@ -1,4 +1,4 @@
-> **B 版（1.4.0-beta.1）**。下方记录本轮改动与试用说明。
+> **B 版（1.4.0-beta.1）已发布网页预览，并已生成微信离线包。** 下方记录验收与试用说明。
 
 # AgriVision 宛农植保助手
 
@@ -13,6 +13,8 @@
 - 聊天合并为一行顶栏，保留返回、会话名称与历史入口。标题菜单提供重命名、问诊资料、复制对话文字，有照片时可查看识别结果。自定义名称保存到对话记录，识别标题独立。空会话提示与示例问题居中显示。
 - 降低浅色亮度，统一绿色强调与深色悬停、按压反馈。小麦用麦穗、玉米用玉米棒、花生用果实图标。Markdown 表格表头和单元格留出更多内边距。
 - 390×844 实测首页资料吸顶、花生筛选、快捷入口拖动、会话改名与返回资料层级。桌面 1280×800 检查无横向溢出。底部导航交互沿用上版。真机首次验收见 [11 月 19 日微信 B 版试用说明](docs/wechat-deployment.md)。
+
+前端 42 项和后端 67 项通过，网页与微信离线包构建通过。网页发布源 ea32f1d，[GitHub 构建与部署](https://github.com/ChenZHIHAO-dev/AgriVision-system/actions/runs/44241137477)成功，[12 项线上资源](docs/validation/pages-beta-1.4.json)与本地匹配。
 
 [浏览器验收](docs/validation/ui-beta-1.4.json) · [Apple 工具栏](https://developer.apple.com/design/human-interface-guidelines/toolbars) · [Gemini 会话管理](https://support.google.com/gemini/answer/13666746) · [深浅色交互对比规范](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast)。
 
