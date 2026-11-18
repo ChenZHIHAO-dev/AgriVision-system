@@ -1,4 +1,4 @@
-> **1.3.1 手机交互与微信预览包已完成本地验证。** 下方记录本轮改动与验收。
+> **1.3.1 网页预览已发布，微信离线预览包已生成。** 下方记录本轮改动与验收。
 
 # AgriVision 宛农植保助手
 
@@ -18,7 +18,11 @@
 | 微信包 | 增加独立预览与联网构建。预览包可导入开发者工具，联网包由 AppID 和 HTTPS 域名定向构建 |
 | 交付范围 | 小程序结构与编译产物通过检查。微信模拟器、胶囊、原生键盘和扫码真机待验收，APP 后续单独打包 |
 
+前端 41 项、后端 66 项回归通过。桌面和手机网页已检查。微信预览包 1.10 MiB，本机未安装微信开发者工具，模拟器与真机待验收。
+
 [浏览器验收记录](docs/validation/ui-1.3.1.json) · [微信构建与部署](docs/wechat-deployment.md)。
+
+网页发布源为 766078e，[构建与部署](https://github.com/ChenZHIHAO-dev/AgriVision-system/actions/runs/44237714060)通过，[12 项线上资源](docs/validation/pages-1.3.1.json)与本机构建一致。
 
 界面规则参考 [Apple Toolbars](https://developer.apple.com/design/human-interface-guidelines/toolbars) 和 [Android App bars](https://developer.android.com/develop/ui/compose/components/app-bars) 组织页面工具与阅读空间；参照 [Android Menus](https://developer.android.com/develop/ui/compose/components/menu) 和 [WAI 模态对话框](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/) 明确选项、关闭与焦点；按 [W3C 拖动规范](https://www.w3.org/WAI/WCAG22/Understanding/dragging-movements) 保留单击替代；依据 [GOV.UK 问题页规范](https://design-system.service.gov.uk/patterns/question-pages/) 在应用需要时才收集作物资料。
 

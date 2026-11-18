@@ -1,0 +1,93 @@
+{
+  "checked_at": "2026-11-18T04:31:40.516605+00:00",
+  "commit": "766078e8f980401c8f26c15819d779a41a0bee91",
+  "url": "https://chenzhihao-dev.github.io/AgriVision-system/",
+  "index_cache_busted": true,
+  "passed": true,
+  "items": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "bytes": 834,
+      "sha256": "dadd631f9a279a966b1ef2b7d05bb838df88969392e192f479de1e7354f3883e",
+      "matches": true
+    },
+    {
+      "path": "assets/index-BQJ4NCW3.js",
+      "status": 200,
+      "bytes": 209524,
+      "sha256": "1ac16b50848028337164ce23c5ddcdf097954a7fa0050663f522c68f2d2f9420",
+      "matches": true
+    },
+    {
+      "path": "assets/pages-index-index.DQJv5l2Y.js",
+      "status": 200,
+      "bytes": 240604,
+      "sha256": "7199fd32e5ac9e997c085af5c19b0bec99f83af3cb342fc8fd7b9a36308fa7e8",
+      "matches": true
+    },
+    {
+      "path": "assets/index-Bt9xD_ze.css",
+      "status": 200,
+      "bytes": 20008,
+      "sha256": "1d5b43eda5ab258f0041328acac5ae77e2a72062eb3ae60940d6c36512ca1a85",
+      "matches": true
+    },
+    {
+      "path": "assets/index-BY57mL8d.css",
+      "status": 200,
+      "bytes": 77355,
+      "sha256": "323685c0f0e50d57f47fe8536247a3d10a39d31328c186dbe1b1340fcb44741e",
+      "matches": true
+    },
+    {
+      "path": "assets/uni.153239f0.css",
+      "status": 200,
+      "bytes": 13438,
+      "sha256": "153239f0083121b6a01a411a5cb145cebde6b928cb5c207d6971876da2ca9261",
+      "matches": true
+    },
+    {
+      "path": "static/icons/ui/camera-light.png",
+      "status": 200,
+      "bytes": 1960,
+      "sha256": "ff14e719b336b6090650dae7deeec9407a3732e06c1d78f5a233f45d3b713543",
+      "matches": true
+    },
+    {
+      "path": "static/icons/ui/camera-dark.png",
+      "status": 200,
+      "bytes": 1971,
+      "sha256": "e9b38cd283fcab35e8e86d60ada8affe05b8cf48cea2da75646d414aeb691690",
+      "matches": true
+    },
+    {
+      "path": "static/icons/ui/camera-inverse.png",
+      "status": 200,
+      "bytes": 1854,
+      "sha256": "07591d8e875114530ac1e8a9a0bb42103c5e0b9b2d93693e7bd951dfac57aa4f",
+      "matches": true
+    },
+    {
+      "path": "static/icons/ui/menu-dark.png",
+      "status": 200,
+      "bytes": 565,
+      "sha256": "09e70453d207b93ed32aacdb4bf82ef0eab0474f93f6f14484f84c33357e43f0",
+      "matches": true
+    },
+    {
+      "path": "static/icons/ui/system-light.png",
+      "status": 200,
+      "bytes": 3019,
+      "sha256": "4a920b5a2618d7d706113cb9c23c20dc6d98bb8a9ad11add3100c9388d278ce8",
+      "matches": true
+    },
+    {
+      "path": "static/crops/wheat.png",
+      "status": 200,
+      "bytes": 46513,
+      "sha256": "be11f0c072d553c8f9b5122bcce45f58016c4b6ed5907ff17cbf20a1b8305bad",
+      "matches": true
+    }
+  ]
+}
