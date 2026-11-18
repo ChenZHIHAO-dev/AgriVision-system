@@ -1,0 +1,59 @@
+{
+  "version": "1.4.0-beta.4",
+  "desktop": {
+    "expanded": {
+      "clip": {
+        "width": 244,
+        "x": 72
+      },
+      "handle": {
+        "width": 32,
+        "x": 276
+      },
+      "panel": {
+        "width": 244,
+        "x": 72
+      },
+      "toggles": 1,
+      "topbar": {
+        "width": 964,
+        "x": 316
+      },
+      "width": 1280
+    },
+    "collapsed": {
+      "clip": {
+        "width": 0,
+        "x": 72
+      },
+      "handle": {
+        "width": 20,
+        "x": 71
+      },
+      "panel": {
+        "width": 0,
+        "x": 72
+      },
+      "toggles": 1,
+      "topbar": {
+        "width": 1208,
+        "x": 72
+      },
+      "width": 1280
+    },
+    "keyboardReopen": true
+  },
+  "mobile": {
+    "width": 390,
+    "height": 844,
+    "drawer": {
+      "backgroundShift": "matrix(1, 0, 0, 1, 24, 0)",
+      "left": 0,
+      "width": 300
+    },
+    "newChatFromDrawer": true,
+    "guestSearchHasLoginPrompt": true,
+    "albumUploadOpensResult": true,
+    "exitReturnsPhotoResult": true
+  }
+}

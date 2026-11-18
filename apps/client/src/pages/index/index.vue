@@ -819,10 +819,12 @@ function navigateFromDrawer(value: Tab) {
   historyDrawerOpen.value = false
   navigate(value)
 }
-function toggleNavigation() {
-  if (isMobile.value) historyDrawerOpen.value = true
-  else sidebarExpanded.value = !sidebarExpanded.value
+function openHistoryDrawer() {
+  historyDrawerOpen.value = true
 }
+watch(isMobile, (mobile) => {
+  if (!mobile) historyDrawerOpen.value = false
+})
 function clearComposer() {
   chatText.value = ''
   pendingDocuments.value = []
@@ -1099,7 +1101,7 @@ function newFromDrawer() {
       {
         'is-chat': chatMode,
         'keyboard-open': keyboardHeight > 0,
-        'nav-collapsed': !sidebarExpanded,
+        'drawer-open': historyDrawerOpen,
       },
     ]"
     :style="appStyle"
@@ -1107,20 +1109,18 @@ function newFromDrawer() {
     <GlobalNavigation
       :active="tab"
       :chat="chatMode"
-      :expanded="sidebarExpanded"
       @navigate="navigate"
       @consult="openConsultation"
-      @toggle="sidebarExpanded = !sidebarExpanded"
     />
     <HistorySidebar
-      v-if="sidebarExpanded"
+      :expanded="sidebarExpanded"
       :records="records"
       :user="user"
       :selected="current?.id"
       @open="openConversation"
       @new="startConsultation()"
       @login="openAuth('登录后，后续咨询会保存到你的账户。')"
-      @close="sidebarExpanded = false"
+      @toggle="sidebarExpanded = !sidebarExpanded"
     />
 
     <view class="main-shell">
@@ -1135,22 +1135,19 @@ function newFromDrawer() {
         :chat-options-open="!!chatOptions"
         @options="chatOptions = 'actions'"
         @back="mobileBack"
-        @history="toggleNavigation"
+        @history="openHistoryDrawer"
         @login="openAuth()"
         @profile="navigate('profile')"
       />
       <view class="topbar desktop-topbar">
         <view class="header-leading">
-          <button v-if="chatMode" class="back-button" @click="backView">
-            <AppIcon name="back" :size="18" /><text>{{ backLabel }}</text>
-          </button>
           <button
-            class="icon-button navigation-toggle"
-            aria-label="打开或收起问诊历史"
-            :aria-expanded="isMobile ? historyDrawerOpen : sidebarExpanded"
-            @click="toggleNavigation"
+            v-if="chatMode"
+            class="back-button"
+            :aria-label="'退出咨询，' + backLabel"
+            @click="backView"
           >
-            <AppIcon name="menu" :size="20" />
+            <AppIcon name="back" :size="18" /><text>退出咨询</text>
           </button>
           <view class="breadcrumb">
             <button v-if="!chatMode" class="desktop-only breadcrumb-home" @click="navigate('home')">
@@ -1544,6 +1541,7 @@ function newFromDrawer() {
     <ConversationDrawer
       v-if="historyDrawerOpen"
       :records="records"
+      :safe-top="mobileSafeTop"
       :user="user"
       :selected="current?.id"
       @close="historyDrawerOpen = false"
@@ -1551,6 +1549,7 @@ function newFromDrawer() {
       @open="openConversation"
       @new="newFromDrawer"
       @login="loginFromDrawer"
+      @keyboard="nativeKeyboard({ height: $event })"
     />
     <PhotoSourceSheet
       :crop="crop"
@@ -1805,11 +1804,6 @@ function newFromDrawer() {
   text-underline-offset: 4px;
 }
 
-.navigation-toggle {
-  display: inline-flex;
-  flex-shrink: 0;
-  font-size: 21px;
-}
 .header-result-link {
   font-size: 11px;
   color: var(--accent);
@@ -2760,6 +2754,10 @@ function newFromDrawer() {
   }
   .main-shell {
     padding-top: calc(54px + var(--mobile-safe-top, env(safe-area-inset-top, 0px)));
+    transition: transform 0.2s ease;
+  }
+  .drawer-open > .main-shell {
+    transform: translateX(24px);
   }
   .keyboard-open .composer-dock {
     transform: translateY(calc(-1 * var(--keyboard-inset, 0px)));
@@ -2800,6 +2798,9 @@ function newFromDrawer() {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .main-shell {
+    transition: none;
+  }
   .chat-workspace,
   .page-content {
     animation: none;

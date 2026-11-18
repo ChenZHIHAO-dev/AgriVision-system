@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import AppIcon from './AppIcon.vue'
 import type { MainPage } from '../lib/navigation'
-defineProps<{ active: MainPage; chat: boolean; expanded: boolean }>()
-const emit = defineEmits<{ navigate: [page: MainPage]; consult: []; toggle: [] }>()
+defineProps<{ active: MainPage; chat: boolean }>()
+const emit = defineEmits<{ navigate: [page: MainPage]; consult: [] }>()
 </script>
 <template>
   <view class="global-rail" aria-label="主导航">
@@ -36,15 +36,6 @@ const emit = defineEmits<{ navigate: [page: MainPage]; consult: []; toggle: [] }
       </button>
     </view>
     <view class="rail-bottom">
-      <button
-        class="rail-item"
-        :aria-expanded="expanded"
-        aria-label="展开或收起历史侧栏"
-        title="历史侧栏"
-        @click="emit('toggle')"
-      >
-        <AppIcon name="menu" :size="20" />
-      </button>
       <button
         class="rail-item"
         :class="{ active: active === 'settings' && !chat }"

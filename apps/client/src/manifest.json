@@ -3,7 +3,7 @@
   "appid": "__UNI__AGRIVISION",
   "description": "面向南阳的小麦、玉米、花生植保问诊助手",
   "versionName": "1.4.0",
-  "versionCode": 142,
+  "versionCode": 143,
   "transformPx": false,
   "vueVersion": "3",
   "uniStatistics": {

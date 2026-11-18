@@ -26,10 +26,10 @@ const emit = defineEmits<{
       <button
         v-if="chat || page === 'settings' || page === 'history'"
         class="mobile-back"
-        :aria-label="chat ? backLabel : page === 'history' ? '返回首页' : '返回我的'"
+        :aria-label="chat ? '退出咨询，' + backLabel : page === 'history' ? '返回首页' : '返回我的'"
         @click="emit('back')"
       >
-        <AppIcon name="back" :size="21" /><text v-if="!chat">返回</text>
+        <AppIcon name="back" :size="20" /><text>{{ chat ? '退出' : '返回' }}</text>
       </button>
       <button
         v-else
