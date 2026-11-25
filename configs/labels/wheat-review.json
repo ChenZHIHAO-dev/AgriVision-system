@@ -1,0 +1,20 @@
+{
+  "crop": "wheat",
+  "labels": {
+    "wheat_stripe_rust": "小麦条锈病",
+    "wheat_leaf_rust": "小麦叶锈病",
+    "wheat_powdery_mildew": "小麦白粉病",
+    "wheat_head_blight": "小麦赤霉病",
+    "wheat_glume_blotch": "小麦颖枯病",
+    "wheat_barley_yellow_dwarf": "小麦黄矮病",
+    "healthy": "未发现已支持病害的明显特征",
+    "wheat_aphid": "小麦蚜虫",
+    "wheat_mite": "麦蜘蛛",
+    "wheat_stem_rust": "小麦秆锈病",
+    "wheat_common_root_rot": "小麦普通根腐病",
+    "wheat_tan_spot": "小麦黄斑叶枯病",
+    "wheat_septoria_leaf_blotch": "小麦壳针孢叶枯病",
+    "wheat_fusarium_crown_rot": "小麦茎基腐病",
+    "wheat_sharp_eyespot": "小麦纹枯病"
+  }
+}

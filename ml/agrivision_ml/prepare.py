@@ -1,107 +1,29 @@
-"""Create grouped, deterministic manifests before applying augmentation."""
+# 为已经按类存放的照片生成训练清单。它也被国内数据导入脚本调用，共用分组与划分规则。
+"""Create grouped, deterministic manifests for existing image folders."""
+
 import argparse
-import csv
-import hashlib
 import json
-import random
-from collections import defaultdict
 from pathlib import Path
 
-import numpy as np
-from PIL import Image, ImageOps
+from .preprocessing.manifest import MANIFEST_FIELDS, build_manifest
+from .preprocessing.tables import read_rows, write_rows
 
 
 def prepare(data_root: Path, labels_path: Path, output: Path, seed=42, groups_path=None):
     config = json.loads(labels_path.read_text(encoding="utf-8"))
-    labels = config["labels"]
-    supplied = {}
+    # groups.csv 可以显式声明同一株、同一地块或同一拍摄批次的照片。路径统一用斜杠与扫描结果匹配。
+    groups = {}
     if groups_path:
-        with open(groups_path, encoding="utf-8-sig", newline="") as stream:
-            supplied = {r["path"].replace("\\", "/"): r["group"] for r in csv.DictReader(stream)}
-    rows, invalid = [], []
-    buckets = defaultdict(list)
-    parents = []
+        groups = {
+            row["path"].replace("\\", "/"): row["group"]
+            for row in read_rows(Path(groups_path), ("path", "group"))
+        }
+    # 实际查重、处理类别冲突和划分数据由 build_manifest() 完成。seed 控制分组打乱的顺序。
+    rows, report = build_manifest(data_root, config["labels"], seed, groups)
 
-    def find(i):
-        while parents[i] != i:
-            parents[i] = parents[parents[i]]
-            i = parents[i]
-        return i
-
-    def union(a, b):
-        parents[find(a)] = find(b)
-
-    exact, named = {}, {}
-    for label in labels:
-        folder = data_root / label
-        for path in sorted(folder.rglob("*")) if folder.exists() else []:
-            if path.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
-                continue
-            relative = path.relative_to(data_root).as_posix()
-            try:
-                content = path.read_bytes()
-                digest = hashlib.sha256(content).hexdigest()
-                with Image.open(path) as image:
-                    if min(image.size) < 64:
-                        raise ValueError("image is too small")
-                    gray = np.asarray(ImageOps.exif_transpose(image).convert("L").resize((9, 8)))
-                    bits = gray[:, 1:] > gray[:, :-1]
-                    perceptual = int("".join("1" if x else "0" for x in bits.flat), 2)
-            except (OSError, ValueError) as exc:
-                invalid.append({"path": relative, "reason": str(exc)})
-                continue
-            index = len(rows)
-            parents.append(index)
-            rows.append({"path": relative, "label": label, "sha256": digest, "dhash": perceptual})
-            if digest in exact:
-                union(index, exact[digest])
-            exact[digest] = index
-            if relative in supplied:
-                group = supplied[relative]
-                if group in named:
-                    union(index, named[group])
-                named[group] = index
-            candidates = set()
-            for band in range(4):
-                key = (band, (perceptual >> (16 * band)) & 65535)
-                candidates.update(buckets[key])
-                buckets[key].append(index)
-            for other in candidates:
-                if (rows[other]["dhash"] ^ perceptual).bit_count() <= 6:
-                    union(index, other)
-    clusters = defaultdict(list)
-    for i, row in enumerate(rows):
-        clusters[find(i)].append(row)
-    clean = defaultdict(list)
-    conflicts = []
-    for cluster in clusters.values():
-        if len({row["label"] for row in cluster}) > 1:
-            conflicts.append([row["path"] for row in cluster])
-        else:
-            clean[cluster[0]["label"]].append(cluster)
-    result = []
-    for label in labels:
-        groups = clean[label]
-        if len(groups) < 3:
-            raise ValueError(f"{label}: at least three independent groups are required; got {len(groups)}")
-        random.Random(seed).shuffle(groups)
-        n_val = max(1, round(len(groups) * .15))
-        n_test = max(1, round(len(groups) * .15))
-        for i, cluster in enumerate(groups):
-            split = "val" if i < n_val else ("test" if i < n_val + n_test else "train")
-            group_id = hashlib.sha256("|".join(sorted(r["sha256"] for r in cluster)).encode()).hexdigest()[:20]
-            seen = set()
-            for row in cluster:
-                if row["sha256"] in seen:
-                    continue
-                seen.add(row["sha256"])
-                result.append({"path": row["path"], "label": label, "group": group_id, "sha256": row["sha256"], "split": split})
+    # 写出训练程序读取的 CSV，并在同目录生成可人工核对的统计报告。
     output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("w", encoding="utf-8", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=["path", "label", "group", "sha256", "split"])
-        writer.writeheader()
-        writer.writerows(result)
-    report = {"input_files": len(rows), "manifest_images": len(result), "invalid": invalid, "conflicting_groups": conflicts, "groups": len(clusters), "seed": seed, "counts": {label: {split: sum(r["label"] == label and r["split"] == split for r in result) for split in ("train", "val", "test")} for label in labels}}
+    write_rows(output, MANIFEST_FIELDS, rows)
     output.with_suffix(".report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     return report
 
