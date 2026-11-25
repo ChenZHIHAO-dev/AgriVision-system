@@ -1,0 +1,14 @@
+{
+  "split": "val",
+  "images": 981,
+  "manifest_sha256": "a60c37cc8378d0916983e360689332006ef2a2e99cd0ad16b94fc7774c701383",
+  "temperature": 0.8500000000000001,
+  "nll_before": 0.12638826668262482,
+  "nll_after": 0.11685049533843994,
+  "threshold": 0.65,
+  "margin": 0.25,
+  "accepted_supported": 978,
+  "accepted_accuracy": 0.9846625766871165,
+  "coverage": 0.9969418960244648,
+  "selection_rule": "maximum validation coverage at >=98% accepted accuracy, at least 30 accepted; other class always rejected"
+}

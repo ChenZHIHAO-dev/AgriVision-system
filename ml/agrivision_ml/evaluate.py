@@ -70,6 +70,7 @@ if __name__ == "__main__":
     activation = parser.add_mutually_exclusive_group()
     activation.add_argument("--activate", action="store_true")
     activation.add_argument('--activate-experimental',action='store_true',help='Enable local internal-data testing only; does not claim field validation')
-    parser.add_argument('--report-name',choices=['external-jic'],default=None)
+    # 启用模型时可单独保存门槛检查，保留 experiment_report 生成的逐类/来源报告。
+    parser.add_argument('--report-name', choices=['external-jic', 'activation'], default=None)
     parser.add_argument("--field-verified", action="store_true")
     print(json.dumps(evaluate(parser.parse_args()), indent=2))

@@ -1,6 +1,6 @@
 # 小麦数据处理、训练与本地联调清单
 
-更新于 2026-11-26。本轮使用 Windows 本机现有的 `.venv`，固定数据目录为 `data/wheat-leaf-spike-03`。**预处理已完成；七组完整实验正在执行，结果集中在 `artifacts/experiments/wheat-study`。**
+更新于 2026-11-26。本轮使用 Windows 本机现有的 `.venv`，固定数据目录为 `data/wheat-leaf-spike-03`。**预处理与七组实验已完成；本机 API 已接入 Swin-T。结果集中在 `artifacts/experiments/wheat-study`，第 7 节是唯一的本轮对比报告。**
 
 ## 0. 先看运行顺序
 
@@ -63,7 +63,7 @@ Invoke-Item F:\college\AgriVision\data\wheat-review\leaf-spike-review.csv
 .\.venv\Scripts\python.exe -m ml.agrivision_ml.preprocessing.wheat_review --review data/wheat-review/leaf-spike-review.csv --check
 ```
 
-本轮七组实验执行期间保持 `03` 不变。筛选表的修改不会自动改写已经生成的 `03`。后续确认数据修改后统一更新当前工作集和划分，再启动新一组对照；不要为每次训练复制一份数据。
+本轮七组实验均保持 `03` 不变。筛选表的修改不会自动改写已经生成的 `03`。后续确认数据修改后统一更新当前工作集和划分，再启动新一组对照；不要为每次训练复制一份数据。
 
 ## 2. 数据增强在哪里，参数什么意思
 
@@ -74,7 +74,7 @@ Invoke-Item F:\college\AgriVision\data\wheat-review\leaf-spike-review.csv
 - `--augmentation field`：小幅平移（最多宽高的 3%）、0.95–1.05 倍缩放、±10° 旋转和上述颜色变化；再以 15% 概率选择一种成像退化。
 - 退化候选：3×3 高斯模糊（σ=0.1–0.7）、JPEG 质量 75–95，或高斯噪声 σ=3/255。最后一种相当于 8 位像素大约 3 个灰度级的标准差。每次至多抽一种退化，避免强烈叠加后掩盖病斑。
 
-这些是待比较的轻量起点，具体收益由第 1、2 组实验决定。第 2 组同时改变小幅几何扰动和成像退化，因此结果说明的是整套增强方案的差别，不能单独归因于噪声。实现复用 TorchVision/Pillow 的标准变换。 [TorchVision 变换说明](https://docs.pytorch.org/vision/stable/transforms.html)
+这些是待比较的轻量起点，本轮第 1、2 组结果支持保留轻增强。第 2 组同时改变小幅几何扰动和成像退化，因此结果说明的是整套增强方案的差别，不能单独归因于噪声。实现复用 TorchVision/Pillow 的标准变换。 [TorchVision 变换说明](https://docs.pytorch.org/vision/stable/transforms.html)
 
 示例图：[原图、轻增强与田间增强对照](../artifacts/experiments/wheat-study/augmentation-preview.png)。
 
@@ -90,15 +90,15 @@ Invoke-Item F:\college\AgriVision\data\wheat-review\leaf-spike-review.csv
 $env:TORCH_HOME = 'F:\college\AgriVision\.cache\torch'
 ```
 
-下面是第一组实验的完整命令，**已有运行结果时用于阅读和复现，不要对正在运行或已保存的结果目录重复执行**。每次训练只有实验结果目录不同，数据目录仍固定为 `03`。
+下面是选中 Swin-T 的完整训练命令，**已有运行结果时用于阅读和复现，不要对正在运行或已保存的结果目录重复执行**。每次训练只有实验结果目录不同，数据目录仍固定为 `03`。
 
 ```powershell
-.\.venv\Scripts\python.exe -m ml.agrivision_ml.train --data-root data/wheat-leaf-spike-03/images --manifest data/wheat-leaf-spike-03/manifest.csv --labels data/wheat-leaf-spike-03/labels.json --output artifacts/experiments/wheat-study/01-convnext-light/wheat --architecture convnext_tiny --device cuda --input-size 224 --resize letterbox --augmentation light --batch-size 16 --lr 0.0001 --freeze-epochs 2 --precision bf16 --epochs 20 --patience 6 --workers 0
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.train --data-root data/wheat-leaf-spike-03/images --manifest data/wheat-leaf-spike-03/manifest.csv --labels data/wheat-leaf-spike-03/labels.json --output artifacts/experiments/wheat-study/06-swin-transformer/wheat --architecture swin_t --device cuda --input-size 224 --resize letterbox --augmentation light --batch-size 16 --lr 0.0001 --freeze-epochs 2 --precision bf16 --epochs 20 --patience 6 --workers 0
 ```
 
 | 参数 | 作用，以及改哪里 |
 | --- | --- |
-| `--architecture convnext_tiny` | 选择模型；构建代码在 `model.py` |
+| `--architecture swin_t` | 选择模型；构建代码在 `model.py` |
 | `--input-size 224` | 输入 RGB 方图边长；`letterbox` 保持原图比例并补边 |
 | `--augmentation light` | 选择增强方案；具体强度在 `augmentation.py` |
 | `--batch-size 16` | 每次更新读 16 张；本轮每个 epoch 共 289 次参数更新 |
@@ -141,22 +141,22 @@ explorer F:\college\AgriVision\artifacts\experiments\wheat-study
 
 ## 5. 校准、测试和单图推理
 
-训练完成后，先在验证集调温度和结果阈值。以下以第一组目录说明；查看其他实验时只替换 `--bundle` 后的目录。温度校准不改变第一候选排序，用于调整分数和给出明确结果的覆盖率。
+训练完成后，先在验证集调温度和结果阈值。以下以选中模型目录说明；查看其他实验时只替换 `--bundle` 后的目录。温度校准不改变第一候选排序，用于调整分数和给出明确结果的覆盖率。
 
 ```powershell
-.\.venv\Scripts\python.exe -m ml.agrivision_ml.calibrate --bundle artifacts/experiments/wheat-study/01-convnext-light/wheat --data-root data/wheat-leaf-spike-03/images --manifest data/wheat-leaf-spike-03/manifest.csv --device cuda
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.calibrate --bundle artifacts/experiments/wheat-study/06-swin-transformer/wheat --data-root data/wheat-leaf-spike-03/images --manifest data/wheat-leaf-spike-03/manifest.csv --device cuda
 ```
 
 生成 853 张留出测试照片的完整报告和混淆矩阵：
 
 ```powershell
-.\.venv\Scripts\python.exe -m ml.agrivision_ml.experiment_report --bundle artifacts/experiments/wheat-study/01-convnext-light/wheat --data-root data/wheat-leaf-spike-03/images --manifest data/wheat-leaf-spike-03/manifest.csv --split test --device cuda
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.experiment_report --bundle artifacts/experiments/wheat-study/06-swin-transformer/wheat --data-root data/wheat-leaf-spike-03/images --manifest data/wheat-leaf-spike-03/manifest.csv --split test --device cuda
 ```
 
 把下面的照片路径换成自己的实际路径，运行一次单张推理。用 CPU 时将末尾 `cuda` 改成 `cpu`：
 
 ```powershell
-.\.venv\Scripts\python.exe -m ml.agrivision_ml.inference --bundle artifacts/experiments/wheat-study/01-convnext-light/wheat --image "F:\photos\wheat-sample.jpg" --device cuda
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.inference --bundle artifacts/experiments/wheat-study/06-swin-transformer/wheat --image "F:\photos\wheat-sample.jpg" --device cuda
 ```
 
 验证集用于模型和方法选择，测试集用于报告最终表现。七组中的后两种架构在查看前五组测试分数之前已确定，仍只按验证 Macro-F1 选择。已重复查看过的测试集不能替代未来新田块、新季节照片的独立验证。
@@ -195,19 +195,129 @@ Python 版本、训练依赖和缓存设置分别见 [版本文件](../.python-v
 | `06-swin-transformer` | Swin-T，224 | 比较窗口注意力 Transformer |
 | `07-convnext-small` | ConvNeXt-Small，224 | 更大一级卷积模型是否有收益 |
 
-第 6、7 组沿用前两组中较好的增强。`study.json` 记录每组完整训练命令、调整理由和实际参数；`summary.json` 记录结果和验证集选中的模型。实验尚在运行时，这些文件只包含已产生的内容。
+第 6、7 组沿用前两组中较好的增强。`study.json` 记录每组完整训练命令、调整理由和实际参数；`summary.json` 记录结果和验证集选中的模型。七组结果均已写全，具体命令以 `study.json` 为准。
 
 ConvNeXt 使用卷积与 LayerNorm，Swin 使用分层窗口自注意力；两者不依赖普通 BatchNorm 的跨批运行统计。EfficientNetV2 由 Fused-MBConv 和 MBConv 组成，仍是 CNN。参数规模需与数据、预训练和正则化一起比较，并非越大必然越准确。 [ConvNeXt · CVPR 2022](https://openaccess.thecvf.com/content/CVPR2022/html/Liu_A_ConvNet_for_the_2020s_CVPR_2022_paper.html) · [EfficientNetV2 · ICML 2021](https://proceedings.mlr.press/v139/tan21a.html) · [Swin-T 官方实现与论文入口](https://docs.pytorch.org/vision/main/models/generated/torchvision.models.swin_t.html)
 
-完整结果与本地联调记录将在本节更新。当前第一组已完成 20 个 epoch，最佳第 17 轮验证准确率 97.66%、Macro-F1 96.98%；其余组继续执行中。
+### 7.1 已完成的结果
+
+七组实验全部结束，共 136 个完整 epoch；每轮读取 4,621 张训练图、实际更新 289 次。前六组各 20 轮，第七组验证 Macro-F1 连续六轮未改善，在第 16 轮早停。始终使用原来的 03 清单，未复制新数据集。
+
+按预定的验证 Macro-F1 选择 **06-swin-transformer：Swin-T，224 输入，轻增强，逆频率损失权重**。它是分层窗口注意力 Transformer，约 2,753 万参数。验证准确率 98.37%、Macro-F1 97.71%；留出测试 844/853 正确，准确率 98.94%、Macro-F1 98.90%。
+
+| 实验 | 实际 / 最佳 epoch | 验证准确率 | 验证 Macro-F1 | 测试准确率 | 测试 Macro-F1 | 明确结果覆盖率 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 01-convnext-light | 20 / 17 | 97.66% | 96.98% | 98.94% | 98.90% | 99.41% |
+| 02-convnext-field | 20 / 18 | 97.66% | 96.52% | 98.36% | 98.17% | 98.48% |
+| 03-efficientnetv2 | 20 / 18 | 96.43% | 95.33% | 97.66% | 97.25% | 37.87% |
+| 04-resolution320 | 20 / 16 | 98.37% | 97.69% | 98.94% | 98.75% | 99.41% |
+| 05-weight-balance | 20 / 19 | 97.96% | 97.21% | 98.94% | 98.82% | 99.77% |
+| 06-swin-transformer | 20 / 17 | 98.37% | 97.71% | 98.94% | 98.90% | 99.77% |
+| 07-convnext-small | 16 / 10 | 97.25% | 96.42% | 97.66% | 97.44% | 98.48% |
+
+第 6 组与第 4 组验证 Macro-F1 只差约 **0.02 个百分点**，两者测试准确率相同。这是一次固定划分、种子 42 的开发比较，不能解释为统计上已证明 Swin 普遍优于 ConvNeXt。第 1、4、5、6 组测试准确率同为 98.94%，具体错图和各类表现不同。
+
+选择记录：前五组训练结束时先按验证集选中第 4 组；加入预先确定的第 6、7 组后仍按验证 Macro-F1 选择。第 1 组为了提早接通本地 API，提前做过留出测试；后续训练参数选择只读取验证结果。当前测试集已经查看过，下一轮外部泛化验收应另留新田块、新季节的独立照片。
+
+### 7.2 容量与 CPU 成本
+
+| 实验 | 架构 | 八类参数量 | 输入 | 训练分钟 | CPU 中位 / P95 毫秒 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 01 | convnext_tiny | 27,826,280 | 224 | 28.8 | 63.1 / 75.5 |
+| 02 | convnext_tiny | 27,826,280 | 224 | 29.4 | 71.3 / 102.0 |
+| 03 | efficientnet_v2_s | 20,187,736 | 224 | 28.9 | 63.1 / 72.9 |
+| 04 | convnext_tiny | 27,826,280 | 320 | 33.6 | 116.8 / 128.7 |
+| 05 | convnext_tiny | 27,826,280 | 320 | 33.7 | 113.9 / 127.3 |
+| 06 | swin_t | 27,525,506 | 224 | 26.6 | 70.9 / 78.2 |
+| 07 | convnext_small | 49,460,840 | 224 | 23.2 | 111.7 / 125.8 |
+
+训练设备为 RTX 3060 Laptop 6 GiB，BF16；分钟数是逐 epoch 计时之和，不包含首次下载、初始化与独立评估。CPU 为 Ryzen 9 5900HX，PyTorch 2.7.1，固定 4 线程。各模型预热 8 次后，使用每类前两张测试照片轮换进行 80 次串行单图推理，包含读图、预处理和网络前向，不包含 HTTP、数据库和首次加载。训练已全部结束后才测量。相同架构也会有系统负载与缓存波动，以上不是并发吞吐测试。
+
+最终 Swin-T 权重约 105 MiB；本机 API 热身后的进程工作集约 707 MiB、私有内存约 1,487 MiB。这些是 Windows 本机观测，不能直接当作云 Linux 实例用量。先在现有云机部署一个模型进程，测实际延迟、内存和并发；多个模型 worker 会各自加载权重。
+
+本轮结论：
+
+- 提高输入细节有收益：ConvNeXt-Tiny 从 224 提到 320，验证 Macro-F1 从 96.98% 到 97.69%，同时 CPU 耗时增加。
+- 田间增强方案未胜过轻增强：第 2 组验证 Macro-F1 96.52%。本轮整套扰动没有收益，不能据此认定所有噪声增强都无效。
+- 减弱类别权重未胜过原方案：第 5 组验证 Macro-F1 97.21%，保留原逆频率权重。
+- 更大模型未带来收益：ConvNeXt-Small 约 4,946 万参数，验证 Macro-F1 96.42%，本轮不选它部署。
+- EfficientNetV2-S 在本轮 224 输入和固定 BN 配置下，测试 Top-1 97.66%，但校准后的明确结果覆盖率只有 37.87%。实际使用会频繁要求补拍。该结果不是这个架构充分调参后的性能上限。
+
+### 7.3 曲线、逐类表现与错例
+
+![七组 loss 和准确率曲线](../artifacts/experiments/wheat-study/experiment-comparison.png)
+
+| 实验 | 训练曲线 | 验证混淆矩阵 | 测试混淆矩阵 |
+| --- | --- | --- | --- |
+| 01 | [loss / acc](../artifacts/experiments/wheat-study/01-convnext-light/wheat/training-curves.png) | [验证](../artifacts/experiments/wheat-study/01-convnext-light/wheat/confusion-val.png) | [测试](../artifacts/experiments/wheat-study/01-convnext-light/wheat/confusion-test.png) |
+| 02 | [loss / acc](../artifacts/experiments/wheat-study/02-convnext-field/wheat/training-curves.png) | [验证](../artifacts/experiments/wheat-study/02-convnext-field/wheat/confusion-val.png) | [测试](../artifacts/experiments/wheat-study/02-convnext-field/wheat/confusion-test.png) |
+| 03 | [loss / acc](../artifacts/experiments/wheat-study/03-efficientnetv2/wheat/training-curves.png) | [验证](../artifacts/experiments/wheat-study/03-efficientnetv2/wheat/confusion-val.png) | [测试](../artifacts/experiments/wheat-study/03-efficientnetv2/wheat/confusion-test.png) |
+| 04 | [loss / acc](../artifacts/experiments/wheat-study/04-resolution320/wheat/training-curves.png) | [验证](../artifacts/experiments/wheat-study/04-resolution320/wheat/confusion-val.png) | [测试](../artifacts/experiments/wheat-study/04-resolution320/wheat/confusion-test.png) |
+| 05 | [loss / acc](../artifacts/experiments/wheat-study/05-weight-balance/wheat/training-curves.png) | [验证](../artifacts/experiments/wheat-study/05-weight-balance/wheat/confusion-val.png) | [测试](../artifacts/experiments/wheat-study/05-weight-balance/wheat/confusion-test.png) |
+| 06 | [loss / acc](../artifacts/experiments/wheat-study/06-swin-transformer/wheat/training-curves.png) | [验证](../artifacts/experiments/wheat-study/06-swin-transformer/wheat/confusion-val.png) | [测试](../artifacts/experiments/wheat-study/06-swin-transformer/wheat/confusion-test.png) |
+| 07 | [loss / acc](../artifacts/experiments/wheat-study/07-convnext-small/wheat/training-curves.png) | [验证](../artifacts/experiments/wheat-study/07-convnext-small/wheat/confusion-val.png) | [测试](../artifacts/experiments/wheat-study/07-convnext-small/wheat/confusion-test.png) |
+
+本轮没有重现历史训练后期 loss 升到 19.762 的现象。训练准确率接近 100%，验证与测试仍有错误，不能因此宣布消除了过拟合。历史对照同时更换了架构、输入处理、学习率、批量与数值训练设置，不能把改善全部归因于某一个因素。
+
+曲线里的 loss 是带类别权重和 0.03 标签平滑的交叉熵，不会因为准确率达到 100% 就降到 0。评估 JSON 中的 nll 是未加类别权重、未作标签平滑的普通交叉熵，数值不能直接混用。温度校准用于分数和门限，不改变最高分的类别。
+
+最终模型的完整测试召回：
+
+| 类别 | 测试照片 | 正确 | 召回率 |
+| --- | ---: | ---: | ---: |
+| 小麦条锈病 | 98 | 97 | 98.98% |
+| 小麦叶锈病 | 80 | 79 | 98.75% |
+| 小麦白粉病 | 121 | 119 | 98.35% |
+| 小麦赤霉病 | 214 | 214 | 100.00% |
+| 小麦颖枯病 | 58 | 57 | 98.28% |
+| 小麦黄矮病 | 56 | 56 | 100.00% |
+| 未发现已支持病害的明显特征 | 174 | 170 | 97.70% |
+| 小麦壳针孢叶枯病 | 52 | 52 | 100.00% |
+
+| 测试来源 | 张数 | 准确率 |
+| --- | ---: | ---: |
+| mswdd2022 | 149 | 100.00% |
+| henan-yuanyang-15621359 | 547 | 99.45% |
+| jic-7307816 | 157 | 96.18% |
+
+测试共 9 张分类错误，主要涉及健康参考与病害、白粉病与颖枯病等混淆。校准温度 0.85、最高分门限 0.65、分差门限 0.25；测试接受 851/853 张，接受部分正确率 98.94%。高分仍可能错判，页面已说明分数不代表确诊概率。
+
+验证集错图 16 张、来自 9 个采集组，已输出本机的 `validation-errors.png` 和 `predictions-val.csv`，可回到原图逐张复核。其中采集组 **7e868779e02c6e113d4d** 的两张近似麦穗图分别标为颖枯病与健康参考，是需优先核对的候选标签问题。两张都在验证集，没有因此跨到训练集；本轮没有根据模型预测擅自改标签。
+
+下一步优先复核错图与组内标签，再补不同地区、季节、拍摄设备和模型未覆盖的病害/非小麦照片。颖枯病、黄矮病和壳针孢叶枯病当前各自只有一个数据来源；同来源留出分数不能代表跨来源识别。数据调整后统一更新当前工作集和清单，不为每个训练版本复制数据。
+
+### 7.4 本地接口与网页验证
+
+本机已加载选中的 Swin-T，模型版本 `20261125-202036`，使用 CPU。网页地址：`http://127.0.0.1:8000/?mode=live`。
+
+- 各类各取第一张留出图，API 输出与直接推理 8/8 一致；其中 7/8 符合数据标签，一张白粉病图误判为颖枯病。这是已知模型错例，计入全量测试，不将接口测试当作独立准确率估计。
+- 访客可以识别，继续 AI 对话必须登录。补充灰色质检控制图后，接口保留原照片证据，并对不合格图提示重拍。
+- 实际通过网页文件选择器上传赤霉病与颖枯病照片，显示相应结果。缺少资料卡的颖枯病仍可识别，只给已有的通用观察提示。
+- 检查 1440×900 桌面和 390×844 手机网页布局，结果弹窗可关闭、正文内部滚动、底部操作可达。点击继续对话弹出登录，取消登录返回同一条识别记录；浏览器错误日志为 0。
+- 本轮联调未发送付费 DeepSeek 请求，也未把浏览器模拟尺寸称为微信真机验收。API 实测记录在本机 `api-final.json`、`http-final.json`，截图为 `web-final-desktop.png`、`web-final-mobile.png`。
+
+### 7.5 提交检查
+
+已检查 Git 管理的文本与相关 WeChat 测试历史。测试里原有具体格式的 AppID 和 provider token 是假测试值，现已换成明确的 test-only 占位文本；当前提交检查未发现真实密钥。真实本机设置继续放在忽略的 `.env`、`.env.wechat.local` 和 `secrets` 中。配置字段名和空白示例保留，实际值由本机注入。
+
+已有 WeChat 构建测试新增公开文件检查，发现具体 AppID、常见凭据格式、私钥头或被跟踪的本地配置目录时失败，错误只打印位置和类型。旧历史中的假测试值未重写历史。本轮最终回归：前端 59 项通过，模型/评估与 API 注册 18 项通过；公开文件检查包含在前端测试中。实验表格、曲线和汇总指标跟随代码提交；原始照片、权重、本地环境和浏览器运行记录留在本机。
+
 
 ## 8. 接入本地 API 与后续部署
 
-模型选择完成后，使用已有留出评估和 `evaluate.py --activate-experimental` 将选中的包标记为内部测试。它不代表已完成独立田间验证。然后在本地 `.env` 中设置：
+选中的包已标记为内部测试。重新部署时，可用下列命令检查原清单的留出结果，并单独保存启用报告：
 
-- `AGRIVISION_MODEL_DIR`：选中实验的父目录，即含有 `wheat` 子目录的目录。
-- `AGRIVISION_DEVICE`：本机可用 `cuda`，也可用 `cpu` 比较实际响应时间。
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.evaluate --bundle artifacts/experiments/wheat-study/06-swin-transformer/wheat --data-root data/wheat-leaf-spike-03/images --manifest data/wheat-leaf-spike-03/manifest.csv --device cpu --activate-experimental --report-name activation
+```
+
+内部测试不代表完成独立田间验证。本机 `.env` 已设置为：
+
+- `AGRIVISION_MODEL_DIR=artifacts/experiments/wheat-study/06-swin-transformer`：含有 `wheat` 子目录的目录。
+- `AGRIVISION_DEVICE=cpu`：本机常驻 CPU 推理，也可切换为 `cuda`。
 - `AGRIVISION_ALLOW_EXPERIMENTAL_MODELS=1`：允许本地加载该内部测试模型。
+
+Git 中保存代码、指标与曲线，模型权重不随仓库提交。云端克隆代码后，还需另外上传所选目录的 weights.pt 和 metadata.json，并配置模型目录；云端推理不需要整份训练图片。
 
 模型标签以模型包为准；知识卡按病害 ID 独立查找。某一类资料尚未补齐时仍能返回识别候选，并给出通用的补拍/记录建议；不会凭空生成具体药名和剂量。
 
@@ -222,6 +332,12 @@ npm run build
 ```
 
 网页打开 `http://127.0.0.1:8000`，接口文档为 `http://127.0.0.1:8000/docs`。`GET /api/meta` 应显示当前小麦模型的八个类别和新版本。前端上传照片到 `POST /api/cases`，后端加载并缓存模型、执行质检和推理，再返回候选、分数、版本与资料。照片识别不调用 DeepSeek；登录后的对话是独立链路。
+
+复测 CPU 性能（独立入口 [benchmark.py](../ml/agrivision_ml/benchmark.py)，输出模型目录下的 `benchmark-cpu.json`）：
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.benchmark --bundle artifacts/experiments/wheat-study/06-swin-transformer/wheat --data-root data/wheat-leaf-spike-03/images --manifest data/wheat-leaf-spike-03/manifest.csv --device cpu --threads 4 --repeats 80 --warmup 8
+```
 
 停止本机服务：
 

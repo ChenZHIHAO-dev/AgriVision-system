@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | 1. 完成三端内测 | 网页和小程序可回归，App 构建资源可交给 HBuilderX。访客拍照，登录后继续原记录。先接通现有 CPU 小麦模型与同一 API | 手机键盘、相机、长结果滚动、返回、断网重试、深浅色和账户权限按 [验收清单](validation.md) 检查 |
 | 2. 完成小麦图像复核 | 从 `wheat-leaf-spike-03` 逐类复查叶片和麦穗。归档待补、错图及许可情况，按采集分组，留出独立田间样本 | 按类看有效采集组数、分辨率、来源和拍摄部位。先冻结划分再训练。 [数据来源](data-sources.md) · [操作命令](recognition-training-checklist.md) |
-| 3. 验证增强与模型 | 同一份 03 数据运行七组完整实验：ConvNeXt-Tiny、EfficientNetV2-S、Swin-T、ConvNeXt-Small，以及增强、320 分辨率和类别权重对照。逐轮保存 loss/acc、最佳和末轮权重、逐图预测与混淆矩阵 | 按验证 Macro-F1 选择模型，再报告留出测试结果；接本地 127.0.0.1 API，在网页上传照片验证结果。独立田块与云端 CPU 延迟另行验证 |
+| 3. 验证增强与模型 | 已在同一份 03 数据完成七组实验并接通本地 API：ConvNeXt-Tiny、EfficientNetV2-S、Swin-T、ConvNeXt-Small，以及增强、320 分辨率和类别权重对照。逐轮保存 loss/acc、最佳和末轮权重、逐图预测与混淆矩阵 | 已选 Swin-T，留出测试准确率 98.94%、Macro-F1 98.90%。网页上传、登录门槛与 CPU 推理已验证；下一步复核错图与疑似冲突标签，再做独立田块与云端并发测试 |
 | 4. 扩充病害资料与检索 | 按小麦病害 ID 对齐规范病名、别名、部位、易混病、生育期与覆盖区域。按来源、日期与适用范围组织资料 | 用同一组实际问法比检索召回、引用正确性和回答可操作性。用药信息先核验登记与标签 |
 | 5. 扩作物与问答评测 | 整株作物分类先覆盖有足够独立数据的常见作物。经用户确认后进入各作物自己的病害识别。分别比较 DeepSeek 和基础 Qwen 在同一组题和资料上的回答 | 关注未覆盖作物、混淆、补问和引用。若基线有稳定可复现的薄弱项，再确定是否试微调 |
 
@@ -14,7 +14,7 @@
 
 作物识别使用整株或有辨识度的图像，输出候选供用户确认。已知作物时直接拍异常部位。病害识别按确认的作物选择权重。小麦先处理已有叶片和麦穗资料。地区与生育期可用于检索、补问以及独立评估。现有图像特征不足时提示需要补拍或区分的部位。
 
-分类模型包放在 `artifacts/models/crop-identification` 或 `artifacts/models/<作物>`，各自携带同一次实验的 `weights.pt` 和 `metadata.json`。通过同一套训练、校准、评估和 API 概况接入。本轮实验模型从 artifacts/experiments/wheat-study/<实验名>/wheat 直接加载，避免复制权重。模型类别由模型包管理，资料卡独立补齐。新增模型先在固定留出数据、本地 API 和目标 CPU 上验证，再补充独立田间验证。 [CPU 接入步骤](recognition-training-checklist.md#8-cpu-服务接入)
+分类模型包放在 `artifacts/models/crop-identification` 或 `artifacts/models/<作物>`，各自携带同一次实验的 `weights.pt` 和 `metadata.json`。通过同一套训练、校准、评估和 API 概况接入。本轮实验模型从 artifacts/experiments/wheat-study/<实验名>/wheat 直接加载，避免复制权重。模型类别由模型包管理，资料卡独立补齐。新增模型先在固定留出数据、本地 API 和目标 CPU 上验证，再补充独立田间验证。 [CPU 接入步骤](recognition-training-checklist.md#8-接入本地-api-与后续部署)
 
 ## 资料与问答
 

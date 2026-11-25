@@ -140,7 +140,9 @@ test('WeChat rebuild updates an old imported alias with current compiler setting
   const { preview, run } = fixture(t, local)
   const build = run()
   assert.equal(build.status, 0, build.stderr)
-  const installed = JSON.parse(readFileSync(path.join(preview, 'project.private.config.json'), 'utf8'))
+  const installed = JSON.parse(
+    readFileSync(path.join(preview, 'project.private.config.json'), 'utf8'),
+  )
   assert.deepEqual(installed, { ...local, projectname: encodeURIComponent('宛田观叶') })
 })
 
@@ -167,7 +169,6 @@ test('failed WeChat compilation or validation leaves the imported package intact
   }
 })
 
-
 test('tracked public files contain no concrete app identifiers or provider credentials', () => {
   // 只检查 Git 管理的文件；本机 .env、构建产物和 secrets 不应进入仓库。
   // 错误仅打印文件位置和类型，避免把可疑内容再次泄漏到终端或 CI 日志。
@@ -177,16 +178,37 @@ test('tracked public files contain no concrete app identifiers or provider crede
   })
   assert.equal(tracked.status, 0, tracked.stderr)
   const names = tracked.stdout.split('\0').filter(Boolean)
-  const textExtensions = new Set(['.js', '.mjs', '.cjs', '.ts', '.vue', '.json', '.py', '.md', '.yml', '.yaml', '.ps1', '.example', '.toml', '.txt'])
+  const textExtensions = new Set([
+    '.js',
+    '.mjs',
+    '.cjs',
+    '.ts',
+    '.vue',
+    '.json',
+    '.py',
+    '.md',
+    '.yml',
+    '.yaml',
+    '.ps1',
+    '.example',
+    '.toml',
+    '.txt',
+  ])
   const forbidden = [
     ['concrete WeChat AppID', /wx[0-9a-fA-F]{16}/],
     ['provider credential', /\b(?:sk-[A-Za-z0-9_-]{16,}|AKIA[A-Z0-9]{16}|LTAI[A-Za-z0-9]{16,})\b/],
     ['private key', /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/],
   ]
   for (const name of names) {
-    assert.ok(!/(^|\/)(secrets|runtime|node_modules|dist)(\/|$)/.test(name), name + ': private/generated directory is tracked')
+    assert.ok(
+      !/(^|\/)(secrets|runtime|node_modules|dist)(\/|$)/.test(name),
+      name + ': private/generated directory is tracked',
+    )
     const basename = path.basename(name)
-    assert.ok(!basename.startsWith('.env') || basename.endsWith('.example'), name + ': local environment is tracked')
+    assert.ok(
+      !basename.startsWith('.env') || basename.endsWith('.example'),
+      name + ': local environment is tracked',
+    )
     if (!textExtensions.has(path.extname(name))) continue
     const contents = readFileSync(new URL('../../' + name, import.meta.url), 'utf8')
     for (const [kind, pattern] of forbidden)

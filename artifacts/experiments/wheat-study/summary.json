@@ -1,0 +1,117 @@
+{
+  "selected_by_validation": "06-swin-transformer",
+  "results": [
+    {
+      "name": "01-convnext-light",
+      "best_epoch": 17,
+      "epochs": 20,
+      "val_accuracy": 0.9765545361875637,
+      "val_macro_f1": 0.9697967620542036,
+      "test_accuracy": 0.9894490035169988,
+      "test_macro_f1": 0.9889789221962904,
+      "test_selective": {
+        "coverage": 0.9941383352872216,
+        "accepted": 848,
+        "accuracy": 0.9905660377358491
+      },
+      "train_seconds": 1727.55,
+      "all_epochs_full_data": true
+    },
+    {
+      "name": "02-convnext-field",
+      "best_epoch": 18,
+      "epochs": 20,
+      "val_accuracy": 0.9765545361875637,
+      "val_macro_f1": 0.9652422053789953,
+      "test_accuracy": 0.9835873388042204,
+      "test_macro_f1": 0.981667903520933,
+      "test_selective": {
+        "coverage": 0.984759671746776,
+        "accepted": 840,
+        "accuracy": 0.9916666666666667
+      },
+      "train_seconds": 1766.44,
+      "all_epochs_full_data": true
+    },
+    {
+      "name": "03-efficientnetv2",
+      "best_epoch": 18,
+      "epochs": 20,
+      "val_accuracy": 0.9643221202854231,
+      "val_macro_f1": 0.9532995016747765,
+      "test_accuracy": 0.9765533411488863,
+      "test_macro_f1": 0.97253547491233,
+      "test_selective": {
+        "coverage": 0.3786635404454865,
+        "accepted": 323,
+        "accuracy": 0.9814241486068112
+      },
+      "train_seconds": 1732.65,
+      "all_epochs_full_data": true
+    },
+    {
+      "name": "04-resolution320",
+      "best_epoch": 16,
+      "epochs": 20,
+      "val_accuracy": 0.9836901121304791,
+      "val_macro_f1": 0.9768588659791416,
+      "test_accuracy": 0.9894490035169988,
+      "test_macro_f1": 0.9874618167920868,
+      "test_selective": {
+        "coverage": 0.9941383352872216,
+        "accepted": 848,
+        "accuracy": 0.9893867924528302
+      },
+      "train_seconds": 2018.66,
+      "all_epochs_full_data": true
+    },
+    {
+      "name": "05-weight-balance",
+      "best_epoch": 19,
+      "epochs": 20,
+      "val_accuracy": 0.9796126401630989,
+      "val_macro_f1": 0.9721068539906222,
+      "test_accuracy": 0.9894490035169988,
+      "test_macro_f1": 0.9881707081833246,
+      "test_selective": {
+        "coverage": 0.9976553341148886,
+        "accepted": 851,
+        "accuracy": 0.9905992949471211
+      },
+      "train_seconds": 2019.87,
+      "all_epochs_full_data": true
+    },
+    {
+      "name": "06-swin-transformer",
+      "best_epoch": 17,
+      "epochs": 20,
+      "val_accuracy": 0.9836901121304791,
+      "val_macro_f1": 0.9770860920524239,
+      "test_accuracy": 0.9894490035169988,
+      "test_macro_f1": 0.988954992342969,
+      "test_selective": {
+        "coverage": 0.9976553341148886,
+        "accepted": 851,
+        "accuracy": 0.9894242068155111
+      },
+      "train_seconds": 1597.98,
+      "all_epochs_full_data": true
+    },
+    {
+      "name": "07-convnext-small",
+      "best_epoch": 10,
+      "epochs": 16,
+      "val_accuracy": 0.9724770642201835,
+      "val_macro_f1": 0.9641747704761062,
+      "test_accuracy": 0.9765533411488863,
+      "test_macro_f1": 0.9743669771622223,
+      "test_selective": {
+        "coverage": 0.984759671746776,
+        "accepted": 840,
+        "accuracy": 0.9904761904761905
+      },
+      "train_seconds": 1394.95,
+      "all_epochs_full_data": true
+    }
+  ]
+}
