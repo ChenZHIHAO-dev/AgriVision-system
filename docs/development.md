@@ -64,3 +64,5 @@ App 内测可用 [HBuilderX 真机运行](https://uniapp.dcloud.net.cn/tutorial/
 | `.\.venv\Scripts\python.exe scripts/smoke_ml.py` | 通过小规模合成数据检查 CPU 训练、评测、加载和识别接口 |
 
 真实服务检查可加 `--username admin` 测试登录承接。`--exercise-provider` 与 `--web` 会请求外部问答服务并消耗用量，日常回归用默认命令。 [真机和集成验收](validation.md)
+
+提交前运行 npm run test:frontend。其中的公开配置检查会扫描 Git 管理的文件，阻止具体格式的微信 AppID、常见提供商密钥、私钥和本机环境文件进入公开版本。真实设置保存在 .env、.env.wechat.local 或 secrets，示例配置只保留空字段和测试占位内容。
