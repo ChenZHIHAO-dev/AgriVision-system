@@ -192,3 +192,24 @@ Windows 训练依赖、Python 和缓存配置分别见 [requirements-ml.txt](../
 **云上可从 4 vCPU、8 GiB、单进程常驻一个分类器试起。** 上传图片时 API 按需加载权重并缓存。上云后在目标实例测手机或网页上传到收到结果的 P95，也看并发时的延迟、CPU 和内存，再决定是否升级。复用现有 CPU 机器先测也可以。 [阿里云计算型实例规格](https://help.aliyun.com/zh/ecs/user-guide/instance-specification-naming-and-classification) · [CPU 联网试测](wechat-deployment.md#cpu-联网试测)
 
 **效果达标后再压缩。** 如果云端实测达不到延迟或资源目标，先用同一个模型对比 PyTorch 与 ONNX Runtime 的 FP32 推理，再试静态 INT8，用有代表性的训练照片校准。若仍需降低计算量，用表现最好的模型作教师，让 MobileNetV4 等小模型学习它的类别分数分布。两种压缩产物都用原评测口径比较准确率、逐类召回、覆盖率和延迟。 [ONNX Runtime 量化](https://onnxruntime.ai/docs/performance/model-optimizations/quantization.html) · [知识蒸馏论文](https://arxiv.org/abs/1503.02531)
+
+
+## 9. 本轮五次完整实验
+
+本轮固定读取 `data/wheat-leaf-spike-03`，训练 4,621 张、验证 981 张、测试 853 张。在线增强在每次训练读图时执行，增强图保存在内存中。结果统一放在 `artifacts/experiments/wheat-study`。
+
+| 实验目录 | 本轮要检验的问题 |
+| --- | --- |
+| `01-convnext-light` | ConvNeXt-Tiny 用等比补边、轻增强，建立中等规模模型基线 |
+| `02-convnext-field` | 在同一骨干和输入下，轻微成像退化是否改善识别 |
+| `03-efficientnetv2` | 用前两轮较好增强比较 EfficientNetV2-S，并固定 BN 运行统计 |
+| `04-resolution320` | 基于前三轮较好方案提高分辨率到 320，观察小病斑与易混类别 |
+| `05-weight-balance` | 基于前四轮较好方案，减弱类别损失加权，观察少数类误报与总体表现 |
+
+每轮从 ImageNet 预训练权重重新开始，种子固定为 42，每批 16 张，最多 20 个完整 epoch。验证 Macro-F1 连续 6 轮不改善会早停。每个完成的 epoch 都遍历全部训练图，验证集只做固定尺寸变换。五轮全部完成后，先按验证 Macro-F1 选定候选，再统一计算测试结果。
+
+`light` 使用水平翻转、±10° 旋转和轻微亮度、对比度、饱和度变化。`field` 在相似强度下加入不超过 3% 的平移、0.95–1.05 倍缩放，并以 15% 概率随机选一种成像退化。退化包括 σ=0.1–0.7 的 3×3 模糊、质量 75–95 的 JPEG 或标准差为 3/255 的高斯噪声。这些数值是本轮待比较的轻增强起点，实际收益由第 1、2 轮对照决定。原图及增强图的示例在 `augmentation-preview.png`。增强实现集中在 [augmentation.py](../ml/agrivision_ml/augmentation.py)。
+
+每个实验的 `wheat` 子目录都保存最佳 `weights.pt`、末轮 `last-weights.pt`、`metadata.json`、逐轮 `training.json`、`training-curves.png`、`confusion-val.png`、`predictions-val.csv` 和评估 JSON。最终增加相应测试图表及预测 CSV。最后一轮权重用于分析训练异常，最佳权重由验证 Macro-F1 决定。`train_images_seen` 记录该轮读过的训练图数，`max_gradient_norm` 记录裁剪前最大梯度范数。
+
+`study.json` 保存各轮完整命令、调整理由和实际参数。`summary.json` 保存统一对比和按验证集选出的版本。数据划分及原图内容的 SHA-256 与代码提交号记录在模型配置中。使用现有虚拟环境，在本机 GPU 上训练。模型量化与蒸馏安排在本轮准确率和易混类别结果明确后进行。

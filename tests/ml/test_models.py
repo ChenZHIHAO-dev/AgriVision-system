@@ -11,7 +11,7 @@ from ml.agrivision_ml.model import build_model
 from ml.agrivision_ml.train import Images, _task_metadata, read_manifest
 
 
-@pytest.mark.parametrize('architecture', ['efficientnet_b0', 'mobilenet_v3_small', 'convnext_tiny', 'efficientnet_v2_s'])
+@pytest.mark.parametrize('architecture', ['efficientnet_b0', 'mobilenet_v3_small', 'convnext_tiny', 'efficientnet_v2_s', 'convnext_small', 'swin_t'])
 def test_networks_support_configured_output_classes(architecture):
     torch.set_num_threads(4)
     network=build_model(architecture,4).eval()

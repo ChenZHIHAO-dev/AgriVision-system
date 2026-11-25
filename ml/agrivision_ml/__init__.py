@@ -5,7 +5,7 @@ from importlib.util import find_spec
 
 # 这里登记对外使用的模型架构名。训练命令和模型包的 metadata.json 都使用这些名称。
 MOBILENET_V4 = "mobilenetv4_conv_small"
-ARCHITECTURES = frozenset({"efficientnet_b0", "mobilenet_v3_small", "convnext_tiny", "efficientnet_v2_s", MOBILENET_V4})
+ARCHITECTURES = frozenset({"efficientnet_b0", "mobilenet_v3_small", "convnext_tiny", "efficientnet_v2_s", "convnext_small", "swin_t", MOBILENET_V4})
 
 
 # MobileNetV4 依赖 timm。这里先检查依赖是否可用，实际建模由 model.py 负责。

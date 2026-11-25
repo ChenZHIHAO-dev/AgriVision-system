@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from . import ARCHITECTURES, MOBILENET_V4
-from .model import build_model, preprocessing
+from .model import build_model, classification_head, preprocessing
 from .inference import CROP_IDENTIFICATION_TASK, CROP_REJECTION_LABELS, select_device
 
 
@@ -208,7 +208,7 @@ def train(args):
         train_backbone = epoch >= args.freeze_epochs
         model.train(train_backbone)
         model.requires_grad_(train_backbone)
-        model.classifier.train().requires_grad_(True)
+        classification_head(model, args.architecture).train().requires_grad_(True)
         # 可固定预训练 BN 统计，卷积参数和 BN 的仿射参数仍参与微调。
         if args.freeze_bn:
             for module in model.modules():

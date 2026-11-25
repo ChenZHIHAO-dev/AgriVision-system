@@ -18,6 +18,11 @@ def build_model(architecture, classes, pretrained=False):
         return create_model(
             "mobilenetv4_conv_small.e2400_r224_in1k", pretrained=pretrained, num_classes=classes
         )
+    if architecture == "swin_t":
+        # ICCV 2021 分层窗口注意力。分类头名为 head，保留官方权重键名便于加载。
+        model = models.swin_t(weights=models.Swin_T_Weights.DEFAULT if pretrained else None)
+        model.head = nn.Linear(model.head.in_features, classes)
+        return model
     if architecture == "efficientnet_b0":
         model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.DEFAULT if pretrained else None)
     elif architecture == "mobilenet_v3_small":
@@ -26,6 +31,11 @@ def build_model(architecture, classes, pretrained=False):
         # ICML 2021 EfficientNetV2，Fused-MBConv 与 MBConv 相结合的中等规模 CNN。
         model = models.efficientnet_v2_s(
             weights=models.EfficientNet_V2_S_Weights.DEFAULT if pretrained else None,
+        )
+    elif architecture == "convnext_small":
+        # 更深的 ConvNeXt，对照增大网络容量是否改善当前难分样本。
+        model = models.convnext_small(
+            weights=models.ConvNeXt_Small_Weights.DEFAULT if pretrained else None,
         )
     elif architecture == "convnext_tiny":
         # 用 LayerNorm 的较大骨干，可在固定数据和输入尺寸下与 MobileNetV4 对照。
@@ -39,3 +49,8 @@ def build_model(architecture, classes, pretrained=False):
     return model
 
 
+
+
+def classification_head(model, architecture):
+    """获取各官方模型的分类头。冻结骨干时只训练此模块，避免改动网络权重的键名。"""
+    return model.head if architecture == "swin_t" else model.classifier
