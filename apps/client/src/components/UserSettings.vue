@@ -2,6 +2,8 @@
 import AppIcon from './AppIcon.vue'
 import { themeChoice, setTheme } from '../lib/theme'
 import { appVersion } from '../lib/appInfo'
+import { dataMode } from '../lib/api'
+const preview = dataMode() === 'preview'
 const emit = defineEmits<{ back: [] }>()
 const themes = [
   { id: 'light' as const, label: '浅色', icon: 'sun' },
@@ -10,11 +12,14 @@ const themes = [
 ]
 </script>
 <template>
-  <view class="user-settings"
-    ><button class="settings-back" @click="emit('back')">
-      <AppIcon name="back" :size="17" /><text>返回我的</text></button
-    ><text class="settings-title">设置</text
-    ><view class="panel settings-card"
+  <view class="user-settings">
+    <!-- #ifndef MP-WEIXIN -->
+    <button class="settings-back" @click="emit('back')">
+      <AppIcon name="back" :size="17" /><text>返回我的</text>
+    </button>
+    <text class="settings-title">设置</text>
+    <!-- #endif -->
+    <view class="panel settings-card"
       ><text class="settings-section-title">外观</text
       ><text class="settings-description">选择浅色、深色或跟随系统，设置会自动保存。</text
       ><view class="settings-themes"
@@ -35,18 +40,26 @@ const themes = [
     ><view class="panel settings-card"
       ><text class="settings-section-title">记录与隐私</text
       ><view class="privacy-row"
-        ><text>未登录</text><text>仅保留当前临时对话，不写入问诊历史。</text></view
+        ><text>未登录</text><text>可以拍照查看识别结果，询问 AI 和查看历史记录需登录。</text></view
       ><view class="privacy-row"
-        ><text>登录后</text><text>后续问诊由服务端按账户保存，访客内容不会自动归档。</text></view
+        ><text>登录后</text
+        ><text>{{
+          preview
+            ? '演示记录仅保留在当前页面内存，刷新或退出后清除。'
+            : '后续记录按账户保存。点「继续对话」可接续本次照片。'
+        }}</text></view
       ><view class="privacy-row"
         ><text>图片与对话</text
-        ><text>图片由独立模型处理，对话服务只接收文字与识别回执。</text></view
+        ><text>{{
+          preview
+            ? '离线预览只使用本地数据。'
+            : '照片由识别服务处理。使用 AI 问答时，相关对话、种植信息、识别摘要与农业资料摘录会交给 DeepSeek。照片和文件原件不转发。'
+        }}</text></view
       ></view
     ><view class="panel settings-card about-card"
-      ><text class="settings-section-title">关于 AgriVision</text
-      ><text>宛农植保助手 · {{ appVersion }}</text
+      ><text class="settings-section-title">关于 AgriVision</text><text>版本 {{ appVersion }}</text
       ><text class="settings-description"
-        >面向小麦、玉米与花生的田间记录、初步识别与种植咨询。</text
+        >面向小麦、玉米与花生的田间记录、初步识别与种植问答。</text
       ></view
     ></view
   >
@@ -174,4 +187,9 @@ const themes = [
 .settings-themes > button.selected {
   border-color: transparent;
 }
+/* #ifdef MP-WEIXIN */
+.settings-back {
+  margin-bottom: 12px;
+}
+/* #endif */
 </style>

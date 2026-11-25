@@ -1,0 +1,18 @@
+{
+  "task": "crop_identification",
+  "labels": {
+    "wheat": "小麦",
+    "maize": "玉米",
+    "peanut": "花生",
+    "rice": "水稻",
+    "soybean": "大豆",
+    "sweet_potato": "红薯",
+    "rapeseed": "油菜",
+    "sesame": "芝麻",
+    "tomato": "番茄",
+    "cucumber": "黄瓜",
+    "watermelon": "西瓜",
+    "pepper": "辣椒",
+    "other": "其他或未覆盖作物"
+  }
+}

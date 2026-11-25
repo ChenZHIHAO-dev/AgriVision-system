@@ -337,124 +337,119 @@ onUnmounted(() => {
 </template>
 <style scoped>
 .av-dock {
-  display: none;
+  position: relative;
+  display: block;
+  min-height: 74px;
+  max-height: 112px;
+  flex-shrink: 0;
+  padding: 6px 12px calc(8px + var(--mobile-safe-bottom, env(safe-area-inset-bottom, 0px)));
+  background: var(--glass);
+  border-top: 1px solid var(--line);
+  backdrop-filter: blur(16px);
+  z-index: 35;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  transition:
+    opacity 0.18s ease,
+    max-height 0.18s ease,
+    min-height 0.18s ease,
+    padding 0.18s ease,
+    transform 0.18s ease;
 }
-@media (max-width: 760px) {
-  .av-dock {
-    position: relative;
-    display: block;
-    min-height: 74px;
-    max-height: 112px;
-    flex-shrink: 0;
-    padding: 6px 12px calc(8px + env(safe-area-inset-bottom));
-    background: var(--glass);
-    border-top: 1px solid var(--line);
-    backdrop-filter: blur(16px);
-    z-index: 35;
-    touch-action: none;
-    user-select: none;
-    -webkit-user-select: none;
-    transition:
-      opacity 0.18s ease,
-      max-height 0.18s ease,
-      min-height 0.18s ease,
-      padding 0.18s ease,
-      transform 0.18s ease;
-  }
-  .dock-tabs {
-    position: relative;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    touch-action: none;
-  }
-  .dock-tabs > .dock-tab {
-    position: relative;
-    display: grid;
-    grid-template-rows: 36px 16px;
-    justify-items: center;
-    align-items: center;
-    gap: 3px;
-    min-height: 58px;
-    width: 100%;
-    min-width: 0;
-    padding: 1px 0 3px;
-    border-radius: 17px;
-    color: var(--muted);
-    background: transparent;
-    font-size: 11px;
-    font-weight: 500;
-    z-index: 2;
-    transition:
-      background-color 0.22s ease,
-      color 0.22s ease;
-    touch-action: none;
-    -webkit-touch-callout: none;
-  }
-  .dock-tabs > .dock-tab.active {
-    color: var(--accent);
-    font-weight: 650;
-  }
-  .dock-tabs > .dock-tab.drag-preview {
-    color: var(--ink);
-    font-weight: 650;
-  }
-  .dock-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 35px;
-    height: 35px;
-    border-radius: 12px;
-    transition:
-      background-color 0.22s ease,
-      transform 0.22s ease;
-  }
-  .camera-core {
-    width: 38px;
-    height: 36px;
-    border-radius: 13px;
-    background: var(--subtle);
-  }
-  .active > .dock-icon {
-    background: var(--accent);
-    box-shadow: 0 2px 7px #00000012;
-  }
-  .dock-glass {
-    position: absolute;
-    top: -1px;
-    left: 2px;
-    height: calc(100% + 2px);
-    border: 1.3px solid;
-    border-radius: 19px;
-    backdrop-filter: blur(14px) saturate(1.3);
-    -webkit-backdrop-filter: blur(14px) saturate(1.3);
-    box-shadow:
-      0 6px 18px #00000016,
-      inset 0 1px 0 #ffffff40;
-    pointer-events: none;
-    z-index: 1;
-    opacity: 1;
-    will-change: transform;
-  }
-  .dock-glass.settling {
-    opacity: 0;
-    transition:
-      opacity 0.28s ease,
-      transform 0.22s ease;
-  }
-  .av-dock:not(.is-dragging) .dock-hover .dock-icon {
-    transform: scale(0.94);
-  }
-  .av-dock.keyboard-hidden {
-    min-height: 0;
-    max-height: 0;
-    padding-top: 0;
-    padding-bottom: 0;
-    opacity: 0;
-    transform: translateY(12px);
-    border-width: 0;
-    pointer-events: none;
-  }
+.dock-tabs {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  touch-action: none;
+}
+.dock-tabs > .dock-tab {
+  position: relative;
+  display: grid;
+  grid-template-rows: 36px 16px;
+  justify-items: center;
+  align-items: center;
+  gap: 3px;
+  min-height: 58px;
+  width: 100%;
+  min-width: 0;
+  padding: 1px 0 3px;
+  border-radius: 17px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 500;
+  z-index: 2;
+  transition:
+    background-color 0.22s ease,
+    color 0.22s ease;
+  touch-action: none;
+  -webkit-touch-callout: none;
+}
+.dock-tabs > .dock-tab.active {
+  color: var(--accent);
+  font-weight: 650;
+}
+.dock-tabs > .dock-tab.drag-preview {
+  color: var(--ink);
+  font-weight: 650;
+}
+.dock-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 35px;
+  height: 35px;
+  border-radius: 12px;
+  transition:
+    background-color 0.22s ease,
+    transform 0.22s ease;
+}
+.camera-core {
+  width: 38px;
+  height: 36px;
+  border-radius: 13px;
+  background: var(--subtle);
+}
+.active > .dock-icon {
+  background: var(--accent);
+  box-shadow: 0 2px 7px #00000012;
+}
+.dock-glass {
+  position: absolute;
+  top: -1px;
+  left: 2px;
+  height: calc(100% + 2px);
+  border: 1.3px solid;
+  border-radius: 19px;
+  backdrop-filter: blur(14px) saturate(1.3);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  box-shadow:
+    0 6px 18px #00000016,
+    inset 0 1px 0 #ffffff40;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 1;
+  will-change: transform;
+}
+.dock-glass.settling {
+  opacity: 0;
+  transition:
+    opacity 0.28s ease,
+    transform 0.22s ease;
+}
+.av-dock:not(.is-dragging) .dock-hover .dock-icon {
+  transform: scale(0.94);
+}
+.av-dock.keyboard-hidden {
+  min-height: 0;
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  opacity: 0;
+  transform: translateY(12px);
+  border-width: 0;
+  pointer-events: none;
 }
 @media (prefers-reduced-motion: reduce) {
   .av-dock,

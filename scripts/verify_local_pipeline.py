@@ -1,7 +1,7 @@
 """Exercise the local HTTP API. Does not read provider credential files.
 
-Default checks use local recognition only. --exercise-provider makes two paid
-dialogue requests (including intake resume); --web additionally checks Flash's optional web tool.
+Default checks use only guest recognition and access checks. --username also tests the
+login handoff and local intake. --exercise-provider and --web make paid dialogue requests.
 """
 
 import argparse
@@ -11,6 +11,7 @@ import re
 import time
 import uuid
 from datetime import UTC, datetime
+from getpass import getpass
 from io import BytesIO
 from pathlib import Path
 
@@ -20,12 +21,13 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def run(base, exercise_provider=False, web=False):
+def run(base, exercise_provider=False, web=False, *, account=None):
+    if (exercise_provider or web) and account is None:
+        raise ValueError('Provider checks require a test account')
     headers = {"X-Client-ID": "local-verification-" + uuid.uuid4().hex}
     report = {
-        "version": "1.2.2-dev.1",
         "checked_at": datetime.now(UTC).isoformat(),
-        "scope": "local functional check; internal held-out image, not a new accuracy evaluation",
+        "scope": "local functional check using a photo from the current wheat leaf and spike test split",
         "credential_access": "HTTP API only; no credential-file access",
         "dialogue": [],
     }
@@ -37,16 +39,19 @@ def run(base, exercise_provider=False, web=False):
             response.raise_for_status()
             return response.json()
 
+        health = client.get("/api/health")
+        health.raise_for_status()
+        report["api_version"] = health.json()["version"]
+
         try:
-            rows = csv.DictReader(
-                (ROOT / "data/wheat-v1/manifest.csv").open(encoding="utf-8-sig")
-            )
-            row = next(
-                row
-                for row in rows
-                if row["split"] == "test" and row["label"] == "wheat_powdery_mildew"
-            )
-            image = ROOT / "data/wheat-v1/images" / row["path"]
+            dataset = ROOT / "data/wheat-leaf-spike-03"
+            with (dataset / "manifest.csv").open(encoding="utf-8-sig", newline="") as stream:
+                row = next(
+                    row
+                    for row in csv.DictReader(stream)
+                    if row["split"] == "test" and row["label"] == "wheat_powdery_mildew"
+                )
+            image = dataset / "images" / row["path"]
             case = post(
                 "/api/cases",
                 data={"crop": "wheat"},
@@ -93,8 +98,27 @@ def run(base, exercise_provider=False, web=False):
                 "second_input": "synthetic quality control",
                 "photo_upload_triggered_dialogue": False,
             }
+            guest_checks = {
+                '/api/consultations': {'crop': 'wheat'},
+                path + '/messages': {'text': '请解释现有图片识别结果。'},
+                path + '/resume': {'question_id': 'pending-check'},
+            }
+            for endpoint, payload in guest_checks.items():
+                assert client.post(endpoint, json=payload).status_code == 401, endpoint
+            report['guest_dialogue_blocked'] = True
+            if account is None:
+                report['passed'] = True
+                return report
+
+            login = post('/api/auth/login', json={**account, 'continue_case_id': case_id})
+            client.headers['Authorization'] = 'Bearer ' + login["access_token"]
+            assert login['continued_case_id'] == case_id
+            restored = client.get(path)
+            restored.raise_for_status()
+            assert restored.json()['images'][0]['id'] == first_id
+            report['login_handoff'] = {'case_retained': True, 'photo_retained': True}
             clarification = post(
-                path + "/messages", json={"text": "请解释现有图片识别结果。"}
+                path + "/messages", json={"text": "这株小麦的叶片有斑点，现在应该怎么观察和处理？"}
             )
             assert clarification["provider"] == "clarification"
             before = len(client.get(path).json()["messages"])
@@ -107,6 +131,21 @@ def run(base, exercise_provider=False, web=False):
                 "selection_added_messages": False,
                 "selection_called_dialogue_provider": False,
             }
+            document_response = client.post(
+                path + "/attachments",
+                files={
+                    "file": (
+                        "field-notes.txt",
+                        "示例：小麦苗期，叶片零星出现黄斑。".encode("utf-8"),
+                        "text/plain",
+                    )
+                },
+            )
+            document_response.raise_for_status()
+            document = document_response.json()["documents"][0]
+            assert document["extraction"] == "ready" and "text" not in document
+            report["document"] = {"extraction": document["extraction"]}
+
             if exercise_provider:
                 question_id = clarification["pending_question_id"]
                 started = time.perf_counter()
@@ -144,7 +183,7 @@ def run(base, exercise_provider=False, web=False):
                 question = (
                     "请联网查询小麦近期农业气象信息，给出可核验的来源与发布日期，150字以内。"
                     if search
-                    else "请解释现有图片识别线索，区分已识别和未判明的照片，给出下一步观察建议，150字以内。"
+                    else "请结合小麦照片和上传的田间记录，区分已识别和未判明的照片，给出下一步观察建议，150字以内。"
                 )
                 started = time.perf_counter()
                 answer = post(
@@ -154,6 +193,7 @@ def run(base, exercise_provider=False, web=False):
                         "model": model,
                         "thinking": thinking,
                         "web_search": search,
+                        "attachment_ids": [] if search else [document["id"]],
                     },
                 )
                 item = {
@@ -192,8 +232,14 @@ if __name__ == "__main__":
     parser.add_argument("--exercise-provider", action="store_true")
     parser.add_argument("--web", action="store_true")
     parser.add_argument("--report", type=Path)
+    parser.add_argument("--username", help="Test account for checking consultation after login")
     args = parser.parse_args()
-    result = run(args.base, args.exercise_provider, args.web)
+    if (args.exercise_provider or args.web) and not args.username:
+        parser.error("付费对话验收需要通过 --username 指定测试账号")
+    account = None
+    if args.username:
+        account = {"username": args.username, "password": getpass("测试账号密码：")}
+    result = run(args.base, args.exercise_provider, args.web, account=account)
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(

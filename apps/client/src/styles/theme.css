@@ -251,6 +251,14 @@ body {
   background: var(--surface);
   border-color: var(--line);
 }
+.button.quiet {
+  background: var(--accent-soft);
+  border-color: var(--line);
+  color: var(--ink);
+}
+.button.quiet:active {
+  background: var(--pressed);
+}
 .soft {
   background: var(--accent-soft);
   color: var(--accent);
@@ -478,16 +486,42 @@ body {
 }
 .dialog-backdrop {
   position: fixed;
-  inset: 0;
+  top: 0;
+  top: var(--visual-top, 0px);
+  right: 0;
+  left: 0;
   z-index: 200;
-  background: #15171b70;
-  backdrop-filter: blur(7px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  box-sizing: border-box;
+  height: 100vh;
+  height: var(--visual-height, var(--app-height, 100vh));
   padding: 24px;
   animation: fade-in 0.15s ease;
 }
+.dialog-scrim {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: #15171b70;
+}
+.dialog-frame {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+/* #ifdef H5 */
+.dialog-scrim {
+  backdrop-filter: blur(7px);
+}
+.floating-backdrop .dialog-scrim {
+  backdrop-filter: blur(4px);
+}
+/* #endif */
 .dialog-card {
   background: var(--elevated);
   border: 1px solid var(--line);
@@ -495,7 +529,9 @@ body {
   box-shadow: 0 24px 100px #0003;
   width: 450px;
   max-width: 100%;
-  max-height: calc(var(--app-height, 100dvh) - 48px);
+  max-height: 100%;
+  box-sizing: border-box;
+  pointer-events: auto;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -525,13 +561,24 @@ body {
   margin-top: 6px;
   line-height: 1.85;
 }
+.dialog-heading > view {
+  min-width: 0;
+}
 .dialog-close {
+  flex-shrink: 0;
   margin: -6px -8px 0 0;
 }
 .dialog-body {
+  width: 100%;
   min-height: 0;
-  max-height: calc(var(--app-height, 100dvh) - 230px);
+  flex: 0 1 auto;
 }
+/* #ifdef H5 */
+.dialog-body {
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+/* #endif */
 .dialog-body-inner {
   padding: 0 26px 24px;
 }
@@ -738,6 +785,7 @@ body {
     opacity: 1;
   }
 }
+/* #ifdef H5 */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -747,6 +795,7 @@ body {
     scroll-behavior: auto !important;
   }
 }
+/* #endif */
 @media (max-width: 760px) {
   .section-title {
     font-size: 18px;
@@ -766,12 +815,13 @@ body {
     height: 40px;
   }
   .dialog-backdrop {
-    padding: 0;
+    padding: 12px 0 0;
+  }
+  .dialog-frame {
     align-items: flex-end;
   }
   .dialog-card {
     width: 100%;
-    max-height: calc(var(--app-height, 100dvh) - 24px);
     border-radius: 24px 24px 0 0;
     border-bottom: 0;
   }
@@ -783,9 +833,6 @@ body {
   }
   .dialog-subtitle {
     font-size: 12px;
-  }
-  .dialog-body {
-    max-height: calc(var(--app-height, 100dvh) - 205px);
   }
   .dialog-body-inner {
     padding: 0 22px 23px;
@@ -866,16 +913,6 @@ body {
 }
 /* #endif */
 
-/* Keep dialogs inside the visual viewport when a phone keyboard opens. */
-.dialog-backdrop {
-  top: var(--viewport-top, 0px);
-  bottom: auto;
-  height: var(--app-height, 100dvh);
-}
-.dialog-body {
-  flex: 1;
-  min-height: 0;
-}
 .dialog-footer .auth-submit {
   margin: 0 0 7px;
 }
@@ -977,32 +1014,29 @@ uni-button {
 .dialog-close {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  width: auto;
-  min-width: 56px;
-  padding: 8px;
-  font-size: 11px;
-  background: var(--subtle);
-  border-radius: 10px;
+  justify-content: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  background: transparent;
+  border-radius: 50%;
 }
 .floating-backdrop {
   padding: 22px;
+}
+.floating-backdrop .dialog-frame {
   align-items: center;
-  backdrop-filter: blur(4px);
 }
 .dialog-floating {
   width: 800px;
-  max-height: calc(var(--app-height, 100dvh) - 44px);
   border-radius: 24px;
   border: 1px solid var(--line);
-}
-.dialog-floating .dialog-body {
-  max-height: calc(var(--app-height, 100dvh) - 218px);
 }
 .result-footer {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   justify-content: flex-end;
 }
 .result-footer > .button {
@@ -1011,11 +1045,9 @@ uni-button {
 @media (max-width: 760px) {
   .floating-backdrop {
     padding: 13px;
-    align-items: center;
   }
   .dialog-floating {
     width: 100%;
-    max-height: calc(var(--app-height, 100dvh) - 26px);
     border-radius: 23px;
     border: 1px solid var(--line);
   }
@@ -1030,9 +1062,6 @@ uni-button {
   }
   .dialog-floating .dialog-footer {
     padding: 13px 15px max(14px, env(safe-area-inset-bottom));
-  }
-  .dialog-floating .dialog-body {
-    max-height: calc(var(--app-height, 100dvh) - 204px);
   }
   .result-footer > .button {
     min-width: 0;
@@ -1050,23 +1079,6 @@ uni-button {
 }
 
 @media (max-width: 760px) {
-  .dialog-card {
-    position: absolute;
-    bottom: var(--keyboard-inset, 0px);
-    max-height: calc(var(--visual-height, var(--app-height, 100dvh)) - 14px);
-  }
-  .dialog-body {
-    max-height: calc(var(--visual-height, var(--app-height, 100dvh)) - 175px);
-  }
-  .dialog-floating {
-    position: relative;
-    bottom: auto;
-    max-height: calc(var(--visual-height, var(--app-height, 100dvh)) - 26px);
-    transform: translateY(calc(-0.5 * var(--keyboard-inset, 0px)));
-  }
-  .dialog-floating .dialog-body {
-    max-height: calc(var(--visual-height, var(--app-height, 100dvh)) - 204px);
-  }
   .back-button,
   .mobile-back {
     border: 1px solid var(--control-line);

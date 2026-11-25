@@ -1,8 +1,8 @@
 import type { Crop } from './api'
 export const crops: { id: Crop; name: string; caption: string }[] = [
-  { id: 'wheat', name: '小麦', caption: '叶片 · 麦穗 · 田间咨询' },
-  { id: 'maize', name: '玉米', caption: '叶部病害 · 虫害咨询' },
-  { id: 'peanut', name: '花生', caption: '叶斑 · 根茎 · 田间咨询' },
+  { id: 'wheat', name: '小麦', caption: '叶片 · 麦穗' },
+  { id: 'maize', name: '玉米', caption: '叶部病害 · 虫害' },
+  { id: 'peanut', name: '花生', caption: '叶斑 · 根茎' },
 ]
 export const stages: Record<Crop, string[]> = {
   wheat: ['不清楚', '暂不确定', '苗期', '返青起身期', '拔节孕穗期', '抽穗扬花期', '灌浆成熟期'],
@@ -49,7 +49,7 @@ export function statusLabel(status: string) {
   return (
     (
       {
-        awaiting_image: '种植咨询',
+        awaiting_image: '种植对话',
         demo: '演示样例',
         identified: '初步结果',
         uncertain: '待补充信息',
@@ -57,6 +57,6 @@ export function statusLabel(status: string) {
         needs_model: '待模型识别',
         model_error: '识别待重试',
       } as Record<string, string>
-    )[status] || '问诊记录'
+    )[status] || '历史记录'
   )
 }

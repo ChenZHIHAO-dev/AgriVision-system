@@ -5,7 +5,7 @@ defineProps<{ active: MainPage; chat: boolean }>()
 const emit = defineEmits<{ navigate: [page: MainPage]; consult: [] }>()
 </script>
 <template>
-  <view class="global-rail" aria-label="主导航">
+  <view class="global-rail" role="navigation" aria-label="主导航">
     <button
       class="rail-brand"
       aria-label="AgriVision 首页"
@@ -19,6 +19,7 @@ const emit = defineEmits<{ navigate: [page: MainPage]; consult: [] }>()
         class="rail-item"
         :class="{ active: active === 'home' && !chat }"
         title="首页"
+        :aria-current="active === 'home' && !chat ? 'page' : undefined"
         @click="emit('navigate', 'home')"
       >
         <AppIcon name="home" :size="21" /><text>首页</text>
@@ -26,13 +27,14 @@ const emit = defineEmits<{ navigate: [page: MainPage]; consult: [] }>()
       <button
         class="rail-item"
         :class="{ active: active === 'identify' && !chat }"
-        title="拍照问诊"
+        title="拍照识别"
+        :aria-current="active === 'identify' && !chat ? 'page' : undefined"
         @click="emit('navigate', 'identify')"
       >
         <AppIcon name="camera" :size="22" /><text>拍照</text>
       </button>
-      <button class="rail-item" :class="{ active: chat }" title="继续咨询" @click="emit('consult')">
-        <AppIcon name="chat" :size="21" /><text>咨询</text>
+      <button class="rail-item" :class="{ active: chat }" title="询问 AI" @click="emit('consult')">
+        <AppIcon name="chat" :size="21" /><text>询问 AI</text>
       </button>
     </view>
     <view class="rail-bottom">
@@ -40,6 +42,7 @@ const emit = defineEmits<{ navigate: [page: MainPage]; consult: [] }>()
         class="rail-item"
         :class="{ active: active === 'settings' && !chat }"
         title="设置"
+        :aria-current="active === 'settings' && !chat ? 'page' : undefined"
         @click="emit('navigate', 'settings')"
       >
         <AppIcon name="settings" :size="21" /><text>设置</text>
@@ -48,6 +51,7 @@ const emit = defineEmits<{ navigate: [page: MainPage]; consult: [] }>()
         class="rail-item"
         :class="{ active: active === 'profile' && !chat }"
         title="我的"
+        :aria-current="active === 'profile' && !chat ? 'page' : undefined"
         @click="emit('navigate', 'profile')"
       >
         <AppIcon name="user" :size="22" /><text>我的</text>
@@ -98,6 +102,9 @@ const emit = defineEmits<{ navigate: [page: MainPage]; consult: [] }>()
   border-radius: 12px;
   color: var(--muted);
   font-size: 10px;
+}
+.rail-item:hover {
+  background: var(--hover);
 }
 .rail-item.active {
   background: var(--subtle);

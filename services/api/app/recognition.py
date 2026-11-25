@@ -14,7 +14,7 @@ def recognition_state(case):
         "image_count": len(images),
         "status": status,
         "outcome": "no_image",
-        "summary": "当前是文字咨询，还没有添加症状照片。",
+        "summary": "这条对话还没有添加症状照片。",
         "model_version": case.get("model_version"),
         "disease_id": case.get("disease_id"),
         "candidates": candidates,

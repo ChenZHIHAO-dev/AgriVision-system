@@ -82,9 +82,9 @@ def aggregate_images(case):
     disease_id = None
     if len({item["crop"] for item in results}) > 1:
         status, outcome = "uncertain", "mixed_crops"
-        title = "照片包含不同作物，请分开问诊"
+        title = "照片包含不同作物，请分别识别"
         summary = "照片已收到，但存在不同作物记录，不能把它们合并判断。"
-        steps = ["按作物分别新建问诊，保留各自的种植情况"]
+        steps = ["按作物分别建立识别记录，保留各自的种植情况"]
     elif len(model_versions) > 1:
         status, outcome = "uncertain", "mixed_model_versions"
         title = "照片使用了不同版本模型，需要统一核对"
@@ -104,7 +104,7 @@ def aggregate_images(case):
             )
             + "。这些是不同照片的初步线索，不自动选取一种病害。"
         )
-        steps = ["确认这些照片是否来自同一株或同一块田，混拍时请分开问诊", *steps]
+        steps = ["确认照片是否来自同一株或同一块田。不同地块的照片请分别识别", *steps]
     elif hypotheses:
         hypothesis = next(iter(hypotheses.values()))
         disease_id = hypothesis["disease_id"]

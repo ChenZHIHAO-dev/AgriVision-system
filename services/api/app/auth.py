@@ -1,4 +1,4 @@
-"""Development account provider; no account database is created."""
+"""Authenticate the single configured administrator without an account database."""
 
 import base64
 import hashlib
@@ -9,83 +9,74 @@ import secrets
 import time
 from threading import RLock
 
+ACCOUNT_PROVIDER = "configured-admin"
+ADMIN_USER = {"id": "dev-admin", "username": "admin", "name": "Admin", "role": "admin"}
+PBKDF2_ITERATIONS = 600_000
+HASH_PREFIX = f"pbkdf2_sha256:{PBKDF2_ITERATIONS}"
+ADMIN_HASH_FORMAT = re.compile(
+    rf"{re.escape(HASH_PREFIX)}:([0-9a-f]{{32}}):([0-9a-f]{{64}})"
+)
+
+
+def _password_digest(password: str, salt: bytes) -> bytes:
+    return hashlib.pbkdf2_hmac("sha256", password.encode(), salt, PBKDF2_ITERATIONS)
+
+
+def hash_admin_password(password: str) -> str:
+    if not 12 <= len(password) <= 64:
+        raise ValueError("管理员密码长度需为 12–64 个字符")
+    salt = secrets.token_bytes(16)
+    return f"{HASH_PREFIX}:{salt.hex()}:{_password_digest(password, salt).hex()}"
+
 
 class AuthManager:
-    def __init__(self):
+    def __init__(self, admin_password_hash: str = ""):
         self.lock = RLock()
-        self.users = {}
         self.sessions = {}
         self.signing_key = secrets.token_bytes(32)
-        self._add("dev-admin", "admin", "Admin", "admin", "admin123")
-
-    def _add(self, user_id, username, name, role, password):
-        salt = secrets.token_hex(16)
-        self.users[username] = {
-            "id": user_id,
-            "username": username,
-            "name": name,
-            "role": role,
-            "salt": salt,
-            "digest": self._digest(password, salt),
-        }
-
-    @staticmethod
-    def _digest(password, salt):
-        return hashlib.pbkdf2_hmac(
-            "sha256", password.encode(), salt.encode(), 180_000
-        ).hex()
-
-    @staticmethod
-    def public(user):
-        return {key: user[key] for key in ("id", "username", "name", "role")}
-
-    def register(self, name, username, password):
-        username = username.strip().lower()
-        if not re.fullmatch(r"[a-z][a-z0-9_]{2,23}", username):
-            raise ValueError("账号需为 3–24 位字母、数字或下划线，以字母开头")
-        if not 1 <= len(name.strip()) <= 20:
-            raise ValueError("请填写 1–20 字的称呼")
-        if not 6 <= len(password) <= 64:
-            raise ValueError("密码长度需为 6–64 位")
-        with self.lock:
-            if username in self.users:
-                raise ValueError("这个账号已被使用，换一个试试")
-            self._add(secrets.token_hex(16), username, name.strip(), "member", password)
-        return self.login(username, password, False)
+        match = ADMIN_HASH_FORMAT.fullmatch(admin_password_hash.strip())
+        self.password_hash = tuple(bytes.fromhex(part) for part in match.groups()) if match else None
 
     def login(self, username, password, remember=False):
-        username = username.strip().lower()
+        if self.password_hash is None:
+            raise RuntimeError("管理员登录尚未配置，请联系维护人员")
+        salt, digest = self.password_hash
+        if username.strip().lower() != ADMIN_USER["username"] or not hmac.compare_digest(
+            digest, _password_digest(password, salt)
+        ):
+            raise ValueError("账号或密码不正确，请重新输入")
+
+        token = secrets.token_urlsafe(40)
+        expires = time.time() + (7 * 86400 if remember else 8 * 3600)
         with self.lock:
-            user = self.users.get(username)
-            if not user or not hmac.compare_digest(
-                user["digest"], self._digest(password, user["salt"])
-            ):
-                raise ValueError("账号或密码不正确，请重新输入")
-            token = secrets.token_urlsafe(40)
-            expires = time.time() + (7 * 86400 if remember else 8 * 3600)
-            self.sessions[hashlib.sha256(token.encode()).hexdigest()] = {
-                "username": username,
-                "expires": expires,
-            }
-            return {
-                "user": self.public(user),
-                "access_token": token,
-                "expires_at": expires,
-                "account_provider": "development-memory",
-            }
+            self.sessions[hashlib.sha256(token.encode()).hexdigest()] = expires
+        return {
+            "user": dict(ADMIN_USER),
+            "access_token": token,
+            "expires_at": expires,
+            "account_provider": ACCOUNT_PROVIDER,
+        }
 
     def verify(self, token):
         with self.lock:
             key = hashlib.sha256(token.encode()).hexdigest()
-            session = self.sessions.get(key)
-            if not session or session["expires"] <= time.time():
+            expires = self.sessions.get(key)
+            if expires is None or expires <= time.time():
                 self.sessions.pop(key, None)
                 return None
-            return self.public(self.users[session["username"]])
+            return dict(ADMIN_USER)
 
     def logout(self, token):
         with self.lock:
             self.sessions.pop(hashlib.sha256(token.encode()).hexdigest(), None)
+
+    def guest_owner(self, client_id):
+        if not re.fullmatch(r"[A-Za-z0-9_-]{8,80}", client_id):
+            return ""
+        digest = hmac.new(
+            self.signing_key, b"guest-owner:" + client_id.encode(), hashlib.sha256
+        ).hexdigest()
+        return "g_" + digest
 
     def image_token(self, owner, case_id, image_id):
         content = json.dumps(

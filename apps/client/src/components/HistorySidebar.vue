@@ -18,8 +18,8 @@ const emit = defineEmits<{ open: [id: string]; new: []; login: []; toggle: [] }>
     >
       <view class="history-sidebar-body">
         <view class="sidebar-heading">
-          <text>宛农植保助手</text>
-          <text>照片和咨询，记录在一起</text>
+          <text>宛田观叶</text>
+          <text>拍照识别与 AI 问答记录</text>
         </view>
         <ConversationHistory
           :records="records"

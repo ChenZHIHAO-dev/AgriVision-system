@@ -1,4 +1,15 @@
 {
-  "pages": [{ "path": "pages/index/index", "style": { "navigationStyle": "custom", "navigationBarTitleText": "宛农植保助手" } }],
+  "pages": [
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "宛田观叶",
+        "navigationBarBackgroundColor": "#e9edeb",
+        "navigationBarTextStyle": "black",
+        "app-plus": { "softinputMode": "adjustPan", "softinputNavBar": "none" }
+      }
+    }
+  ],
   "globalStyle": { "backgroundColor": "#e9edeb", "navigationBarTextStyle": "black" }
 }

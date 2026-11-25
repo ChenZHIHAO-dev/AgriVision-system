@@ -1,6 +1,8 @@
 import { resolveConnection } from './bootstrap'
 export type DataMode = 'preview' | 'live'
-export const SESSION = 'agrivision.session.v2'
+const SESSION = 'agrivision.session.v2'
+type StoredSession = { user: unknown; expires: number; accessToken: string }
+let inMemorySession: StoredSession | null = null
 let href = ''
 // #ifdef H5
 href = typeof window !== 'undefined' ? window.location?.href || '' : ''
@@ -66,13 +68,35 @@ export function setApiBase(url: string) {
   uni.setStorageSync('agrivision.connection.api.v2', url.replace(/\/$/, ''))
   // #endif
 }
-export function storedSession(): { user: unknown; expires: number; accessToken?: string } | null {
+export function clearSession() {
+  inMemorySession = null
+  uni.removeStorageSync(SESSION)
+  // #ifdef H5
+  sessionStorage.removeItem(SESSION)
+  // #endif
+}
+export function saveSession(session: StoredSession, remember: boolean) {
+  clearSession()
+  if (remember) {
+    uni.setStorageSync(SESSION, session)
+    return
+  }
+  // #ifdef H5
+  sessionStorage.setItem(SESSION, JSON.stringify(session))
+  // #endif
+  // #ifndef H5
+  inMemorySession = session
+  // #endif
+}
+export function storedSession(): StoredSession | null {
   try {
-    let value = uni.getStorageSync(SESSION)
+    let value = inMemorySession || uni.getStorageSync(SESSION)
     // #ifdef H5
     value = value || JSON.parse(sessionStorage.getItem(SESSION) || 'null')
     // #endif
-    return value?.expires > Date.now() ? value : null
+    return value && value.expires > Date.now() && typeof value.accessToken === 'string'
+      ? value
+      : null
   } catch {
     return null
   }
@@ -83,11 +107,21 @@ export function accessToken() {
 export function sessionHeaders(token = accessToken()): Record<string, string> {
   return { 'X-Client-ID': clientId(), ...(token ? { Authorization: 'Bearer ' + token } : {}) }
 }
+export function errorText(data: unknown, fallback: string) {
+  return typeof data === 'object' && data && 'detail' in data && typeof data.detail === 'string'
+    ? data.detail
+    : fallback
+}
 export function serverRequest<T>(
   path: string,
-  method: 'GET' | 'POST',
+  method: 'GET' | 'POST' | 'DELETE',
   data?: unknown,
-  token = accessToken(),
+  {
+    token = accessToken(),
+    timeout = 20000,
+    fallback = '服务暂不可用，请稍后重试',
+    networkError = '暂时无法连接账户服务，请稍后重试',
+  }: { token?: string; timeout?: number; fallback?: string; networkError?: string } = {},
 ): Promise<T> {
   return new Promise((resolve, reject) =>
     uni.request({
@@ -95,20 +129,12 @@ export function serverRequest<T>(
       method,
       data: data as Record<string, unknown>,
       header: { ...sessionHeaders(token), 'Content-Type': 'application/json' },
-      timeout: 20000,
-      success: (response) => {
-        if (response.statusCode >= 200 && response.statusCode < 300) {
-          resolve(response.data as T)
-          return
-        }
-        const result = response.data as { detail?: unknown }
-        reject(
-          new Error(
-            typeof result?.detail === 'string' ? result.detail : '服务暂不可用，请稍后重试',
-          ),
-        )
-      },
-      fail: () => reject(new Error('暂时无法连接账户服务，请稍后重试')),
+      timeout,
+      success: ({ statusCode, data }) =>
+        statusCode >= 200 && statusCode < 300
+          ? resolve(data as T)
+          : reject(new Error(errorText(data, fallback))),
+      fail: () => reject(new Error(networkError)),
     }),
   )
 }

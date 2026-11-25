@@ -8,7 +8,7 @@ on:
       - 'package*.json'
       - 'scripts/build-pages.mjs'
       - 'scripts/build-wechat.mjs'
-      - 'tests/frontend-*.test.mjs'
+      - 'tests/frontend/**'
       - 'knowledge/**'
       - '.prettierrc.json'
       - '.github/workflows/pages.yml'

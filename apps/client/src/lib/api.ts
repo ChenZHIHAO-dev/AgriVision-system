@@ -1,6 +1,6 @@
 import { previewRequest, previewUpload, previewImage } from './preview'
 import { asset } from './assets'
-import { apiBase, dataMode, clientId, sessionHeaders } from './transport'
+import { apiBase, dataMode, errorText, serverRequest, sessionHeaders } from './transport'
 export { apiBase, setApiBase, dataMode, setDataMode, clientId } from './transport'
 export type { DataMode } from './transport'
 export type Crop = 'wheat' | 'maize' | 'peanut'
@@ -89,6 +89,7 @@ export interface PendingQuestion {
   web_search?: boolean
 }
 export interface CaseRecord {
+  persistence?: 'temporary' | 'account'
   conversation_title?: string
   pending_question?: PendingQuestion
   id: string
@@ -119,7 +120,15 @@ export interface CaseRecord {
   versions: { title: string; created_at: string }[]
   advice: { summary: string; actions: string[]; sources: Source[]; products: Product[] }
 }
+export interface CropIdentification {
+  status: 'recognized' | 'uncertain' | 'needs_retake' | 'model_unavailable' | 'service_error'
+  crop_id: string | null
+  candidates: { id: string; name: string; score: number }[]
+  model_version: string | null
+  quality_issues: string[]
+}
 export interface Meta {
+  crop_recognition?: { ready: boolean; version: string | null }
   version: string
   models: {
     crop: Crop
@@ -134,31 +143,18 @@ export interface Meta {
   product_count: number
 }
 
-function errorText(data: unknown): string {
-  if (typeof data === 'object' && data && 'detail' in data && typeof data.detail === 'string')
-    return data.detail
-  return '操作未完成，请检查信息后重试'
-}
+const operationError = '操作未完成，请检查信息后重试'
 export function request<T>(
   path: string,
   method: 'GET' | 'POST' | 'DELETE' = 'GET',
   data?: unknown,
 ): Promise<T> {
   if (dataMode() === 'preview') return previewRequest(path, method, data) as Promise<T>
-  return new Promise((resolve, reject) =>
-    uni.request({
-      url: apiBase() + path,
-      method,
-      data: data as Record<string, unknown>,
-      timeout: /\/(messages|resume)$/.test(path) ? 180000 : 35000,
-      header: { ...sessionHeaders(), 'Content-Type': 'application/json' },
-      success: (res) =>
-        res.statusCode >= 200 && res.statusCode < 300
-          ? resolve(res.data as T)
-          : reject(new Error(errorText(res.data))),
-      fail: () => reject(new Error('暂时连接不上本地服务，请确认后端已启动，或检查服务地址')),
-    }),
-  )
+  return serverRequest<T>(path, method, data, {
+    timeout: /\/(messages|resume)$/.test(path) ? 180000 : 35000,
+    fallback: operationError,
+    networkError: '暂时连接不上本地服务，请确认后端已启动，或检查服务地址',
+  })
 }
 export function upload(
   path: string,
@@ -166,6 +162,16 @@ export function upload(
   formData: Record<string, string>,
 ): Promise<CaseRecord> {
   if (dataMode() === 'preview') return previewUpload(path, filePath, formData)
+  return uploadLive<CaseRecord>(path, filePath, formData)
+}
+export function identifyCrop(filePath: string): Promise<CropIdentification> {
+  return uploadLive<CropIdentification>('/api/crop-recognition', filePath, {})
+}
+function uploadLive<T>(
+  path: string,
+  filePath: string,
+  formData: Record<string, string>,
+): Promise<T> {
   return new Promise((resolve, reject) =>
     uni.uploadFile({
       url: apiBase() + path,
@@ -178,8 +184,8 @@ export function upload(
         try {
           const result = JSON.parse(res.data)
           res.statusCode >= 200 && res.statusCode < 300
-            ? resolve(result)
-            : reject(new Error(errorText(result)))
+            ? resolve(result as T)
+            : reject(new Error(errorText(result, operationError)))
         } catch {
           reject(new Error('服务响应无法读取，请重试'))
         }

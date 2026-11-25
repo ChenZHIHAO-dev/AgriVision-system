@@ -1,6 +1,8 @@
 """Guest context lives in RAM; only authenticated account records reach SQLite."""
 
 from copy import deepcopy
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from threading import RLock
 import time
 
@@ -94,6 +96,60 @@ class CaseRepository:
                 key for key, value in self.temporary.items() if value["owner"] == owner
             ]:
                 self._drop(case_id)
+
+    def continue_case(self, guest_owner, account_owner, case_id):
+        if not self.temporary_owner(guest_owner):
+            return False
+        with self.lock:
+            self._prune()
+            record = self.temporary.get(case_id)
+            if not record:
+                return self.persistent.get(account_owner, case_id) is not None
+            if record["owner"] != guest_owner:
+                return False
+
+            case = deepcopy(record["case"])
+            case["documents"] = []
+            case.pop("pending_question", None)
+            messages = [
+                message
+                for message in record["messages"]
+                if message.get("provider") in {"photo", "recognition"}
+            ]
+            images = case["images"]
+            if not images:
+                return False
+            contents = {}
+            for image in images:
+                image_id = image["id"]
+                stored = self.image_bytes.get((case_id, image_id))
+                if not stored or stored["owner"] != guest_owner:
+                    return False
+                contents[image_id] = stored["content"]
+
+            folder = self.path.parent / "images" / case_id
+            folder.parent.mkdir(parents=True, exist_ok=True)
+            moved_images = False
+            try:
+                with TemporaryDirectory(dir=folder.parent, prefix=".continue-") as temporary:
+                    staged = Path(temporary) / "images"
+                    staged.mkdir()
+                    for image_id, content in contents.items():
+                        (staged / (image_id + ".jpg")).write_bytes(content)
+                    if folder.exists():
+                        raise FileExistsError(folder)
+                    staged.rename(folder)
+                    moved_images = True
+                self.persistent.insert_case_with_messages(account_owner, case, messages)
+            except Exception:
+                if moved_images:
+                    for image_id in contents:
+                        (folder / (image_id + ".jpg")).unlink()
+                    folder.rmdir()
+                raise
+
+            self._drop(case_id)
+            return True
 
     def messages(self, case_id):
         with self.lock:

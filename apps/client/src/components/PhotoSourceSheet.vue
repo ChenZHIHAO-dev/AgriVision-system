@@ -35,7 +35,7 @@ const emit = defineEmits<{ close: []; choose: [source: 'camera' | 'album']; crop
         ><text>›</text>
       </button></view
     ><text class="photo-source-tip"
-      >先拍一张清晰近照，再按需要补充叶背和整株照片。地区与生育期可在咨询时补充。</text
+      >先拍一张清晰近照，再按需要补充叶背和整株照片。地区与生育期可在对话时补充。</text
     ></UiDialog
   >
 </template>

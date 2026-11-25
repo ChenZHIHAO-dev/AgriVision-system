@@ -1,13 +1,29 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import {
+  computed,
+  defineAsyncComponent,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  ref,
+  watch,
+  type Component,
+} from 'vue'
 import AppIcon from '../../components/AppIcon.vue'
+// #ifndef MP-WEIXIN
 import MobileHeader from '../../components/MobileHeader.vue'
-import ChatTitle from '../../components/ChatTitle.vue'
+// #endif
+// #ifdef MP-WEIXIN
+import WeChatHeader from '../../components/WeChatHeader.vue'
+import { wechatHeaderFrame } from '../../lib/mobileChrome'
+// #endif
 import { conversationTitle } from '../../lib/conversationTitle'
-import { safeHeaderTop } from '../../lib/mobileChrome'
-import AppearanceSwitch from '../../components/AppearanceSwitch.vue'
+import { useWorkspaceViewport } from '../../lib/viewport'
+// #ifdef H5
 import GlobalNavigation from '../../components/GlobalNavigation.vue'
 import HistorySidebar from '../../components/HistorySidebar.vue'
+import WebWorkspaceHeader from '../../components/WebWorkspaceHeader.vue'
+// #endif
 import {
   initialPath,
   selectPage,
@@ -17,34 +33,45 @@ import {
   popView,
   openHistory,
   type MainPage,
+  type ViewPath,
 } from '../../lib/navigation'
 import UiDialog from '../../components/UiDialog.vue'
 import AuthDialog from '../../components/AuthDialog.vue'
 import SelectField from '../../components/SelectField.vue'
 import ChatComposer from '../../components/ChatComposer.vue'
+import {
+  answerCopyText,
+  answerShareText,
+  questionForAnswer,
+  suggestedQuestions,
+} from '../../lib/chatActions'
 import ScanProgress from '../../components/ScanProgress.vue'
 import PhotoCapture from '../../components/PhotoCapture.vue'
+import CropIdentificationDialog from '../../components/CropIdentificationDialog.vue'
 import DashboardHome from '../../components/DashboardHome.vue'
 import NavigationDock from '../../components/NavigationDock.vue'
 import KnowledgeLibrary from '../../components/KnowledgeLibrary.vue'
-import { createDraftStore } from '../../lib/drafts'
+import { createDraftStore, type Draft } from '../../lib/drafts'
 import ConversationDrawer from '../../components/ConversationDrawer.vue'
 import PhotoSourceSheet from '../../components/PhotoSourceSheet.vue'
 import UserCenter from '../../components/UserCenter.vue'
 import UserSettings from '../../components/UserSettings.vue'
 import AdminConsole from '../../components/AdminConsole.vue'
-import MarkdownMessage from '../../components/MarkdownMessage.vue'
+// #ifndef H5
+import NativeMarkdownMessage from '../../components/MarkdownMessage.vue'
+// #endif
 import RecognitionResult from '../../components/RecognitionResult.vue'
 import RecognitionSummary from '../../components/RecognitionSummary.vue'
 import { recognitionFor, imageQuestion } from '../../lib/recognition'
-import { appVersion } from '../../lib/appInfo'
 import {
   apiBase,
   dataMode,
   request,
   upload,
+  identifyCrop,
   imageUrl,
   type Crop,
+  type CropIdentification,
   type Meta,
   type CaseRecord,
   type KnowledgeCard,
@@ -52,13 +79,28 @@ import {
   type DataMode,
 } from '../../lib/api'
 import { crops, stages, regions, dateLabel, statusLabel } from '../../lib/options'
-import { auth, user } from '../../lib/auth'
+import { auth, user, type AuthSuccess } from '../../lib/auth'
 import { clearGuestRecords } from '../../lib/preview'
 import { resolvedTheme, observeSystemTheme } from '../../lib/theme'
 import type { ChatModel, DocumentAttachment, FollowUp } from '../../lib/api'
 
+let MarkdownMessage: Component
+// #ifdef H5
+MarkdownMessage = defineAsyncComponent(() => import('../../components/MarkdownMessage.vue'))
+// #endif
+// #ifndef H5
+MarkdownMessage = NativeMarkdownMessage
+// #endif
+
+const { isMobile, nativeWindow, keyboardHeight, keyboardDuration, receiveNativeKeyboard } =
+  useWorkspaceViewport()
+
 type Tab = MainPage
-const viewPath = ref(initialPath())
+let startPage: MainPage = 'home'
+// #ifdef MP-WEIXIN
+startPage = 'identify'
+// #endif
+const viewPath = ref(initialPath(startPage))
 const tab = computed({
   get: () => viewPath.value.page,
   set: (value: Tab) => {
@@ -67,8 +109,40 @@ const tab = computed({
 })
 const crop = ref<Crop>('wheat'),
   stage = ref('不清楚'),
-  note = ref(''),
-  photo = ref('')
+  note = ref('')
+const selectedPhoto = ref<{ path: string; crop: Crop } | null>(null)
+const cropLookup = ref<{
+  busy: boolean
+  photo: string
+  result: CropIdentification | null
+  error: string
+} | null>(null)
+function openCropLookup() {
+  cropLookup.value = { busy: false, photo: '', result: null, error: '' }
+}
+function useCropLookup(value: Crop) {
+  chooseCrop(value)
+  cropLookup.value = null
+}
+async function lookUpCrop(state: NonNullable<typeof cropLookup.value>, path: string) {
+  state.busy = true
+  state.photo = path
+  state.result = null
+  state.error = ''
+  try {
+    state.result = await identifyCrop(path)
+  } catch (error) {
+    state.error = error instanceof Error ? error.message : '作物识别暂时失败，请重试'
+  } finally {
+    state.busy = false
+  }
+}
+const waitingForNetwork = ref(false)
+const pausedUpload = computed(() =>
+  waitingForNetwork.value && selectedPhoto.value
+    ? crops.find((item) => item.id === selectedPhoto.value?.crop)?.name || ''
+    : '',
+)
 const meta = ref<Meta | null>(null),
   online = ref(false),
   refreshing = ref(false),
@@ -78,13 +152,14 @@ const meta = ref<Meta | null>(null),
 const records = ref<CaseRecord[]>([]),
   cards = ref<KnowledgeCard[]>([]),
   current = ref<CaseRecord | null>(null)
+const composer = ref<{ focus: () => void }>()
 const chatText = ref(''),
   sending = ref(false),
   pendingMessage = ref(''),
   scrollAnchor = ref('')
 const retainedCase = ref<CaseRecord | null>(null)
 const drafts = createDraftStore(),
-  sidebarExpanded = ref(true)
+  sidebarExpanded = ref(uni.getSystemInfoSync().windowWidth > 1050)
 const query = ref(''),
   filter = ref('all'),
   selectedCard = ref<KnowledgeCard | null>(null)
@@ -97,8 +172,18 @@ const adminOpen = ref(false),
   renaming = ref(false),
   renameError = ref(''),
   deleteTarget = ref<CaseRecord | null>(null)
+type ConsultationLoginIntent = {
+  action: 'new' | 'continue' | 'history'
+  crop?: Crop | null
+  record?: CaseRecord | null
+  targetId?: string
+  path: ViewPath
+  draft: Draft
+}
+type ContinuedCaseRecovery = { id: string; path: ViewPath; draft: Draft }
+const pendingCaseRecovery = ref<ContinuedCaseRecovery | null>(null)
+const authIntent = ref<ConsultationLoginIntent | null>(null)
 const authOpen = ref(false),
-  authMode = ref<'login' | 'register'>('login'),
   authReason = ref('')
 const mode = ref<DataMode>(dataMode())
 const location = ref(''),
@@ -109,24 +194,43 @@ const location = ref(''),
   useCustom = ref(false)
 const editStage = ref('不清楚'),
   editLocation = ref(''),
-  editNote = ref(''),
-  keyboardHeight = ref(0)
+  editNote = ref('')
 const homeSection = ref<'recent' | 'resources' | 'news'>('recent')
-const mobileSafeTop = ref(0)
+const mobileSafeTop = computed(() => {
+  // #ifdef APP-PLUS
+  return nativeWindow.value.statusBarHeight || 0
+  // #endif
+  return 0
+})
+const nativeBottomInset = computed(() => {
+  const system = nativeWindow.value
+  if (system.platform === 'windows') return 0
+  return Math.max(
+    0,
+    system.safeAreaInsets?.bottom ??
+      (system.safeArea ? system.screenHeight - system.safeArea.bottom : 0),
+  )
+})
+// #ifdef MP-WEIXIN
+// Windows WeChat supplies its own window title bar even in custom mode.
+const nativeWeChatTitle = computed(() => nativeWindow.value.platform === 'windows')
+const wechatFrame = computed(() => {
+  const { windowWidth, statusBarHeight } = nativeWindow.value
+  return nativeWeChatTitle.value
+    ? wechatHeaderFrame(windowWidth, 0)
+    : wechatHeaderFrame(windowWidth, statusBarHeight || 0, uni.getMenuButtonBoundingClientRect?.())
+})
+// #endif
 const leavingChat = ref(false)
 let backTimer: ReturnType<typeof setTimeout> | undefined
 function mobileBack() {
   if (chatMode.value) backView()
   else navigate(tab.value === 'history' ? 'home' : 'profile')
 }
-const isMobile = ref(uni.getSystemInfoSync().windowWidth <= 760)
 const historyDrawerOpen = ref(false),
   photoSourceOpen = ref(false),
   photoTarget = ref<'identify' | 'chat' | 'supplement'>('identify')
 const isAdmin = computed(() => user.value?.role === 'admin')
-let viewportBaseline = 0,
-  viewportWidth = 0,
-  nativeWindowHeight = 0
 const scanPhoto = ref('')
 const toast = ref('')
 let toastTimer: ReturnType<typeof setTimeout> | undefined
@@ -186,7 +290,7 @@ const contextNeeded = computed<FollowUp | null>(() => {
   if (!current.value?.crop)
     return {
       field: 'crop',
-      prompt: '这次咨询哪种作物？',
+      prompt: '这次询问哪种作物？',
       options: crops.map((item) => ({ value: item.id, label: item.name })),
     }
   if (!current.value.stage || current.value.stage === '不清楚')
@@ -204,14 +308,64 @@ const title = computed(() =>
   chatMode.value && current.value
     ? conversationTitle(current.value)
     : {
-        home: '首页',
-        identify: '拍照问诊',
-        history: '问诊记录',
+        home: '工作台',
+        identify: '拍照识别',
+        history: '历史记录',
         knowledge: '参考资料',
         profile: '我的',
         settings: '设置',
       }[tab.value],
 )
+// #ifdef MP-WEIXIN
+const wechatTitle = computed(() =>
+  !chatMode.value && tab.value === 'home' ? '宛田观叶' : title.value,
+)
+const wechatBack = computed(
+  () => chatMode.value || tab.value === 'history' || tab.value === 'settings',
+)
+const wechatProfile = computed(() => !chatMode.value && tab.value === 'profile')
+const wechatSearch = computed(() =>
+  !chatMode.value && tab.value === 'history' && user.value ? query.value : undefined,
+)
+const wechatBackLabel = computed(() =>
+  chatMode.value ? backLabel.value : tab.value === 'settings' ? '返回我的' : '返回首页',
+)
+// #endif
+const wechatCapsuleInset = computed(() => {
+  // #ifdef MP-WEIXIN
+  return nativeWeChatTitle.value ? 0 : Math.max(0, wechatFrame.value.side - 16)
+  // #endif
+  // #ifndef MP-WEIXIN
+  return 0
+  // #endif
+})
+const profilePageStyle = computed(() => {
+  // #ifdef MP-WEIXIN
+  if (wechatProfile.value) return { paddingTop: wechatFrame.value.top + 4 + 'px' }
+  // #endif
+  // #ifndef MP-WEIXIN
+  if (isMobile.value && tab.value === 'profile') {
+    return { paddingTop: 'calc(16px + var(--mobile-safe-top, 0px))' }
+  }
+  // #endif
+  return undefined
+})
+const drawerSafeTop = computed(() => {
+  // #ifdef MP-WEIXIN
+  return nativeWeChatTitle.value ? 0 : wechatFrame.value.top + wechatFrame.value.row
+  // #endif
+  // #ifndef MP-WEIXIN
+  return mobileSafeTop.value
+  // #endif
+})
+const desktopCapture = computed(() => {
+  // #ifdef H5
+  return !isMobile.value
+  // #endif
+  // #ifndef H5
+  return false
+  // #endif
+})
 const emptyChat = computed(
   () => !current.value?.messages.length && !currentReceipt.value?.image_received && !sending.value,
 )
@@ -220,9 +374,9 @@ const filteredRecords = computed(() =>
   records.value.filter(
     (record) =>
       (filter.value === 'all' || record.crop === filter.value) &&
-      (conversationTitle(record) + record.title + record.note + record.crop_name).includes(
-        query.value.trim(),
-      ),
+      (conversationTitle(record) + record.title + record.note + record.crop_name)
+        .toLowerCase()
+        .includes(query.value.trim().toLowerCase()),
   ),
 )
 const filteredCards = computed(() =>
@@ -234,13 +388,15 @@ const filteredCards = computed(() =>
 )
 const appStyle = computed(() => {
   // #ifndef H5
-  const height = nativeWindowHeight || uni.getSystemInfoSync().windowHeight
+  const height = nativeWindow.value.windowHeight
   return {
     height: height + 'px',
     '--app-height': height + 'px',
     '--visual-height': Math.max(160, height - keyboardHeight.value) + 'px',
-    '--keyboard-inset': keyboardHeight.value + 'px',
+    '--dialog-safe-top': drawerSafeTop.value + 'px',
+    '--dialog-safe-bottom': (keyboardHeight.value > 0 ? 0 : nativeBottomInset.value) + 'px',
     '--mobile-safe-top': mobileSafeTop.value + 'px',
+    '--mobile-safe-bottom': nativeBottomInset.value + 'px',
   }
   // #endif
   // #ifdef H5
@@ -255,67 +411,46 @@ watch(current, (value) => {
   if (value?.images.length && (!lastPhotoCase.value || lastPhotoCase.value.id === value.id))
     lastPhotoCase.value = value
 })
-let stopTheme: (() => void) | undefined
-function nativeKeyboard(event: { height: number }) {
-  keyboardHeight.value = event.height
-}
-function resizedChat() {
-  // #ifdef H5
-  isMobile.value = window.innerWidth <= 760
-  const visible = window.visualViewport?.height || window.innerHeight
-  if (viewportWidth !== window.innerWidth) {
-    viewportWidth = window.innerWidth
-    viewportBaseline = visible
+const chatWorkspaceStyle = computed(() => {
+  // #ifndef H5
+  return {
+    paddingBottom: keyboardHeight.value + 'px',
+    '--chat-keyboard-duration': keyboardDuration.value + 'ms',
+    '--chat-safe-bottom': (keyboardHeight.value ? 0 : nativeBottomInset.value) + 'px',
   }
-  const editing = document.activeElement?.matches('input,textarea')
-  if (!editing && !keyboardHeight.value) viewportBaseline = visible
-  viewportBaseline = Math.max(viewportBaseline, visible)
-  keyboardHeight.value =
-    window.innerWidth <= 760 &&
-    (editing || keyboardHeight.value > 0) &&
-    viewportBaseline - visible > 110
-      ? viewportBaseline - visible
-      : 0
-  document.documentElement.classList.toggle('keyboard-open', keyboardHeight.value > 0)
-
   // #endif
-}
+})
+let stopTheme: (() => void) | undefined
+let stopNativeNavigation: (() => void) | undefined
 onMounted(() => {
   stopTheme = observeSystemTheme()
   auth.restore().then(refresh)
-  const system = uni.getSystemInfoSync()
-  // #ifndef H5
-  mobileSafeTop.value = safeHeaderTop(system.statusBarHeight || 0)
-  // #endif
   // #ifdef MP-WEIXIN
-  const capsule = uni.getMenuButtonBoundingClientRect()
-  mobileSafeTop.value = safeHeaderTop(system.statusBarHeight || 0, capsule?.bottom || 0)
-  // #endif
-  // #ifndef H5
-  nativeWindowHeight = uni.getSystemInfoSync().windowHeight
-  uni.onKeyboardHeightChange(nativeKeyboard)
+  stopNativeNavigation = watch(
+    [wechatTitle, resolvedTheme, nativeWeChatTitle],
+    ([label, theme, nativeTitle]) => {
+      const backgroundColor = theme === 'dark' ? '#111111' : '#e9edeb'
+      if (nativeTitle) uni.setNavigationBarTitle({ title: label })
+      uni.setNavigationBarColor({
+        frontColor: theme === 'dark' ? '#ffffff' : '#000000',
+        backgroundColor,
+      })
+      uni.setBackgroundColor({ backgroundColor })
+    },
+    { immediate: true },
+  )
   // #endif
   // #ifdef H5
-  window.visualViewport?.addEventListener('resize', resizedChat)
-  window.addEventListener('focusin', resizedChat)
-  window.addEventListener('focusout', resizedChat)
   window.addEventListener('keydown', pageKeyboard)
-  resizedChat()
   // #endif
 })
 onUnmounted(() => {
   stopTheme?.()
+  stopNativeNavigation?.()
   clearTimeout(backTimer)
   clearTimeout(toastTimer)
   // #ifdef H5
-  window.visualViewport?.removeEventListener('resize', resizedChat)
-  window.removeEventListener('focusin', resizedChat)
-  window.removeEventListener('focusout', resizedChat)
   window.removeEventListener('keydown', pageKeyboard)
-  document.documentElement.classList.remove('keyboard-open')
-  // #endif
-  // #ifndef H5
-  uni.offKeyboardHeightChange(nativeKeyboard)
   // #endif
 })
 function showToast(text: string) {
@@ -348,6 +483,10 @@ async function refresh() {
   }
 }
 function navigate(value: Tab) {
+  if (value === 'history' && !user.value) {
+    requestConsultationLogin('history')
+    return
+  }
   const next =
     chatMode.value && tab.value === value
       ? { ...viewPath.value, layers: [] }
@@ -402,30 +541,126 @@ function chooseCrop(value: Crop) {
   crop.value = value
   stage.value = '不清楚'
 }
-function openAuth(reason = '', initial: 'login' | 'register' = 'login') {
+function openAuth(reason = '', intent: ConsultationLoginIntent | null = null) {
   authReason.value = reason
-  authMode.value = initial
+  authIntent.value = intent
   authOpen.value = true
 }
-async function signedIn() {
+function cancelAuth() {
   authOpen.value = false
+  authIntent.value = null
+}
+function requestConsultationLogin(
+  action: ConsultationLoginIntent['action'],
+  selectedCrop: Crop | null = null,
+  targetId?: string,
+  selectedRecord?: CaseRecord | null,
+) {
+  rememberDraft()
+  // Only an explicit continuation of the current guest photo grants permission
+  // to move that photo into the account. New consultations and history do not.
+  const record =
+    action === 'continue' &&
+    selectedRecord?.id === current.value?.id &&
+    selectedRecord?.persistence === 'temporary' &&
+    selectedRecord.images.length > 0
+      ? selectedRecord
+      : null
+  const intent: ConsultationLoginIntent = {
+    action,
+    crop: selectedCrop,
+    record,
+    targetId,
+    path: { ...viewPath.value, layers: [...viewPath.value.layers] },
+    draft: record
+      ? drafts.get(record.id)
+      : { text: action === 'continue' ? chatText.value : '', documents: [], images: [] },
+  }
+  const reason =
+    action === 'new'
+      ? '登录后可询问 AI，了解种植问题或药品作用。'
+      : action === 'history'
+        ? '登录后可打开历史记录并继续对话。'
+        : record
+          ? '登录后将这次照片与识别结果保存到账户，继续对话。'
+          : '登录后即可询问 AI。'
+  openAuth(reason, intent)
+}
+async function loadContinuedCase(recovery: ContinuedCaseRecovery) {
+  // Fetch fresh account-owned image links before rendering the transferred case.
+  const continued = await request<CaseRecord>('/api/cases/' + recovery.id)
+  current.value = continued
+  retainedCase.value = continued
+  lastPhotoCase.value = continued.images.length ? continued : null
+  drafts.save(continued.id, recovery.draft)
+  restoreComposer()
+  viewPath.value = { ...recovery.path, layers: [...recovery.path.layers] }
+  pendingCaseRecovery.value = null
+  openChat()
+}
+async function retryContinuedCase() {
+  const recovery = pendingCaseRecovery.value
+  if (!recovery || busy.value) return
+  busy.value = true
+  busyText.value = '正在重新载入本次识别…'
+  error.value = ''
+  try {
+    await loadContinuedCase(recovery)
+    await refresh()
+  } catch (value) {
+    showError(value)
+  } finally {
+    busy.value = false
+  }
+}
+async function signedIn(result: AuthSuccess) {
+  const intent = authIntent.value
+  authOpen.value = false
+  authIntent.value = null
   try {
     clearGuestRecords()
     drafts.clear()
     clearComposer()
+    records.value = []
     current.value = null
     retainedCase.value = null
     lastPhotoCase.value = null
-    viewPath.value = initialPath()
-    records.value = []
-    navigate('profile')
+    pendingCaseRecovery.value = null
+    if (!intent) {
+      viewPath.value = initialPath()
+      navigate('profile')
+      await refresh()
+      showToast(
+        result.preview
+          ? '已进入离线演示，记录仅在当前页面保留。'
+          : '已登录，后续记录将保存到你的账户。',
+      )
+      return
+    }
+    viewPath.value = { ...intent.path, caseId: null, layers: [] }
+    if (intent.record && result.continuedCaseId === intent.record.id) {
+      const recovery = { id: intent.record.id, path: intent.path, draft: intent.draft }
+      pendingCaseRecovery.value = recovery
+      await loadContinuedCase(recovery)
+    } else if (intent.action === 'history') {
+      if (intent.targetId) await openCase(intent.targetId, false)
+      else navigate('history')
+    } else {
+      await startConsultation(intent.crop || null)
+      const opened = current.value as CaseRecord | null
+      if (opened && intent.draft.text) {
+        drafts.save(opened.id, intent.draft)
+        restoreComposer()
+      }
+    }
     await refresh()
-    showToast('已登录，后续问诊将保存到你的账户。')
+    showToast(result.preview ? '已进入离线演示，可继续提问。' : '已登录，可继续对话。')
   } catch (value) {
     showError(value)
   }
 }
 async function signOut() {
+  pendingCaseRecovery.value = null
   await auth.logout()
   clearGuestRecords()
   drafts.clear()
@@ -436,10 +671,11 @@ async function signOut() {
   viewPath.value = initialPath()
   records.value = []
   navigate('profile')
-  photo.value = ''
+  selectedPhoto.value = null
+  waitingForNetwork.value = false
   note.value = ''
   await refresh()
-  showToast('已退出登录，仍可继续使用识别与咨询')
+  showToast('已退出登录，仍可拍照识别；询问 AI需登录。')
 }
 function changeProvince(value: string) {
   province.value = value
@@ -463,7 +699,17 @@ function confirmRegion() {
   if (editOpen.value) editLocation.value = location.value
   regionOpen.value = false
 }
-function choosePhoto(source: 'album' | 'camera' = 'album', supplement = false) {
+function choosePhoto(
+  source: 'album' | 'camera' = 'album',
+  target: 'identify' | 'supplement' | 'crop' = 'identify',
+) {
+  const lookup = target === 'crop' ? cropLookup.value : null
+  if (
+    busy.value ||
+    (target === 'crop' && (!lookup || lookup.busy || !meta.value?.crop_recognition?.ready))
+  )
+    return
+  const selectedCrop = crop.value
   uni.chooseImage({
     count: 1,
     sizeType: ['compressed'],
@@ -474,9 +720,12 @@ function choosePhoto(source: 'album' | 'camera' = 'album', supplement = false) {
         showToast('图片不能超过 8MB，请压缩后重试')
         return
       }
-      if (supplement) await addPhoto(result.tempFilePaths[0])
+      const path = result.tempFilePaths[0]
+      if (target === 'crop') {
+        if (lookup && lookup === cropLookup.value) await lookUpCrop(lookup, path)
+      } else if (target === 'supplement') await addPhoto(path)
       else {
-        photo.value = result.tempFilePaths[0]
+        selectedPhoto.value = { path, crop: selectedCrop }
         error.value = ''
         await startCase()
       }
@@ -487,18 +736,26 @@ function choosePhoto(source: 'album' | 'camera' = 'album', supplement = false) {
   })
 }
 async function startCase() {
-  if (!photo.value || busy.value) return
+  const selected = selectedPhoto.value
+  if (!selected?.path || busy.value) return
+  // #ifdef H5
+  if (mode.value === 'live' && navigator.onLine === false) {
+    waitingForNetwork.value = true
+    return
+  }
+  // #endif
+  waitingForNetwork.value = false
   rememberDraft()
-  scanPhoto.value = photo.value
+  scanPhoto.value = selected.path
   busy.value = true
-  busyText.value = mode.value === 'preview' ? '正在保存本次观察…' : '正在上传并处理问诊…'
+  busyText.value = mode.value === 'preview' ? '正在保存本次观察…' : '正在上传并识别照片…'
   error.value = ''
   try {
-    current.value = await upload('/api/cases', photo.value, { crop: crop.value })
+    current.value = await upload('/api/cases', selected.path, { crop: selected.crop })
     clearComposer()
     lastPhotoCase.value = current.value
     viewPath.value = showResult(viewPath.value, current.value.id)
-    photo.value = ''
+    selectedPhoto.value = null
     note.value = ''
     await refresh()
   } catch (value) {
@@ -524,7 +781,11 @@ async function demo() {
     busy.value = false
   }
 }
-async function openCase(id: string) {
+async function openCase(id: string, allowResume = true) {
+  if (!user.value) {
+    requestConsultationLogin('history', null, id)
+    return
+  }
   rememberDraft()
   busy.value = true
   busyText.value = '正在读取记录…'
@@ -538,7 +799,12 @@ async function openCase(id: string) {
   } finally {
     busy.value = false
   }
-  if (current.value?.id === id && current.value.pending_question && !contextNeeded.value)
+  if (
+    allowResume &&
+    current.value?.id === id &&
+    current.value.pending_question &&
+    !contextNeeded.value
+  )
     await resumeQuestion()
 }
 async function retryRecognition() {
@@ -584,14 +850,22 @@ async function scrollChat() {
 }
 function openChat() {
   if (!current.value) return
+  if (!user.value) {
+    requestConsultationLogin('continue', null, undefined, current.value)
+    return
+  }
   viewPath.value = showChat(viewPath.value, current.value.id)
   scrollChat()
 }
 async function startConsultation(selectedCrop: Crop | null = null) {
+  if (!user.value) {
+    requestConsultationLogin('new', selectedCrop)
+    return
+  }
   if (busy.value) return
   rememberDraft()
   busy.value = true
-  busyText.value = '正在建立咨询…'
+  busyText.value = '正在新建对话…'
   error.value = ''
   try {
     current.value = await request<CaseRecord>('/api/consultations', 'POST', {
@@ -616,6 +890,10 @@ async function startConsultation(selectedCrop: Crop | null = null) {
 async function resumeQuestion() {
   const record = current.value
   if (!record?.pending_question || contextNeeded.value || sending.value) return
+  if (!user.value) {
+    requestConsultationLogin('continue', null, undefined, current.value)
+    return
+  }
   const id = record.id,
     question = record.pending_question.id
   sending.value = true
@@ -657,6 +935,10 @@ async function chooseContext(value: FollowUp, choice: { value: string; label: st
   else if (!current.value?.pending_question) showToast('种植信息已更新')
 }
 function chooseChatPhoto(source: 'album' | 'camera' = 'album') {
+  if (!user.value) {
+    requestConsultationLogin('continue', null, undefined, current.value)
+    return
+  }
   uni.chooseImage({
     count: 1,
     sizeType: ['compressed'],
@@ -682,6 +964,10 @@ function chooseChatPhoto(source: 'album' | 'camera' = 'album') {
   })
 }
 async function confirmChatPhoto() {
+  if (!user.value) {
+    requestConsultationLogin('continue', null, undefined, current.value)
+    return
+  }
   if (!chatPhoto.value || busy.value) return
   if (!current.value || current.value.is_demo) await startConsultation(photoCrop.value)
   if (!current.value) return
@@ -712,9 +998,13 @@ async function confirmChatPhoto() {
     busy.value = false
     scanPhoto.value = ''
   }
-  showToast('照片已处理，可继续添加或发送咨询。')
+  showToast('照片已处理，可继续添加或发送问题。')
 }
 async function acceptDocument(path: string, name: string, size: number) {
+  if (!user.value) {
+    requestConsultationLogin('continue', null, undefined, current.value)
+    return
+  }
   if (size > 8 * 1024 * 1024) {
     showToast('文件不能超过 8MB')
     return
@@ -742,6 +1032,10 @@ async function acceptDocument(path: string, name: string, size: number) {
   }
 }
 function chooseDocument() {
+  if (!user.value) {
+    requestConsultationLogin('continue', null, undefined, current.value)
+    return
+  }
   // #ifdef H5
   uni.chooseFile({
     count: 1,
@@ -757,7 +1051,7 @@ function chooseDocument() {
     },
   })
   // #endif
-  // #ifndef H5
+  // #ifdef MP-WEIXIN
   uni.chooseMessageFile({
     count: 1,
     type: 'file',
@@ -831,6 +1125,10 @@ function clearComposer() {
   pendingImages.value = []
 }
 function attach(kind: 'image' | 'document') {
+  if (!user.value) {
+    requestConsultationLogin('continue', null, undefined, current.value)
+    return
+  }
   if (kind === 'image') openPhotoSources('chat')
   else chooseDocument()
 }
@@ -841,12 +1139,16 @@ async function sendMessage(raw = chatText.value) {
     (!raw.trim() && !pendingDocuments.value.length && !pendingImages.value.length)
   )
     return
+  if (!user.value) {
+    requestConsultationLogin('continue', null, undefined, current.value)
+    return
+  }
   const text =
       raw.trim() ||
       (pendingImages.value.length
         ? imageQuestion(current.value) +
           (pendingDocuments.value.length ? '请同时结合刚添加的资料回答。' : '')
-        : '请阅读刚添加的资料，提取与本次作物咨询相关的信息。'),
+        : '请阅读刚添加的资料，提取与本次作物问题相关的信息。'),
     id = current.value.id
   const sentDraft = raw === chatText.value
   if (!messageAttempt || messageAttempt.text !== text || messageAttempt.caseId !== id)
@@ -893,6 +1195,30 @@ async function sendMessage(raw = chatText.value) {
     scrollChat()
   }
 }
+function prepareQuestion(text: string) {
+  if (!text || sending.value || busy.value) return
+  if (chatText.value.trim()) {
+    showToast('输入框已有草稿，请先发送或清空后再选择。')
+    return
+  }
+  chatText.value = text
+  rememberDraft()
+  nextTick(() => composer.value?.focus())
+  showToast('问题已放入输入框，可修改后发送。')
+}
+function askAgain(index: number) {
+  if (current.value) prepareQuestion(questionForAnswer(current.value, index))
+}
+function shareAnswer(index: number) {
+  const message = current.value?.messages[index]
+  if (!message || message.role !== 'assistant') return
+  uni.setClipboardData({
+    data: answerShareText(message),
+    showToast: false,
+    success: () => showToast('回答和来源已复制，可粘贴到微信或其他应用分享。'),
+    fail: () => showToast('暂时无法复制分享，请重试。'),
+  })
+}
 function beginRename() {
   if (!current.value) return
   renameValue.value = conversationTitle(current.value)
@@ -930,7 +1256,7 @@ function copyConversation() {
   const record = current.value
   if (!record?.messages.length) return
   const transcript = record.messages.map(
-    (message) => (message.role === 'user' ? '我' : '宛农助手') + '：' + message.text,
+    (message) => (message.role === 'user' ? '我' : '观叶助手') + '：' + answerCopyText(message),
   )
   chatOptions.value = null
   uni.setClipboardData({
@@ -983,7 +1309,7 @@ async function confirmDelete() {
     if (lastPhotoCase.value?.id === id) lastPhotoCase.value = null
     deleteTarget.value = null
     await refresh()
-    showToast('问诊记录已删除')
+    showToast('记录已删除')
   } catch (value) {
     showError(value)
   } finally {
@@ -1046,13 +1372,13 @@ async function openConversation(id: string) {
   if (chatMode.value) scrollChat()
 }
 function openPhotoConsultation() {
-  if (!user.value && (lastPhotoCase.value || current.value)) {
-    openConsultation()
-    return
-  }
   startConsultation()
 }
 async function openConsultation() {
+  if (!user.value) {
+    requestConsultationLogin('new')
+    return
+  }
   if (current.value) {
     if (!viewPath.value.layers.length)
       viewPath.value = openHistory(viewPath.value, current.value.id)
@@ -1081,11 +1407,11 @@ function openPhotoSources(target: 'identify' | 'chat' | 'supplement' = 'identify
 function pickPhoto(source: 'album' | 'camera') {
   photoSourceOpen.value = false
   if (photoTarget.value === 'chat') chooseChatPhoto(source)
-  else choosePhoto(source, photoTarget.value === 'supplement')
+  else choosePhoto(source, photoTarget.value)
 }
 function loginFromDrawer() {
   historyDrawerOpen.value = false
-  openAuth('登录后，后续咨询会保存到你的账户。')
+  requestConsultationLogin('history')
 }
 function newFromDrawer() {
   historyDrawerOpen.value = false
@@ -1106,77 +1432,83 @@ function newFromDrawer() {
     ]"
     :style="appStyle"
   >
+    <!-- #ifdef H5 -->
     <GlobalNavigation
+      v-if="!isMobile"
       :active="tab"
       :chat="chatMode"
       @navigate="navigate"
       @consult="openConsultation"
     />
     <HistorySidebar
+      v-if="!isMobile"
       :expanded="sidebarExpanded"
       :records="records"
       :user="user"
       :selected="current?.id"
       @open="openConversation"
       @new="startConsultation()"
-      @login="openAuth('登录后，后续咨询会保存到你的账户。')"
+      @login="requestConsultationLogin('history')"
       @toggle="sidebarExpanded = !sidebarExpanded"
     />
 
+    <!-- #endif -->
     <view class="main-shell">
+      <!-- #ifndef MP-WEIXIN -->
       <MobileHeader
-        :title="!chatMode && tab === 'home' ? '工作台' : title"
+        v-if="isMobile && (chatMode || tab !== 'profile')"
+        :title="!chatMode && tab === 'home' ? '宛田观叶' : title"
         :page="tab"
         :chat="chatMode"
         :back-label="backLabel"
-        :user-name="user?.name"
         :history-open="historyDrawerOpen"
         :safe-top="mobileSafeTop"
+        :search="!chatMode && tab === 'history' && user ? query : undefined"
         :chat-options-open="!!chatOptions"
+        @search="query = $event"
         @options="chatOptions = 'actions'"
         @back="mobileBack"
         @history="openHistoryDrawer"
+      />
+      <!-- #endif -->
+      <!-- #ifdef H5 -->
+      <WebWorkspaceHeader
+        v-if="!isMobile"
+        :title="title"
+        :chat="chatMode"
+        :back-label="backLabel"
+        :options-open="!!chatOptions"
+        :account-name="user?.name"
+        @back="backView"
+        @options="chatOptions = 'actions'"
         @login="openAuth()"
         @profile="navigate('profile')"
       />
-      <view class="topbar desktop-topbar">
-        <view class="header-leading">
-          <button
-            v-if="chatMode"
-            class="back-button"
-            :aria-label="'退出咨询，' + backLabel"
-            @click="backView"
-          >
-            <AppIcon name="back" :size="18" /><text>退出咨询</text>
-          </button>
-          <view class="breadcrumb">
-            <button v-if="!chatMode" class="desktop-only breadcrumb-home" @click="navigate('home')">
-              工作台
-            </button>
-            <text v-if="!chatMode" class="desktop-only crumb-divider">/</text>
-            <ChatTitle
-              v-if="chatMode"
-              :title="title"
-              :expanded="!!chatOptions"
-              @open="chatOptions = 'actions'"
-            />
-            <text v-else class="topbar-title">{{ title }}</text>
-          </view>
-        </view>
-        <view class="topbar-actions">
-          <AppearanceSwitch />
-          <button v-if="!user" class="login-button" @click="openAuth()">
-            登录<text class="desktop-only"> / 注册</text>
-          </button>
-          <button v-else class="account-button" aria-label="用户中心" @click="navigate('profile')">
-            <text class="avatar">{{ user.name.slice(0, 1).toUpperCase() }}</text
-            ><text class="account-name">{{ user.name }}</text>
-          </button>
-        </view>
-      </view>
+      <!-- #endif -->
+      <!-- #ifdef MP-WEIXIN -->
+      <WeChatHeader
+        v-if="!wechatProfile"
+        :frame="wechatFrame"
+        :title="wechatTitle"
+        :native-title="nativeWeChatTitle"
+        :chat="chatMode"
+        :show-back="wechatBack"
+        :back-label="wechatBackLabel"
+        :show-history="chatMode || tab === 'identify'"
+        :search="wechatSearch"
+        @search="query = $event"
+        :history-open="historyDrawerOpen"
+        :options-open="!!chatOptions"
+        @back="mobileBack"
+        @history="openHistoryDrawer"
+        @options="chatOptions = 'actions'"
+      />
+      <!-- #endif -->
       <view v-if="error" class="error-strip" role="alert"
         ><text class="flex-one">{{ error }}</text
-        ><button v-if="!online" class="text-button" @click="refresh">重试</button
+        ><button v-if="pendingCaseRecovery" class="text-button" @click="retryContinuedCase">
+          重新载入本次识别</button
+        ><button v-else-if="!online" class="text-button" @click="refresh">重试</button
         ><button class="icon-button" aria-label="关闭提示" @click="error = ''">×</button></view
       >
       <view v-if="busy" class="loading-strip" role="status"
@@ -1185,7 +1517,7 @@ function newFromDrawer() {
 
       <view class="workspace">
         <view v-if="chatMode && current" class="case-area" :class="{ 'is-leaving': leavingChat }">
-          <view class="chat-workspace">
+          <view class="chat-workspace" :style="chatWorkspaceStyle">
             <scroll-view
               scroll-y
               class="message-scroll"
@@ -1202,8 +1534,7 @@ function newFromDrawer() {
                   compact
                 />
                 <view v-if="emptyChat" class="chat-welcome"
-                  ><view class="welcome-mark">🌱</view
-                  ><text class="welcome-title">咨询作物问题</text
+                  ><view class="welcome-mark">🌱</view><text class="welcome-title">询问 AI</text
                   ><text class="muted">描述症状、询问种植管理，或添加照片进行识别。</text
                   ><view class="welcome-topics"
                     ><button
@@ -1214,7 +1545,7 @@ function newFromDrawer() {
                       {{ text }} <text>↗</text>
                     </button></view
                   ><text v-if="mode === 'preview'" class="welcome-preview"
-                    >预览使用本地植保资料</text
+                    >离线演示使用本地资料，不连接 DeepSeek 或云端账户</text
                   ></view
                 >
                 <view
@@ -1226,12 +1557,14 @@ function newFromDrawer() {
                   <view v-if="message.role === 'assistant'" class="assistant-avatar">🌱</view>
                   <view class="message-content"
                     ><text v-if="message.role === 'assistant'" class="message-author"
-                      >宛农助手
+                      >观叶助手
                       <text>{{
                         message.provider === 'deepseek'
-                          ? (message.model === 'deepseek-v4-pro'
+                          ? 'AI 生成 · ' +
+                            (message.model === 'deepseek-v4-pro'
                               ? 'DeepSeek V4 Pro'
-                              : 'DeepSeek Flash') + (message.thinking ? ' · 深度思考' : '')
+                              : 'DeepSeek Flash') +
+                            (message.thinking ? ' · 深度思考' : '')
                           : message.provider === 'recognition'
                             ? '识别摘要'
                             : message.provider === 'clarification'
@@ -1254,6 +1587,17 @@ function newFromDrawer() {
                     /><text v-else class="message-bubble" :selectable="true">{{
                       message.text
                     }}</text
+                    ><text
+                      v-if="
+                        message.role === 'assistant' &&
+                        ['deepseek', 'knowledge', 'preview'].includes(message.provider)
+                      "
+                      class="answer-reference-note"
+                      >{{
+                        message.provider === 'deepseek'
+                          ? 'AI 生成内容仅供参考。'
+                          : '资料回答仅供参考。'
+                      }}</text
                     ><view v-if="message.attachments?.length" class="message-attachments"
                       ><template v-for="file in message.attachments" :key="file.id"
                         ><button
@@ -1297,26 +1641,63 @@ function newFromDrawer() {
                     >
                       重试回答
                     </button>
-                    <view
-                      v-if="message.role === 'assistant' && message.provider !== 'clarification'"
-                      class="message-tools"
-                      ><button
+                    <view v-if="message.role === 'assistant'" class="message-tools">
+                      <button
                         v-for="source in message.sources"
                         :key="source.url"
                         class="source-chip"
                         @click="openSource(source)"
                       >
-                        ↗ {{ source.title }}</button
-                      ><button
-                        class="copy-button"
-                        aria-label="复制回答"
-                        @click="copyText(message.text)"
+                        ↗ {{ source.title }}
+                      </button>
+                      <view class="answer-actions">
+                        <button
+                          class="message-action"
+                          aria-label="复制回答"
+                          @click="copyText(answerCopyText(message))"
+                        >
+                          <AppIcon name="copy" :size="15" /><text>复制</text>
+                        </button>
+                        <button
+                          class="message-action"
+                          aria-label="复制回答与来源以分享"
+                          @click="shareAnswer(index)"
+                        >
+                          <AppIcon name="external" :size="15" /><text>复制分享</text>
+                        </button>
+                        <button
+                          v-if="
+                            message.provider !== 'clarification' &&
+                            questionForAnswer(current, index)
+                          "
+                          class="message-action"
+                          :disabled="sending || busy"
+                          @click="askAgain(index)"
+                        >
+                          <text>再问一次</text>
+                        </button>
+                      </view>
+                    </view>
+                    <view
+                      v-if="
+                        index === current.messages.length - 1 &&
+                        message.role === 'assistant' &&
+                        !sending &&
+                        suggestedQuestions(current, message).length
+                      "
+                      class="suggested-questions"
+                    >
+                      <text>继续了解</text>
+                      <button
+                        v-for="question in suggestedQuestions(current, message)"
+                        :key="question"
+                        :disabled="busy"
+                        @click="prepareQuestion(question)"
                       >
-                        复制
-                      </button></view
-                    ><text v-if="message.notice" class="fine-print">{{
-                      message.notice
-                    }}</text></view
+                        {{ question }}<AppIcon name="plus" :size="13" />
+                      </button>
+                    </view>
+                    <text v-if="message.notice" class="fine-print">{{ message.notice }}</text></view
                   >
                 </view>
                 <view v-if="sending && pendingMessage" class="message-row user"
@@ -1331,30 +1712,30 @@ function newFromDrawer() {
             <view class="composer-dock"
               ><view class="composer-wrap"
                 ><ChatComposer
+                  ref="composer"
                   v-model="chatText"
+                  :dark="resolvedTheme === 'dark'"
                   v-model:model="chatModel"
                   v-model:thinking="chatThinking"
                   v-model:web-search="chatWebSearch"
                   :attachments="pendingDocuments"
                   :images="pendingImagePreviews"
                   :disabled="sending || busy"
-                  :preview="mode === 'preview'"
                   @send="sendMessage()"
                   @attach="attach"
                   @remove="removeAttachment"
                   @remove-image="removePendingImage"
-                  @resize="resizedChat"
-                  @limit="showToast('单条消息最多 12000 字，较长资料可作为文件上传')"
-                  @keyboard="nativeKeyboard({ height: $event })" /></view
+                  @keyboard-height="receiveNativeKeyboard"
+                  @limit="showToast('单条消息最多 12000 字，较长资料可作为文件上传')" /></view
             ></view>
           </view>
         </view>
 
         <DashboardHome
-          v-if="isMobile && tab === 'home'"
+          v-if="tab === 'home'"
           v-show="!chatMode"
           v-model:section="homeSection"
-          mobile
+          :mobile="isMobile"
           @consult="startConsultation()"
           :records="records"
           :cards="cards"
@@ -1364,68 +1745,37 @@ function newFromDrawer() {
           @capture="navigate('identify')"
           @open="openConversation"
           @history="navigate('history')"
-          @login="openAuth('登录后，后续问诊会保存到你的账户。')"
+          @login="openAuth('登录后，后续记录会保存到你的账户。')"
         />
-        <scroll-view
-          v-show="!chatMode && !(isMobile && tab === 'home')"
-          scroll-y
-          class="page-scroll"
-        >
-          <view :key="tab" class="page-content">
-            <template v-if="tab === 'home' && !isMobile"
-              ><DashboardHome
-                v-model:section="homeSection"
-                @consult="startConsultation()"
-                :records="records"
-                :cards="cards"
-                :logged-in="!!user"
-                @card="selectedCard = $event"
-                @source="openSource"
-                @capture="navigate('identify')"
-                @open="openConversation"
-                @history="navigate('history')"
-                @login="openAuth('登录后，后续问诊会保存到你的账户。')"
-            /></template>
-            <template v-else-if="tab === 'identify'"
+        <scroll-view v-if="tab !== 'home'" v-show="!chatMode" scroll-y class="page-scroll">
+          <view :key="tab" class="page-content" :style="profilePageStyle">
+            <template v-if="tab === 'identify'"
               ><PhotoCapture
                 :crop="crop"
                 :models="meta?.models || []"
                 :busy="busy"
                 :loading="refreshing || !meta"
                 :last-result="lastPhotoCase"
+                :desktop-web="desktopCapture"
+                :paused-upload="pausedUpload"
+                @retry-upload="startCase"
                 @result="restoreResult"
                 @crop="chooseCrop"
                 @capture="choosePhoto"
+                @identify-crop="openCropLookup"
                 @resume="openPhotoConsultation"
             /></template>
 
             <template v-else-if="tab === 'history'">
-              <view class="page-heading"
-                ><view
-                  ><text class="eyebrow">FIELD NOTES</text
-                  ><text class="page-title">把田间变化，记录下来</text
-                  ><text class="muted">{{
-                    user
-                      ? '照片、建议和对话，都在同一条记录里。'
-                      : '登录后，随时回看上次的问诊与咨询。'
-                  }}</text></view
-                ><button v-if="user" class="button primary" @click="navigate('identify')">
-                  ＋ 新建问诊
-                </button></view
-              >
               <view v-if="!user" class="panel empty-state login-empty"
-                ><view class="empty-icon">🌾</view
-                ><text class="section-title">登录，让观察有迹可循</text
-                ><text class="muted"
-                  >保存症状照片和咨询记录，下次不用重新说起。未登录也可以继续识别问诊、咨询和浏览知识。</text
+                ><view class="empty-icon">🌾</view><text class="section-title">登录后查看记录</text
+                ><text class="muted">访客可拍照查看识别结果。登录后可询问 AI 并保存记录。</text
                 ><button
                   class="button primary"
-                  @click="openAuth('登录后，即可保存并查看你的问诊记录。')"
+                  @click="openAuth('登录后可保存并查看你的历史记录。')"
                 >
-                  登录 / 注册</button
-                ><button class="text-button" @click="navigate('identify')">
-                  先去问一问 →
-                </button></view
+                  登录</button
+                ><button class="text-button" @click="navigate('identify')">去拍照 →</button></view
               >
               <view v-else class="panel history-panel"
                 ><view class="list-toolbar"
@@ -1440,12 +1790,24 @@ function newFromDrawer() {
                     >
                       {{ option.name }}
                     </button></view
-                  ><view class="search-field"
-                    ><AppIcon name="search" :size="18" /><input
-                      v-model="query"
-                      aria-label="搜索问诊记录"
-                      placeholder="搜索作物、症状或备注" /></view></view
-                ><view v-if="!filteredRecords.length" class="empty-state"
+                  >
+                  <!-- #ifdef H5 -->
+                  <view v-if="!isMobile" class="history-tools">
+                    <view class="search-field">
+                      <AppIcon name="search" :size="18" />
+                      <input
+                        v-model="query"
+                        aria-label="搜索历史记录"
+                        placeholder="搜索作物、问题或备注"
+                      />
+                    </view>
+                    <button class="button quiet" @click="startConsultation()">
+                      <AppIcon name="new" :size="17" />新建对话
+                    </button>
+                  </view>
+                  <!-- #endif -->
+                </view>
+                <view v-if="!filteredRecords.length" class="empty-state"
                   ><view class="empty-icon">🌱</view
                   ><text class="section-title">{{
                     records.length ? '没有匹配的记录' : '从第一次田间观察开始'
@@ -1453,10 +1815,10 @@ function newFromDrawer() {
                   ><text class="muted">{{
                     records.length
                       ? '试试其他关键词，或切换作物筛选。'
-                      : '上传一张照片，或先体验一条演示问诊。'
+                      : '上传一张照片，或先体验一条演示记录。'
                   }}</text
                   ><button v-if="!records.length" class="button soft" @click="demo">
-                    体验演示问诊 ↗
+                    查看演示结果 ↗
                   </button></view
                 ><view v-for="record in filteredRecords" :key="record.id" class="history-row"
                   ><button class="history-main" @click="openCase(record.id)">
@@ -1466,11 +1828,7 @@ function newFromDrawer() {
                         >{{ record.crop_name }} · {{ dateLabel(record.updated_at) }}</text
                       ></view
                     ><text class="badge">{{ statusLabel(record.status) }}</text></button
-                  ><button
-                    class="icon-button"
-                    aria-label="删除问诊记录"
-                    @click="deleteTarget = record"
-                  >
+                  ><button class="icon-button" aria-label="删除记录" @click="deleteTarget = record">
                     <AppIcon name="trash" :size="18" /></button></view
               ></view>
             </template>
@@ -1479,8 +1837,8 @@ function newFromDrawer() {
               ><UserCenter
                 :user="user"
                 :admin="isAdmin"
+                :capsule-inset="wechatCapsuleInset"
                 @login="openAuth()"
-                @register="openAuth('', 'register')"
                 @settings="openSettings"
                 @admin="openAdmin"
                 @logout="signOut"
@@ -1495,7 +1853,7 @@ function newFromDrawer() {
         </scroll-view>
       </view>
       <NavigationDock
-        v-if="!chatMode"
+        v-if="isMobile && !chatMode"
         :active="tab"
         :keyboard-open="keyboardHeight > 0"
         @navigate="navigate"
@@ -1503,7 +1861,7 @@ function newFromDrawer() {
     </view>
 
     <UiDialog
-      v-if="resultOpen && current"
+      v-if="resultOpen && current && !authOpen"
       :title="inspecting ? '图片识别结果' : '本次识别'"
       :subtitle="current.crop_name"
       wide
@@ -1522,7 +1880,7 @@ function newFromDrawer() {
       <template #footer>
         <view v-if="!inspecting" class="result-footer">
           <button
-            class="button secondary"
+            class="button quiet"
             :disabled="busy || current.images.length >= 6"
             @click="openPhotoSources('supplement')"
           >
@@ -1532,16 +1890,29 @@ function newFromDrawer() {
             <AppIcon name="chat" white :size="18" /><text>继续对话</text>
           </button>
         </view>
-        <button v-else class="button secondary full-width" @click="backView">
-          <AppIcon name="back" :size="17" /><text>返回聊天</text>
+        <button v-else class="button quiet full-width" @click="backView">
+          <AppIcon name="back" :size="17" /><text>返回对话</text>
         </button>
       </template>
     </UiDialog>
+    <CropIdentificationDialog
+      v-if="cropLookup"
+      :ready="!!meta?.crop_recognition?.ready"
+      :diagnosis-models="meta?.models || []"
+      :desktop-web="desktopCapture"
+      :busy="cropLookup.busy"
+      :photo="cropLookup.photo"
+      :result="cropLookup.result"
+      :error="cropLookup.error"
+      @close="cropLookup = null"
+      @photo="choosePhoto($event, 'crop')"
+      @select="useCropLookup"
+    />
     <ScanProgress v-if="busy && scanPhoto" :src="scanPhoto" />
     <ConversationDrawer
       v-if="historyDrawerOpen"
       :records="records"
-      :safe-top="mobileSafeTop"
+      :safe-top="drawerSafeTop"
       :user="user"
       :selected="current?.id"
       @close="historyDrawerOpen = false"
@@ -1549,7 +1920,6 @@ function newFromDrawer() {
       @open="openConversation"
       @new="newFromDrawer"
       @login="loginFromDrawer"
-      @keyboard="nativeKeyboard({ height: $event })"
     />
     <PhotoSourceSheet
       :crop="crop"
@@ -1562,16 +1932,16 @@ function newFromDrawer() {
     <view v-if="toast" class="toast" role="status">{{ toast }}</view>
     <AuthDialog
       v-if="authOpen"
-      :initial-mode="authMode"
       :reason="authReason"
-      @close="authOpen = false"
+      :continue-case-id="authIntent?.record?.id"
+      @close="cancelAuth"
       @success="signedIn"
     />
 
     <UiDialog
       v-if="photoDialogOpen"
       title="照片中的作物是什么？"
-      subtitle="选择作物后立即识别，生育期和地区可在咨询时补充。"
+      subtitle="选择作物后立即识别，生育期和地区可在对话中补充。"
       @close="photoDialogOpen = false"
       ><image :src="chatPhoto" mode="aspectFit" class="chat-photo-preview" /><view
         class="photo-crop-choices"
@@ -1586,7 +1956,7 @@ function newFromDrawer() {
       ><text class="fine-print">请添加同种作物、同次田间观察的照片。原图不发送给对话模型。</text
       ><template #footer
         ><button class="button primary full-width" :disabled="busy" @click="confirmChatPhoto">
-          识别并继续咨询
+          识别并继续对话
         </button></template
       ></UiDialog
     >
@@ -1616,7 +1986,7 @@ function newFromDrawer() {
         </button></template
       ><template #footer
         ><button class="button primary full-width" @click="identifyFromKnowledge">
-          带着照片，开始问诊 →
+          带着照片，开始对话 →
         </button></template
       ></UiDialog
     >
@@ -1674,10 +2044,10 @@ function newFromDrawer() {
           ><SelectField
             v-model="editStage"
             :options="stages[current.crop || crop]"
-            label="问诊生育期" /></view
+            label="作物生育期" /></view
         ><view class="form-field"
           ><text class="field-label">地区</text
-          ><input v-model="editLocation" aria-label="问诊地区" :maxlength="120" /></view
+          ><input v-model="editLocation" aria-label="种植地区" :maxlength="120" /></view
         ><view
           ><text class="field-label">症状与近期用药</text
           ><textarea
@@ -1703,7 +2073,7 @@ function newFromDrawer() {
       <view v-if="chatOptions === 'actions'" class="chat-action-list">
         <button @click="beginRename"><AppIcon name="file" :size="18" /><text>重命名</text></button>
         <button @click="openChatDetails('info')">
-          <AppIcon name="info" :size="18" /><text>问诊资料</text>
+          <AppIcon name="info" :size="18" /><text>种植信息</text>
         </button>
         <button v-if="current.images.length" @click="openChatDetails('result')">
           <AppIcon name="image" :size="18" /><text>识别结果</text>
@@ -1738,7 +2108,7 @@ function newFromDrawer() {
     </UiDialog>
     <UiDialog
       v-if="infoOpen && current"
-      title="本次问诊资料"
+      title="本次种植信息"
       :subtitle="conversationTitle(current)"
       @close="infoOpen = false"
       ><view class="settings-row"
@@ -1775,7 +2145,7 @@ function newFromDrawer() {
     >
     <UiDialog
       v-if="deleteTarget"
-      title="删除这条问诊？"
+      title="删除这条记录？"
       subtitle="关联的照片与对话会一起删除，删除后无法恢复。"
       @close="deleteTarget = null"
       ><text class="article-summary">{{ deleteTarget.title }}</text
@@ -1793,24 +2163,6 @@ function newFromDrawer() {
 </template>
 
 <style scoped>
-.breadcrumb-home {
-  font-size: 12px;
-  color: var(--muted);
-  padding: 7px 0;
-}
-.breadcrumb-home:hover {
-  color: var(--ink);
-  text-decoration: underline;
-  text-underline-offset: 4px;
-}
-
-.header-result-link {
-  font-size: 11px;
-  color: var(--accent);
-  padding: 7px 9px;
-  border-radius: 8px;
-  white-space: nowrap;
-}
 .main-shell {
   min-width: 0;
   flex: 1;
@@ -1818,75 +2170,6 @@ function newFromDrawer() {
   flex-direction: column;
   position: relative;
   overflow: hidden;
-}
-.topbar {
-  height: 76px;
-  min-height: 76px;
-  padding: 0 32px;
-  border-bottom: 1px solid var(--line);
-  background: var(--glass);
-  backdrop-filter: blur(20px);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  z-index: 40;
-  flex-shrink: 0;
-}
-.breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  font-size: 12px;
-  min-width: 0;
-}
-.crumb-divider {
-  color: var(--line);
-}
-.topbar-title {
-  font-weight: 550;
-  font-size: 13px;
-  white-space: nowrap;
-}
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-.login-button {
-  font-size: 12px;
-  font-weight: 550;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 7px 14px;
-  background: var(--surface);
-  white-space: nowrap;
-  min-height: 37px;
-}
-.account-button {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-height: 40px;
-}
-.avatar {
-  width: 31px;
-  height: 31px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  font-size: 13px;
-  font-weight: 600;
-}
-.account-name {
-  font-size: 12px;
-  max-width: 75px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .workspace {
   flex: 1;
@@ -1905,24 +2188,6 @@ function newFromDrawer() {
   max-width: 1320px;
   margin: 0 auto;
   padding: 30px 34px 20px;
-}
-.page-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 20px;
-  margin: 6px 0 30px;
-}
-.page-title {
-  font-size: 28px;
-  font-weight: 650;
-  letter-spacing: -0.6px;
-  display: block;
-  line-height: 1.6;
-  margin: 7px 0 5px;
-}
-.page-heading .muted {
-  font-size: 12px;
 }
 .list-toolbar {
   display: flex;
@@ -1947,6 +2212,18 @@ function newFromDrawer() {
   color: var(--accent);
   font-weight: 550;
 }
+/* #ifdef H5 */
+.history-tools {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 10px;
+}
+.history-tools > .button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+/* #endif */
 .search-field {
   display: flex;
   gap: 9px;
@@ -2170,6 +2447,13 @@ function newFromDrawer() {
   display: block;
   margin: 3px 0 10px;
 }
+.answer-reference-note {
+  display: block;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
 .message-author > text {
   font-weight: 400;
   font-size: 10px;
@@ -2216,6 +2500,61 @@ function newFromDrawer() {
   font-size: 10px;
   color: var(--muted);
   padding: 5px 8px;
+}
+.answer-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+  width: 100%;
+}
+.message-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 40px;
+  padding: 0 9px;
+  border-radius: 9px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.message-action:hover {
+  background: var(--hover);
+}
+.message-action:active {
+  background: var(--pressed);
+  color: var(--ink);
+}
+.suggested-questions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  margin-top: 10px;
+}
+.suggested-questions > text {
+  color: var(--muted);
+  font-size: 10px;
+}
+.suggested-questions > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
+  padding: 7px 11px;
+  border-radius: 11px;
+  background: var(--subtle);
+  color: var(--muted);
+  font-size: 12px;
+  text-align: left;
+}
+.suggested-questions > button:hover {
+  background: var(--hover);
+}
+.suggested-questions > button:active {
+  background: var(--pressed);
 }
 .responding {
   display: flex;
@@ -2275,9 +2614,6 @@ function newFromDrawer() {
   }
 }
 @media (max-width: 1190px) {
-  .topbar {
-    padding: 0 24px;
-  }
   .page-content {
     padding: 25px;
   }
@@ -2286,76 +2622,9 @@ function newFromDrawer() {
     padding-right: 30px;
   }
 }
-@media (max-width: 1000px) and (min-width: 761px) {
-  .topbar-actions {
-    gap: 9px;
-  }
-}
 @media (max-width: 760px) {
-  .topbar {
-    height: 62px;
-    min-height: 62px;
-    padding: 0 16px;
-    gap: 10px;
-    background: var(--glass);
-  }
-  .topbar-title {
-    font-size: 15px;
-  }
-  .breadcrumb {
-    gap: 8px;
-    min-width: 0;
-  }
-  .topbar-actions {
-    gap: 6px;
-  }
-  .login-button {
-    font-size: 12px;
-    padding: 5px 12px;
-    min-height: 34px;
-    border-radius: 9px;
-  }
-  .account-button {
-    gap: 4px;
-  }
-  .account-name {
-    display: none;
-  }
-  .account-button .avatar {
-    width: 30px;
-    height: 30px;
-  }
-  .account-button .app-icon {
-    display: none;
-  }
   .page-content {
     padding: 17px 16px 10px;
-  }
-  .page-heading {
-    margin: 5px 0 24px;
-    align-items: center;
-    gap: 10px;
-  }
-  .page-title {
-    font-size: 24px;
-    margin: 7px 0 6px;
-    line-height: 1.6;
-  }
-  .page-heading .muted {
-    font-size: 12px;
-    line-height: 1.9;
-    display: block;
-  }
-  .page-heading > .button {
-    font-size: 11px;
-    padding: 7px 11px;
-    min-height: 39px;
-    white-space: nowrap;
-  }
-  .page-heading > .badge {
-    font-size: 9px;
-    padding: 4px 6px;
-    flex-shrink: 0;
   }
   .history-panel {
     padding: 17px;
@@ -2517,13 +2786,6 @@ function newFromDrawer() {
     height: 90px;
   }
 }
-/* #ifdef MP-WEIXIN */
-.topbar {
-  padding-top: calc(var(--status-bar-height) + 42px);
-  min-height: calc(104px + var(--status-bar-height));
-  height: calc(104px + var(--status-bar-height));
-}
-/* #endif */
 .context-choice {
   margin: 17px 0 8px;
   padding: 15px;
@@ -2655,30 +2917,6 @@ function newFromDrawer() {
   text-align: center;
 }
 
-.header-leading {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-.back-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 38px;
-  padding: 7px 10px;
-  border-radius: 11px;
-  background: var(--subtle);
-  font-size: 11px;
-  white-space: nowrap;
-}
-.topbar-actions {
-  gap: 10px;
-}
-.breadcrumb-home {
-  padding: 8px;
-  border-radius: 9px;
-}
 .context-options > button {
   border-color: transparent;
   background: var(--subtle);
@@ -2694,80 +2932,26 @@ function newFromDrawer() {
 .message-tools .copy-button {
   border-radius: 8px;
 }
-.is-chat .topbar {
-  backdrop-filter: none;
-  background: var(--bg);
-  border-bottom: 0;
-}
-@media (max-width: 1050px) {
-  .topbar {
-    padding: 0 22px;
-    gap: 12px;
-  }
-  .header-leading {
-    gap: 8px;
-  }
-}
 @media (max-width: 760px) {
-  .desktop-only {
-    display: none;
-  }
-  .topbar {
-    padding: 0 15px;
-    gap: 10px;
-    height: 64px;
-    min-height: 64px;
-  }
-  .topbar-actions {
-    gap: 7px;
-  }
-  .header-leading {
-    gap: 7px;
-  }
-  .back-button {
-    min-height: 36px;
-    gap: 3px;
-    padding: 6px 7px;
-    font-size: 10px;
-  }
-  .is-chat .topbar {
-    padding-left: 10px;
-    padding-right: 12px;
-  }
-  .is-chat .topbar-title {
-    max-width: 85px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-size: 12px;
-  }
-  .is-chat :deep(.appearance-switch > text) {
-    display: none;
-  }
-  .composer-dock {
-    padding-bottom: max(12px, env(safe-area-inset-bottom));
-  }
-}
-
-@media (max-width: 760px) {
-  .desktop-topbar {
-    display: none;
-  }
   .main-shell {
-    padding-top: calc(54px + var(--mobile-safe-top, env(safe-area-inset-top, 0px)));
     transition: transform 0.2s ease;
   }
   .drawer-open > .main-shell {
     transform: translateX(24px);
   }
+  /* #ifdef H5 */
   .keyboard-open .composer-dock {
     transform: translateY(calc(-1 * var(--keyboard-inset, 0px)));
   }
+  /* #endif */
   .composer-dock {
     padding: 8px 12px max(8px, env(safe-area-inset-bottom));
   }
+  /* #ifdef H5 */
   .message-stream {
     padding-bottom: calc(14px + var(--keyboard-inset, 0px));
   }
+  /* #endif */
   .case-area.is-leaving {
     opacity: 0;
     transform: translateX(9px);
@@ -2782,9 +2966,6 @@ function newFromDrawer() {
   .page-content {
     padding-top: 14px;
     animation: mobile-page-enter 0.16s ease;
-  }
-  .back-button {
-    font-weight: 600;
   }
 }
 @keyframes mobile-page-enter {
@@ -2809,4 +2990,30 @@ function newFromDrawer() {
     transition: none;
   }
 }
+/* #ifndef H5 */
+.chat-workspace {
+  animation: none;
+}
+.composer-dock {
+  position: relative;
+  padding-bottom: calc(8px + var(--chat-safe-bottom, 0px));
+}
+.chat-workspace,
+.composer-dock {
+  transition: padding-bottom var(--chat-keyboard-duration, 0ms) ease-out;
+}
+.keyboard-open .composer-dock {
+  padding-bottom: 8px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-workspace,
+  .composer-dock {
+    transition: none;
+  }
+}
+.main-shell {
+  padding-top: 0;
+  width: 100%;
+}
+/* #endif */
 </style>

@@ -1,93 +1,118 @@
 import { ref } from 'vue'
-import { SESSION, storedSession, accessToken, dataMode, serverRequest } from './transport'
+import {
+  clearSession,
+  saveSession,
+  storedSession,
+  accessToken,
+  dataMode,
+  serverRequest,
+} from './transport'
+import { beginPreviewAccount, endPreviewAccount, currentPreviewUser } from './preview'
 export interface User {
   id: string
   username: string
   name: string
   role: 'member' | 'admin'
+  preview?: boolean
 }
 interface AuthResponse {
   user: User
   access_token: string
   expires_at: number
+  continued_case_id?: string
+}
+export interface AuthSuccess extends User {
+  continuedCaseId?: string
 }
 export interface AuthGateway {
-  login(username: string, password: string, remember: boolean): Promise<User>
-  register(name: string, username: string, password: string): Promise<User>
+  login(
+    username: string,
+    password: string,
+    remember: boolean,
+    continueCaseId?: string,
+  ): Promise<AuthSuccess>
+  register(
+    name: string,
+    username: string,
+    password: string,
+    continueCaseId?: string,
+  ): Promise<AuthSuccess>
+  previewLogin(continueCaseId?: string): Promise<AuthSuccess>
   logout(): Promise<void>
   restore(): Promise<void>
 }
 const previous = storedSession()
 export const user = ref<User | null>(previous?.accessToken ? (previous.user as User) : null)
 function clear() {
-  uni.removeStorageSync(SESSION)
-  // #ifdef H5
-  sessionStorage.removeItem(SESSION)
-  // #endif
+  clearSession()
   user.value = null
 }
 function save(result: AuthResponse, remember: boolean) {
-  clear()
-  const session = {
-    user: result.user,
-    expires: result.expires_at * 1000,
-    accessToken: result.access_token,
-  }
-  // #ifdef H5
-  if (!remember) sessionStorage.setItem(SESSION, JSON.stringify(session))
-  // #endif
-  // #ifndef H5
-  uni.setStorageSync(SESSION, session)
-  // #endif
-  if (remember) uni.setStorageSync(SESSION, session)
+  endPreviewAccount()
+  saveSession(
+    {
+      user: result.user,
+      expires: result.expires_at * 1000,
+      accessToken: result.access_token,
+    },
+    remember,
+  )
   user.value = result.user
 }
 function requireService() {
-  if (dataMode() !== 'live') throw new Error('账户服务暂不可用，请使用已连接服务的版本')
+  if (dataMode() !== 'live')
+    throw new Error('当前为离线预览，请使用演示账号体验；真实账户需连接服务器')
+}
+function finish(result: AuthResponse, remember: boolean, selected?: string): AuthSuccess {
+  if (selected && result.continued_case_id !== selected)
+    throw new Error('本次识别未能接续，请重试登录或重新上传照片')
+  save(result, remember)
+  return { ...result.user, continuedCaseId: result.continued_case_id }
 }
 export const auth: AuthGateway = {
-  async login(raw, password, remember) {
+  async login(raw, password, remember, continueCaseId) {
     const username = raw.trim().toLowerCase()
     if (!username || !password) throw new Error('请填写账号和密码')
     requireService()
     const result = await serverRequest<AuthResponse>(
       '/api/auth/login',
       'POST',
-      { username, password, remember },
-      '',
+      {
+        username,
+        password,
+        remember,
+        ...(continueCaseId ? { continue_case_id: continueCaseId } : {}),
+      },
+      { token: '' },
     )
-    save(result, remember)
-    return result.user
+    return finish(result, remember, continueCaseId)
   },
-  async register(name, raw, password) {
-    const username = raw.trim().toLowerCase()
-    if (!/^[a-zA-Z][a-zA-Z0-9_]{2,23}$/.test(username))
-      throw new Error('账号需为 3–24 位字母、数字或下划线，以字母开头')
-    if (!name.trim() || name.trim().length > 20) throw new Error('请填写 1–20 字的称呼')
-    if (password.length < 6 || password.length > 64) throw new Error('密码长度需为 6–64 位')
-    requireService()
-    const result = await serverRequest<AuthResponse>(
-      '/api/auth/register',
-      'POST',
-      { name: name.trim(), username, password },
-      '',
-    )
-    save(result, false)
-    return result.user
+  async register() {
+    throw new Error('当前仅开放管理员登录，暂不开放注册')
+  },
+  async previewLogin(continueCaseId) {
+    if (dataMode() !== 'preview') throw new Error('演示账号仅用于离线预览')
+    const result = beginPreviewAccount(continueCaseId)
+    clear()
+    user.value = result.user
+    return { ...result.user, continuedCaseId: result.continued_case_id }
   },
   async logout() {
     const token = accessToken()
     clear()
+    endPreviewAccount()
     if (dataMode() === 'live' && token)
       try {
-        await serverRequest('/api/auth/logout', 'POST', undefined, token)
+        await serverRequest('/api/auth/logout', 'POST', undefined, { token })
       } catch {}
   },
   async restore() {
     if (dataMode() !== 'live') {
       clear()
+      user.value = currentPreviewUser()
       return
     }
+    endPreviewAccount()
     if (!accessToken()) {
       clear()
       return

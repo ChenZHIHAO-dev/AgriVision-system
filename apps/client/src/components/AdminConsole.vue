@@ -31,7 +31,7 @@ const emit = defineEmits<{ close: []; refresh: [] }>()
           >{{ model.classes }} 类 · {{ model.version }}</text
         ></view
       ><text class="fine-print admin-note"
-        >账户数据库暂未接入，当前使用开发账户适配器。登录后的问诊由服务端保存，访客上下文只在内存中暂存。</text
+        >当前仅开放管理员登录。登录后的识别和对话记录由服务端按账户保存，游客的识别信息仅在当前会话暂存。</text
       ></view
     ><template #footer
       ><button class="button primary full-width" :disabled="busy" @click="emit('refresh')">

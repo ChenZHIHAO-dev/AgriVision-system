@@ -9,12 +9,13 @@
     "dev": "npm run dev --workspace @agrivision/client",
     "build": "npm run build --workspace @agrivision/client",
     "build:wechat": "node --env-file-if-exists=.env.wechat.local scripts/build-wechat.mjs",
+    "build:app": "npm run build:app --workspace @agrivision/client",
     "build:mp": "npm run build:mp --workspace @agrivision/client",
     "typecheck": "npm run typecheck --workspace @agrivision/client",
     "build:pages": "node scripts/build-pages.mjs",
-    "test:frontend": "node --test tests/frontend-*.test.mjs",
-    "format": "prettier --write \"apps/client/src/**/*.{vue,ts,css}\" \"tests/frontend-*.test.mjs\"",
-    "format:check": "prettier --check \"apps/client/src/**/*.{vue,ts,css}\" \"tests/frontend-*.test.mjs\"",
+    "test:frontend": "node --test tests/frontend/*.test.mjs",
+    "format": "prettier --write \"apps/client/src/**/*.{vue,ts,css}\" \"tests/frontend/*.test.mjs\"",
+    "format:check": "prettier --check \"apps/client/src/**/*.{vue,ts,css}\" \"tests/frontend/*.test.mjs\"",
     "icons": "node scripts/build-icons.mjs"
   },
   "devDependencies": {

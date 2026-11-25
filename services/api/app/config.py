@@ -20,6 +20,8 @@ class Settings:
     cors: tuple[str, ...] = ("http://127.0.0.1:5173", "http://localhost:5173")
     max_upload: int = 8 * 1024 * 1024
     allow_experimental_models: bool = False
+    admin_password_hash: str = field(default="", repr=False)
+    serve_web: bool = True
 
     def get_deepseek_key(self):
         """Only the application runtime reads the user-owned, git-ignored file."""
@@ -46,4 +48,6 @@ class Settings:
             deepseek_model=os.getenv("DEEPSEEK_MODEL", "deepseek-flash"),
             cors=tuple(os.getenv("AGRIVISION_CORS_ORIGINS", "http://127.0.0.1:5173,http://localhost:5173").split(",")),
             allow_experimental_models=os.getenv("AGRIVISION_ALLOW_EXPERIMENTAL_MODELS", "1") == "1",
+            admin_password_hash=os.getenv("AGRIVISION_ADMIN_PASSWORD_HASH", ""),
+            serve_web=os.getenv("AGRIVISION_SERVE_WEB", "1") == "1",
         )

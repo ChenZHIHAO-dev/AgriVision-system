@@ -6,11 +6,51 @@ from pathlib import Path
 from .schemas import Product
 
 CROP_NAMES = {"wheat": "小麦", "maize": "玉米", "peanut": "花生"}
+CROP_ALIASES = {
+    "wheat": ("麦子",),
+    "maize": ("苞谷", "包谷"),
+    "peanut": ("落花生",),
+}
+CROPS_OUTSIDE_LIBRARY = (
+    "黄瓜", "番茄", "西红柿", "水稻", "稻谷", "大豆", "油菜",
+    "辣椒", "白菜", "马铃薯", "土豆", "西瓜", "棉花", "大麦", "高粱",
+)
+CONTEXT_WORDS = (
+    "叶片", "叶面", "叶子", "麦叶", "症状", "病害", "田间", "地块", "作物",
+    "情况", "颜色", "部位", "出现", "查看", "观察", "判断", "需要", "什么",
+    "怎么", "如何", "时间", "近期", "当地", "南阳", "生育期", "抽穗扬花",
+)
+CONTEXT_KEYWORDS = {"抽穗", "扬花", "麦穗", "虫子"}
+
+
+def query_crop_scope(query: str) -> frozenset[str] | None:
+    """Identify named crops, including crops without indexed cards."""
+    compact = re.sub(r"\s+", "", query)
+    supported = frozenset(
+        crop
+        for crop, label in CROP_NAMES.items()
+        if label in compact or any(alias in compact for alias in CROP_ALIASES.get(crop, ()))
+    )
+    outside = frozenset(label for label in CROPS_OUTSIDE_LIBRARY if label in compact)
+    return (supported | outside) or None
+
+
+
+def crop_scope_conflicts(crop: str | None, scope: frozenset[str] | None) -> bool:
+    return crop in CROP_NAMES and scope is not None and crop not in scope
 
 
 def tokens(text: str):
     text = re.sub(r"\s+", "", text.lower())
     return set(text[i:i + 2] for i in range(max(0, len(text) - 1)))
+
+
+CONTEXT_TOKENS = set().union(
+    *(tokens(word) for word in (
+        *CONTEXT_WORDS, *CONTEXT_KEYWORDS, *CROP_NAMES.values(), *CROPS_OUTSIDE_LIBRARY,
+    )),
+    *(tokens(alias) for aliases in CROP_ALIASES.values() for alias in aliases),
+)
 
 
 class Knowledge:
@@ -22,18 +62,35 @@ class Knowledge:
             self.products.append(Product.model_validate(raw))
 
     def search(self, query="", crop=None, limit=50):
-        cards = [c for c in self.cards if not crop or c["crop"] in (crop, "general")]
+        scope = query_crop_scope(query)
+        if scope is None and crop:
+            scope = frozenset({crop})
+        cards = [
+            card for card in self.cards
+            if scope is None or card["crop"] == "general" or card["crop"] in scope
+        ]
         if not query.strip():
             return cards[:limit]
-        query_tokens = tokens(query)
+
+        general_only = scope is not None and scope.isdisjoint(CROP_NAMES)
+        query = query.lower()
+        query_tokens = tokens(query) - CONTEXT_TOKENS
         ranked = []
         for card in cards:
-            material = card["title"] + " ".join(card["keywords"]) + card["summary"]
-            score = len(query_tokens & tokens(material))
-            score += 12 if card["title"] in query or any(k in query for k in card["keywords"] if len(k) >= 3) else 0
-            if score:
-                ranked.append((score, card))
-        return [card for _, card in sorted(ranked, key=lambda x: x[0], reverse=True)[:limit]]
+            title_match = card["title"].lower() in query
+            keyword_match = any(
+                keyword.lower() in query
+                for keyword in card["keywords"]
+                if keyword not in CONTEXT_KEYWORDS
+            )
+            fields = (card["title"], *card["keywords"], card["summary"])
+            card_tokens = set().union(*(tokens(field) for field in fields))
+            overlap = len(query_tokens & card_tokens)
+            # A crop or an isolated bigram is not enough to ground a recommendation.
+            if title_match or keyword_match or (not general_only and overlap >= 2):
+                ranked.append(((title_match, keyword_match, overlap), card))
+        ranked.sort(key=lambda row: row[0], reverse=True)
+        return [card for _, card in ranked[:limit]]
 
     def get(self, card_id):
         return next((c for c in self.cards if c["id"] == card_id), None)
@@ -53,8 +110,8 @@ class Knowledge:
         card = self.get(disease_id) if disease_id else None
         if card is None:
             return {
-                "summary": "先补充作物症状与拍摄信息，建立这次问诊的判断依据。",
-                "actions": ["补一张症状近照和一张整株照片", "记录出现时间、田间分布及近期用药", "可以继续咨询已收录的病虫害资料"],
+                "summary": "补充作物症状和拍摄信息，便于在这条记录中核对观察线索。",
+                "actions": ["补一张症状近照和一张整株照片", "记录出现时间、田间分布及近期用药", "可以向 AI 询问相关病虫害资料"],
                 "sources": [], "products": [],
             }
         return {

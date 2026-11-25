@@ -36,16 +36,16 @@ const conversations = computed(() => {
 
 <template>
   <view class="conversation-history" :class="{ 'in-drawer': drawer }">
-    <view class="history-caption"><text>历史问诊</text></view>
+    <view class="history-caption"><text>历史记录</text></view>
     <button v-if="!drawer" class="history-new" @click="emit('new')">
-      <AppIcon name="new" :size="18" /><text>新建咨询</text>
+      <AppIcon name="new" :size="18" /><text>新建对话</text>
     </button>
     <view v-if="!user" class="history-guest">
-      <text>登录后，保存后续咨询，随时接着聊。</text>
-      <button v-if="!drawer" @click="emit('login')">登录查看咨询记录 ↗</button>
+      <text>登录后，保留后续对话，随时接着聊。</text>
+      <button v-if="!drawer" @click="emit('login')">登录查看历史记录 ↗</button>
     </view>
     <view v-else-if="!conversations.length" class="history-guest" aria-live="polite">
-      {{ keyword ? '没有找到匹配的问诊记录。' : '还没有问诊记录。' }}
+      {{ keyword ? '没有找到匹配的记录。' : '还没有记录。' }}
     </view>
     <scroll-view v-else scroll-y class="history-conversations">
       <button

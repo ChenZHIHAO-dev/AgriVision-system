@@ -1,15 +1,19 @@
+// #ifdef H5
 import { defineComponent, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+// #endif
 
 // Keep actual content between one and eight lines. A soft keyboard changes the
 // available viewport, but must not change the text box's own sizing rules.
 const LINE_HEIGHT = 24
 const MAX_LINES = 8
 
+// #ifdef H5
 export default defineComponent({
   props: { modelValue: { type: String, default: '' }, disabled: Boolean },
   emits: ['update:modelValue', 'send', 'resize', 'limit'],
-  setup(props, { emit }) {
+  setup(props, { emit, expose }) {
     const element = ref<HTMLTextAreaElement>()
+    expose({ focus: () => element.value?.focus({ preventScroll: true }) })
     let lastHeight = 0
     let composing = false
     const resize = () => {
@@ -48,7 +52,7 @@ export default defineComponent({
         value: props.modelValue,
         disabled: props.disabled,
         maxLength: 12000,
-        'aria-label': '咨询内容',
+        'aria-label': '对话内容',
         placeholder: '描述问题，或添加照片…',
         onInput: (event: Event) => {
           emit('update:modelValue', (event.target as HTMLTextAreaElement).value)
@@ -85,3 +89,4 @@ export default defineComponent({
       })
   },
 })
+// #endif

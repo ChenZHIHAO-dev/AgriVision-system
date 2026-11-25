@@ -5,6 +5,7 @@ import AppIcon from './AppIcon.vue'
 // #ifdef H5
 import NativeChatInput from './NativeChatInput'
 // #endif
+import type { NativeKeyboardEvent } from '../lib/mobileChrome'
 import type { ChatModel, DocumentAttachment } from '../lib/api'
 
 const props = withDefaults(
@@ -16,7 +17,7 @@ const props = withDefaults(
     webSearch: boolean
     attachments: DocumentAttachment[]
     images: { id: string; url: string }[]
-    preview: boolean
+    dark?: boolean
   }>(),
   { disabled: false },
 )
@@ -30,29 +31,41 @@ const emit = defineEmits<{
   remove: [id: string]
   'remove-image': [id: string]
   resize: []
+  'keyboard-height': [event: NativeKeyboardEvent]
   limit: []
-  keyboard: [height: number]
 }>()
 const attachOpen = ref(false)
-const nativeHeight = ref(24)
+const h5Input = ref<{ focus: () => void }>()
+function focusEditor() {
+  // #ifdef H5
+  if (props.disabled) return
+  attachOpen.value = false
+  h5Input.value?.focus()
+  // #endif
+  // Native textareas own focus. Draft suggestions never reopen the soft keyboard.
+}
+defineExpose({ focus: focusEditor })
+const nativeHeight = ref(44)
 const nativeText = ref(props.modelValue)
 watch(
   () => props.modelValue,
   (value) => {
     nativeText.value = value
-    if (!value && nativeHeight.value !== 24) {
-      nativeHeight.value = 24
-      emit('resize')
+    if (!value && nativeHeight.value !== 44) {
+      nativeHeight.value = 44
     }
   },
 )
 function nativeLines(event: { detail?: { height?: number; lineCount?: number } }) {
   const measured = event.detail?.height || (event.detail?.lineCount || 1) * 24
-  const height = nativeText.value ? Math.min(192, Math.max(24, measured)) : 24
-  if (height !== nativeHeight.value) {
-    nativeHeight.value = height
-    emit('resize')
-  }
+  const height = nativeText.value ? Math.min(192, Math.max(44, measured)) : 44
+  if (height !== nativeHeight.value) nativeHeight.value = height
+}
+function nativeKeyboardHeight(event: unknown, opening = false) {
+  // WeChat can supply the initial height on focus before a change event arrives.
+  const detail = (event as { detail?: NativeKeyboardEvent }).detail
+  if (typeof detail?.height === 'number' && (!opening || detail.height > 0))
+    emit('keyboard-height', { height: detail.height, duration: detail.duration })
 }
 function attachmentKeyboard(event: KeyboardEvent) {
   if (event.defaultPrevented) return
@@ -128,6 +141,7 @@ function input(event: unknown) {
     <view class="composer-writing-area">
       <!-- #ifdef H5 -->
       <NativeChatInput
+        ref="h5Input"
         :model-value="modelValue"
         :disabled="disabled"
         @update:model-value="emit('update:modelValue', $event)"
@@ -139,6 +153,7 @@ function input(event: unknown) {
       <!-- #ifndef H5 -->
       <textarea
         class="mp-chat-input"
+        aria-label="对话内容"
         :value="modelValue"
         :auto-height="false"
         :style="{ height: nativeHeight + 'px' }"
@@ -148,12 +163,14 @@ function input(event: unknown) {
         :maxlength="12000"
         :disabled="disabled"
         :adjust-position="false"
+        :placeholder-style="dark ? 'color:#b4b4b4;opacity:1' : 'color:#4d5b53;opacity:1'"
         placeholder="描述问题，或添加照片…"
         confirm-type="send"
         @input="input"
+        @focus="nativeKeyboardHeight($event, true)"
+        @keyboardheightchange="nativeKeyboardHeight"
         @linechange="nativeLines"
         @confirm="emit('send')"
-        @keyboardheightchange="emit('keyboard', $event.detail.height)"
       />
       <!-- #endif -->
     </view>
@@ -195,26 +212,25 @@ function input(event: unknown) {
       </button>
     </view>
     <view v-if="attachOpen" class="attachment-dismiss" @click="attachOpen = false" />
-    <view v-if="attachOpen" class="attachment-menu" role="menu"
-      ><button role="menuitem" @click="attach('image')">
-        <AppIcon name="image" :size="21" /><view
-          ><text class="strong">添加症状照片</text
-          ><text class="file-status">照片先独立识别，再带结果继续咨询</text></view
-        ></button
-      ><button role="menuitem" @click="attach('document')">
-        <AppIcon name="file" :size="21" /><view
-          ><text class="strong">上传资料文件</text
-          ><text class="file-status">TXT、MD、PDF、DOCX · 8MB 以内</text></view
-        >
-      </button></view
-    >
+    <view v-if="attachOpen" class="attachment-menu" role="menu">
+      <button role="menuitem" @click="attach('image')">
+        <AppIcon name="image" :size="21" />
+        <view>
+          <text class="strong">添加症状照片</text>
+          <text class="file-status">照片先独立识别，再带结果继续对话</text>
+        </view>
+      </button>
+      <!-- #ifndef APP-PLUS -->
+      <button role="menuitem" @click="attach('document')">
+        <AppIcon name="file" :size="21" />
+        <view>
+          <text class="strong">上传资料文件</text>
+          <text class="file-status">农业资料 · TXT、MD、PDF、DOCX · 8MB 以内</text>
+        </view>
+      </button>
+      <!-- #endif -->
+    </view>
   </view>
-  <view class="chat-composer-meta"
-    ><text>{{
-      preview ? '智能咨询服务暂不可用，当前提供资料参考' : '建议供排查参考，具体用药请核对产品标签'
-    }}</text
-    ><text class="composer-shortcut">Enter 发送 · Shift + Enter 换行</text></view
-  >
 </template>
 <style scoped>
 .composer-photo-rail {
@@ -310,8 +326,8 @@ function input(event: unknown) {
   opacity: 1;
 }
 .mp-chat-input {
-  height: 24px;
-  min-height: 24px;
+  height: 44px;
+  min-height: 44px;
   max-height: 192px;
   overflow-y: auto;
   padding: 0;
@@ -410,15 +426,6 @@ function input(event: unknown) {
 }
 .input-count + .composer-send {
   margin-left: 0;
-}
-.chat-composer-meta {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  color: var(--muted);
-  font-size: 10px;
-  padding: 9px 4px 0;
-  line-height: 1.7;
 }
 .composer-attachments {
   display: flex;
@@ -538,16 +545,6 @@ function input(event: unknown) {
     height: 33px;
     min-width: 33px;
   }
-  .composer-shortcut {
-    display: none;
-  }
-  .chat-composer-meta {
-    display: none;
-    justify-content: center;
-    font-size: 10px;
-    line-height: 1.8;
-    text-align: center;
-  }
   .attachment-chip {
     width: 100%;
   }
@@ -559,4 +556,15 @@ function input(event: unknown) {
     left: 0;
   }
 }
+/* #ifndef H5 */
+.composer-writing-area {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  overflow: visible;
+}
+.mp-chat-input {
+  background: transparent;
+}
+/* #endif */
 </style>

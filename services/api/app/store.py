@@ -45,6 +45,18 @@ class Store:
                 (case["id"], owner, case["created_at"], case["updated_at"], json.dumps(case, ensure_ascii=False)),
             )
 
+    def insert_case_with_messages(self, owner, case, messages):
+        case_id = case["id"]
+        with self.connection() as db:
+            db.execute(
+                "INSERT INTO cases VALUES(?,?,?,?,?)",
+                (case_id, owner, case["created_at"], case["updated_at"], json.dumps(case, ensure_ascii=False)),
+            )
+            db.executemany(
+                "INSERT INTO messages(case_id,payload) VALUES(?,?)",
+                [(case_id, json.dumps(message, ensure_ascii=False)) for message in messages],
+            )
+
     def get(self, owner, case_id):
         with self.connection() as db:
             row = db.execute("SELECT payload FROM cases WHERE id=? AND owner=?", (case_id, owner)).fetchone()

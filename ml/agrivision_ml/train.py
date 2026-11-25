@@ -1,5 +1,5 @@
 # 分类训练入口。流程依次是校验数据清单、按划分读图、训练与验证、保存最佳权重。
-# 模型结构和增强规则在 model.py，命令行参数在本文件末尾的 parser()。
+# 模型结构在 model.py，在线增强在 augmentation.py，命令行参数在本文件末尾的 parser()。
 import argparse
 import csv
 from datetime import datetime, timezone

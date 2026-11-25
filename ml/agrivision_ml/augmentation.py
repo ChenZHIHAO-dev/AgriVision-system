@@ -15,7 +15,7 @@ class Letterbox:
         self.size = size
 
     def __call__(self, image):
-        # 使用图像边缘的中性色补底。补边值接近 ImageNet 均值，归一化后接近零。
+        # 使用固定中性色补底。补边值接近 ImageNet 均值，归一化后接近零。
         return ImageOps.pad(image, (self.size, self.size), color=(124, 116, 104))
 
 

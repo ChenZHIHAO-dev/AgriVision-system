@@ -25,20 +25,41 @@ const emit = defineEmits<{
 }>()
 
 const sections = [
-  { id: 'recent', label: '最近问诊', icon: 'history' },
+  { id: 'recent', label: '最近记录', icon: 'history' },
   { id: 'resources', label: '参考资料', icon: 'book' },
   { id: 'news', label: '农业资讯', icon: 'file' },
 ] as const
 
 const shortcuts = [
-  { id: 'capture', title: '拍照问诊', description: '拍摄或上传作物照片', icon: 'camera' },
-  { id: 'consult', title: '文字咨询', description: '询问种植问题或了解药品作用', icon: 'chat' },
+  { id: 'capture', title: '拍照识别', description: '拍摄或上传作物照片', icon: 'camera' },
+  { id: 'consult', title: '询问 AI', description: '新建对话，询问作物和田间问题', icon: 'chat' },
 ] as const
 type Shortcut = (typeof shortcuts)[number]['id']
 const orderKey = 'agrivision.dashboard.first-action'
 const first = ref<Shortcut>(uni.getStorageSync(orderKey) === 'consult' ? 'consult' : 'capture')
 const ordered = computed(() =>
   first.value === 'capture' ? shortcuts : [shortcuts[1], shortcuts[0]],
+)
+const recordQuery = ref('')
+const hasHistory = computed(() => props.loggedIn && props.records.length > 0)
+const recentEntries = computed(() => {
+  if (!hasHistory.value) return []
+  const term = recordQuery.value.trim().toLowerCase()
+  return props.records
+    .filter(
+      (entry) =>
+        !term ||
+        [conversationTitle(entry), entry.title, entry.crop_name, entry.note].some((field) =>
+          field?.toLowerCase().includes(term),
+        ),
+    )
+    .slice(0, 5)
+})
+watch(
+  () => props.loggedIn,
+  (loggedIn) => {
+    if (!loggedIn) recordQuery.value = ''
+  },
 )
 const arranging = ref(false)
 let dragStart: { action: Shortcut; y: number } | undefined
@@ -150,7 +171,7 @@ watch(arranging, measureSection)
   <scroll-view
     class="dashboard-scroll"
     :class="{ 'dashboard-mobile-scroll': mobile }"
-    :scroll-y="mobile"
+    scroll-y
     :scroll-top="mobile ? scrollTarget : undefined"
     @scroll="scrollDashboard"
   >
@@ -159,10 +180,7 @@ watch(arranging, measureSection)
       :style="mobile && viewHeight ? { '--dashboard-view-height': viewHeight + 'px' } : undefined"
     >
       <view class="dashboard-heading">
-        <view>
-          <text class="dashboard-title">工作台</text>
-          <text class="dashboard-intro">快捷入口</text>
-        </view>
+        <text class="dashboard-title" role="heading" aria-level="2">快捷入口</text>
         <button
           class="dashboard-arrange"
           :aria-expanded="arranging"
@@ -230,10 +248,10 @@ watch(arranging, measureSection)
           @click="item.id === 'capture' ? emit('capture') : emit('consult')"
         >
           <view class="dashboard-action-icon"><AppIcon :name="item.icon" :size="27" /></view>
-          <view class="dashboard-action-copy"
-            ><text>{{ item.title }}</text
-            ><text>{{ item.description }}</text></view
-          >
+          <view class="dashboard-action-copy">
+            <text class="dashboard-action-title">{{ item.title }}</text>
+            <text class="dashboard-action-description">{{ item.description }}</text>
+          </view>
           <AppIcon name="right" :size="18" />
         </button>
       </view>
@@ -244,55 +262,75 @@ watch(arranging, measureSection)
           role="tab"
           :aria-selected="section === item.id"
           :class="{ active: section === item.id }"
+          hover-class="none"
           @click="chooseSection(item.id)"
         >
-          <AppIcon :name="item.icon" :size="16" /><text>{{ item.label }}</text>
+          <AppIcon :name="item.icon" :size="16" />
+          <text class="dashboard-tab-label">{{ item.label }}</text>
         </button>
       </view>
       <view class="dashboard-section-anchor" />
       <view
-        v-show="section === 'recent'"
+        v-if="section === 'recent'"
         class="dashboard-recent"
         role="tabpanel"
-        aria-label="最近问诊"
+        aria-label="最近记录"
       >
-        <view class="dashboard-section-heading"
-          ><text>{{ loggedIn ? '接着上次的问诊' : '问诊记录' }}</text
-          ><button v-if="loggedIn && records.length" @click="emit('history')">
-            全部记录 <AppIcon name="external" :size="14" /></button
-        ></view>
-        <template v-if="loggedIn && records.length">
+        <view v-if="hasHistory" class="dashboard-history-tools">
+          <view class="dashboard-history-search">
+            <AppIcon name="search" :size="17" />
+            <input
+              v-model="recordQuery"
+              type="text"
+              confirm-type="search"
+              aria-label="搜索最近记录"
+              placeholder="搜索作物、标题或备注"
+            />
+          </view>
+          <button class="dashboard-all-records" @click="emit('history')">全部记录</button>
+        </view>
+        <view v-if="recentEntries.length" class="dashboard-record-list">
           <button
-            v-for="record in records.slice(0, 5)"
+            v-for="record in recentEntries"
             :key="record.id"
             class="dashboard-record"
             @click="emit('open', record.id)"
           >
-            <image v-if="record.images.length" :src="imageUrl(record)" mode="aspectFill" /><view
-              v-else
-              class="text-record-icon"
-              ><AppIcon name="chat" :size="22"
-            /></view>
-            <view
-              ><text>{{ conversationTitle(record) }}</text
-              ><text>{{ record.crop_name }} · {{ dateLabel(record.updated_at) }}</text></view
-            >
-            <text class="record-state">{{ statusLabel(record.status) }}</text
-            ><AppIcon name="right" :size="17" />
+            <image
+              v-if="record.images.length"
+              :src="imageUrl(record)"
+              mode="aspectFill"
+              class="dashboard-record-media"
+            />
+            <view v-else class="dashboard-record-media text-record-icon">
+              <AppIcon name="chat" :size="22" />
+            </view>
+            <view class="dashboard-record-copy">
+              <text class="dashboard-record-title">{{ conversationTitle(record) }}</text>
+              <text class="dashboard-record-meta">
+                {{ record.crop_name }} · {{ dateLabel(record.updated_at) }}
+              </text>
+            </view>
+            <text class="record-state">{{ statusLabel(record.status) }}</text>
+            <AppIcon name="right" :size="17" />
           </button>
-        </template>
-        <view v-else class="dashboard-empty"
-          ><view class="empty-record-icon"><AppIcon name="history" :size="25" /></view
-          ><text>{{ loggedIn ? '还没有问诊记录' : '登录后保存问诊记录' }}</text
-          ><text>{{
-            loggedIn
-              ? '完成拍照或开始咨询后，可在这里继续查看。'
-              : '访客可以使用拍照与咨询，当前内容不保存到历史。'
-          }}</text
-          ><button v-if="!loggedIn" class="button secondary" @click="emit('login')">
-            登录
-          </button></view
-        >
+        </view>
+        <view v-else class="dashboard-empty">
+          <view class="empty-record-icon"><AppIcon name="history" :size="25" /></view>
+          <view class="dashboard-empty-copy">
+            <text class="dashboard-empty-title">{{
+              !loggedIn ? '登录后查看记录' : hasHistory ? '没有匹配记录' : '还没有记录'
+            }}</text>
+            <text class="dashboard-empty-description">{{
+              !loggedIn
+                ? '访客可拍照识别。AI 对话和记录需登录。'
+                : hasHistory
+                  ? '试试作物名、标题或备注里的其他词。'
+                  : '拍照识别或新建对话后，可在这里继续查看。'
+            }}</text>
+          </view>
+          <button v-if="!loggedIn" class="button secondary" @click="emit('login')">登录</button>
+        </view>
       </view>
       <KnowledgeLibrary
         v-show="section !== 'recent'"
@@ -308,40 +346,50 @@ watch(arranging, measureSection)
     </view>
   </scroll-view>
 </template>
+<style>
+/* #ifdef MP-WEIXIN */
+:host {
+  display: block;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+/* #endif */
+</style>
 <style scoped>
 .dashboard-scroll {
   width: 100%;
-}
-.dashboard-mobile-scroll {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   height: 100%;
 }
 .dashboard {
-  max-width: 860px;
-  margin: 8px auto 20px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 992px;
+  margin: 0 auto;
+  padding: 34px 24px;
 }
 .dashboard-mobile-scroll .dashboard {
-  padding: 8px 16px 14px;
-  margin: 0;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 14px 14px;
+  max-width: 620px;
+  margin: 0 auto;
 }
 .dashboard-heading {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 16px;
 }
 .dashboard-title {
-  display: block;
-  font-size: 25px;
+  font-size: 17px;
   font-weight: 650;
-}
-.dashboard-intro {
-  display: block;
-  margin-top: 9px;
-  color: var(--muted);
-  font-size: 13px;
+  color: var(--ink);
 }
 .dashboard-arrange,
 .arrangement-move {
@@ -371,6 +419,22 @@ watch(arranging, measureSection)
   border-radius: 18px;
   text-align: left;
 }
+/* #ifdef H5 */
+.dashboard-scroll:not(.dashboard-mobile-scroll) .dashboard {
+  padding-inline: clamp(20px, 4vw, 48px);
+}
+.dashboard-scroll:not(.dashboard-mobile-scroll) .dashboard-actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.dashboard-scroll:not(.dashboard-mobile-scroll) .dashboard-action {
+  flex: 1 1 270px;
+  width: auto;
+  min-width: 0;
+  min-height: 110px;
+}
+/* #endif */
 .dashboard-action.dashboard-capture {
   background: var(--accent-soft);
 }
@@ -391,12 +455,12 @@ watch(arranging, measureSection)
   flex: 1;
   min-width: 0;
 }
-.dashboard-action-copy > text:first-child {
+.dashboard-action-title {
   display: block;
   font-size: 18px;
   font-weight: 650;
 }
-.dashboard-action-copy > text:last-child {
+.dashboard-action-description {
   display: block;
   font-size: 12px;
   color: var(--muted);
@@ -438,38 +502,67 @@ watch(arranging, measureSection)
 .arrangement-move {
   background: var(--subtle);
 }
-.dashboard-recent {
-  margin-top: 22px;
+.dashboard-recent,
+.dashboard-record-list {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
 }
-.dashboard-section-heading {
+.dashboard-recent {
+  gap: 8px;
+  margin-top: 14px;
+}
+.dashboard-history-tools {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 15px;
-  margin-bottom: 10px;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
 }
-.dashboard-section-heading > text {
-  font-size: 15px;
-  font-weight: 600;
+.dashboard-history-search {
+  display: flex;
+  align-items: center;
+  flex: 1 1 0;
+  min-height: 42px;
+  min-width: 0;
+  gap: 8px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface);
 }
-.dashboard-section-heading > button {
-  font-size: 11px;
+.dashboard-history-search > input {
+  flex: 1 1 0;
+  width: 0;
+  min-width: 0;
+  font-size: 13px;
+}
+.dashboard-all-records {
+  flex-shrink: 0;
+  min-height: 42px;
+  padding: 6px 9px;
+  border-radius: 9px;
   color: var(--accent);
+  font-size: 12px;
+  white-space: nowrap;
 }
 .dashboard-record {
   display: flex;
   align-items: center;
   gap: 15px;
-  text-align: left;
   width: 100%;
-  padding: 19px 0;
+  min-width: 0;
+  padding: 15px 10px;
   border-bottom: 1px solid var(--line);
+  border-radius: 12px;
+  text-align: left;
 }
-.dashboard-record > image,
-.text-record-icon {
+.dashboard-record-media {
+  flex-shrink: 0;
   width: 56px;
   height: 56px;
-  min-width: 56px;
   border-radius: 12px;
   background: var(--subtle);
 }
@@ -478,45 +571,47 @@ watch(arranging, measureSection)
   align-items: center;
   justify-content: center;
 }
-.dashboard-record > view:nth-child(2) {
-  flex: 1;
+.dashboard-record-copy {
+  flex: 1 1 0;
   min-width: 0;
 }
-.dashboard-record > view:nth-child(2) > text:first-child {
+.dashboard-record-title,
+.dashboard-record-meta {
   display: block;
-  font-size: 14px;
-  font-weight: 550;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.dashboard-record > view:nth-child(2) > text:last-child {
-  display: block;
-  font-size: 11px;
+.dashboard-record-title {
+  font-size: 14px;
+  font-weight: 550;
+}
+.dashboard-record-meta {
+  margin-top: 5px;
   color: var(--muted);
-  margin-top: 7px;
+  font-size: 11px;
 }
 .record-state {
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: 10px;
   color: var(--muted);
   background: var(--subtle);
   padding: 4px 7px;
   border-radius: 6px;
 }
-.dashboard-record > text:last-child {
-  color: var(--muted);
-}
 .dashboard-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
+  width: 100%;
+  min-width: 0;
   text-align: center;
   padding: 44px 20px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 17px;
-  margin-top: 17px;
 }
 .empty-record-icon {
   display: flex;
@@ -528,11 +623,16 @@ watch(arranging, measureSection)
   border-radius: 17px;
   margin-bottom: 4px;
 }
-.dashboard-empty > text:nth-child(2) {
+.dashboard-empty-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dashboard-empty-title {
   font-size: 14px;
   font-weight: 550;
 }
-.dashboard-empty > text:nth-child(3) {
+.dashboard-empty-description {
   font-size: 12px;
   color: var(--muted);
   line-height: 1.9;
@@ -545,59 +645,91 @@ watch(arranging, measureSection)
 }
 @media (max-width: 760px) {
   .dashboard-title {
-    display: none;
-  }
-  .dashboard-intro {
-    margin: 0;
+    font-size: 14px;
+    font-weight: 550;
+    color: var(--muted);
   }
   .dashboard-heading {
     align-items: center;
-    margin: 0 0 10px;
+    margin: 0 0 8px;
+  }
+  .dashboard-actions,
+  .dashboard-arrangement {
+    gap: 8px;
   }
   .dashboard-action {
-    padding: 15px 13px;
-    gap: 11px;
-    border-radius: 16px;
+    min-height: 68px;
+    padding: 10px 12px;
+    gap: 10px;
+    border-radius: 15px;
   }
   .dashboard-action-icon {
-    width: 46px;
-    height: 46px;
-    border-radius: 13px;
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
   }
-  .dashboard-action-copy > text:first-child {
+  .dashboard-action-title {
     font-size: 16px;
+    line-height: 1.35;
   }
-  .dashboard-action-copy > text:last-child {
-    font-size: 11px;
+  .dashboard-action-description {
+    margin-top: 4px;
+    font-size: 12px;
+    line-height: 1.4;
   }
   .dashboard-recent {
-    margin-top: 20px;
+    margin-top: 10px;
   }
   .dashboard-record {
-    gap: 12px;
-    padding: 16px 0;
+    gap: 10px;
+    padding: 11px 9px;
   }
-  .dashboard-record > image,
-  .text-record-icon {
-    width: 48px;
-    height: 48px;
-    min-width: 48px;
+  .dashboard-record-media {
+    width: 44px;
+    height: 44px;
     border-radius: 10px;
   }
-  .dashboard-record > view:nth-child(2) > text:first-child {
+  .dashboard-record-title {
     font-size: 13px;
   }
-  .dashboard-record > view:nth-child(2) > text:last-child {
-    font-size: 10px;
+  .dashboard-record-meta {
+    font-size: 11px;
   }
   .record-state {
     display: none;
   }
   .dashboard-empty {
-    padding: 32px 17px;
+    min-height: 76px;
+    flex-direction: row;
+    gap: 10px;
+    padding: 12px;
+    text-align: left;
   }
-  .dashboard-empty > text:nth-child(3) {
+  .empty-record-icon {
+    flex-shrink: 0;
+    width: 38px;
+    height: 38px;
+    margin-bottom: 0;
+    border-radius: 12px;
+  }
+  .dashboard-empty-copy {
+    flex: 1;
+    min-width: 0;
+    gap: 3px;
+  }
+  .dashboard-empty-title {
+    line-height: 1.35;
+  }
+  .dashboard-empty-description {
     font-size: 11px;
+    line-height: 1.5;
+  }
+  .dashboard-empty > .button {
+    flex-shrink: 0;
+    min-width: 48px;
+    min-height: 40px;
+    margin-top: 0;
+    padding: 6px 10px;
   }
 }
 
@@ -623,18 +755,6 @@ watch(arranging, measureSection)
   color: var(--ink);
   font-weight: 550;
 }
-.dashboard-section-heading > button {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 7px 8px;
-  border-radius: 8px;
-}
-.dashboard-record {
-  padding-left: 10px;
-  padding-right: 10px;
-  border-radius: 12px;
-}
 .dashboard-empty {
   border-color: transparent;
   box-shadow: 0 2px 12px #00000003;
@@ -642,17 +762,36 @@ watch(arranging, measureSection)
 @media (max-width: 760px) {
   .dashboard-tabs {
     gap: 4px;
-    margin: 17px 0 8px;
-    padding-bottom: 6px;
+    margin: 12px 0 6px;
+    padding-bottom: 5px;
   }
   .dashboard-tabs > button {
-    flex: 1;
+    flex: 1 1 0;
     justify-content: center;
+    align-items: center;
     min-width: 0;
+    min-height: 44px;
     gap: 4px;
     padding: 8px 4px;
+    color: var(--muted);
     font-size: 12px;
+    font-weight: 550;
+    line-height: 1.35;
+  }
+  .dashboard-tabs > button.active {
+    background: var(--accent-soft);
+  }
+  .dashboard-tab-label {
+    flex-shrink: 0;
+    font-size: 12px;
+    line-height: 1.35;
     white-space: nowrap;
+  }
+}
+@media (max-width: 360px) {
+  .dashboard-mobile-scroll .dashboard {
+    padding-right: 12px;
+    padding-left: 12px;
   }
 }
 </style>

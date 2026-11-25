@@ -1,167 +1,152 @@
 <script setup lang="ts">
 import AppIcon from './AppIcon.vue'
-import AppearanceSwitch from './AppearanceSwitch.vue'
 import ChatTitle from './ChatTitle.vue'
+
 defineProps<{
   title: string
   page: string
   chat: boolean
   backLabel: string
-  userName?: string
   safeTop: number
   chatOptionsOpen: boolean
   historyOpen: boolean
+  search?: string
 }>()
 const emit = defineEmits<{
   back: []
   history: []
-  login: []
-  profile: []
   options: []
+  search: [value: string]
 }>()
+
+function updateSearch(event: unknown) {
+  const value = event as { detail?: { value?: string }; target?: { value?: string } }
+  emit('search', value.detail?.value ?? value.target?.value ?? '')
+}
 </script>
+
 <template>
   <view class="mobile-header" :style="{ paddingTop: safeTop ? safeTop + 'px' : undefined }">
-    <view class="mobile-primary">
-      <button
-        v-if="chat || page === 'settings' || page === 'history'"
-        class="mobile-back"
-        :aria-label="chat ? '退出咨询，' + backLabel : page === 'history' ? '返回首页' : '返回我的'"
-        @click="emit('back')"
-      >
-        <AppIcon name="back" :size="20" /><text>{{ chat ? '退出' : '返回' }}</text>
-      </button>
-      <button
-        v-else
-        class="mobile-menu"
-        aria-label="打开问诊历史"
-        :aria-expanded="historyOpen"
-        @click="emit('history')"
-      >
-        <AppIcon name="menu" :size="23" />
-      </button>
-      <view v-if="chat" class="mobile-chat-title">
-        <ChatTitle :title="title" :expanded="chatOptionsOpen" @open="emit('options')" />
-      </view>
-      <text v-else :key="title" class="mobile-title">{{ title }}</text>
-      <view class="mobile-actions">
+    <view class="mobile-primary" :class="{ 'has-search': search !== undefined }">
+      <view class="mobile-leading">
         <button
-          v-if="chat"
-          class="mobile-menu"
-          aria-label="打开问诊历史"
+          v-if="chat || page === 'settings' || page === 'history'"
+          class="mobile-header-action"
+          :aria-label="chat ? backLabel : page === 'history' ? '返回首页' : '返回我的'"
+          @click="emit('back')"
+        >
+          <AppIcon name="back" :size="21" />
+        </button>
+        <button
+          v-if="chat || page === 'identify'"
+          class="mobile-header-action"
+          aria-label="打开历史记录"
           :aria-expanded="historyOpen"
           @click="emit('history')"
         >
-          <AppIcon name="history" :size="21" />
-        </button>
-        <AppearanceSwitch v-if="page === 'profile' && !chat" />
-        <button v-if="!chat && !userName" class="mobile-login" @click="emit('login')">登录</button>
-        <button
-          v-else-if="!chat && userName"
-          class="mobile-account"
-          aria-label="用户中心"
-          @click="emit('profile')"
-        >
-          {{ userName.slice(0, 1).toUpperCase() }}
+          <AppIcon :name="chat ? 'history' : 'menu'" :size="21" />
         </button>
       </view>
+      <view v-if="search !== undefined" class="mobile-header-search">
+        <AppIcon name="search" :size="17" />
+        <input
+          :value="search"
+          :adjust-position="false"
+          aria-label="搜索历史记录"
+          inputmode="search"
+          placeholder="搜索作物、问题或备注"
+          confirm-type="search"
+          @input="updateSearch"
+        />
+        <button
+          v-if="search"
+          class="mobile-header-action clear-search"
+          aria-label="清除搜索"
+          @click="emit('search', '')"
+        >
+          <AppIcon name="close" :size="16" />
+        </button>
+      </view>
+      <view v-else class="mobile-center">
+        <ChatTitle v-if="chat" :title="title" :expanded="chatOptionsOpen" @open="emit('options')" />
+        <text v-else class="mobile-title" role="heading" aria-level="1">{{ title }}</text>
+      </view>
+      <view v-if="search === undefined" class="mobile-trailing" aria-hidden="true" />
     </view>
   </view>
 </template>
+
 <style scoped>
 .mobile-header {
-  display: none;
+  display: block;
+  flex: 0 0 auto;
+  padding-top: env(safe-area-inset-top, 0px);
+  background: var(--bg);
+  position: relative;
+  z-index: 45;
 }
-@media (max-width: 760px) {
-  .mobile-header {
-    display: block;
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 45;
-    background: var(--glass);
-    padding-top: env(safe-area-inset-top);
-  }
-  .mobile-primary {
-    height: 54px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 0 14px;
-    background: var(--glass);
-    position: relative;
-    z-index: 2;
-    border-bottom: 1px solid var(--line);
-  }
-  .mobile-menu,
-  .mobile-back {
-    height: 40px;
-    min-width: 40px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
-  }
-  .mobile-back {
-    padding: 0 7px;
-    background: var(--subtle);
-    font-size: 11px;
-  }
-  .mobile-title {
-    flex: 1;
-    min-width: 0;
-    font-size: 15px;
-    font-weight: 650;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    animation: header-title 0.16s ease;
-  }
-  .mobile-chat-title {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    justify-content: center;
-  }
-  .mobile-actions {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-shrink: 0;
-  }
-  .mobile-account {
-    width: 36px;
-    height: 36px;
-    border-radius: 12px;
-    background: var(--accent-soft);
-    color: var(--accent);
-    font-size: 13px;
-    font-weight: 650;
-  }
-  .mobile-login {
-    min-height: 36px;
-    padding: 6px 12px;
-    border-radius: 11px;
-    background: var(--subtle);
-    font-size: 12px;
-    font-weight: 550;
-  }
+.mobile-primary {
+  display: flex;
+  align-items: center;
+  min-height: 54px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--line);
 }
-@keyframes header-title {
-  from {
-    opacity: 0.4;
-    transform: translateY(3px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.mobile-leading,
+.mobile-trailing {
+  display: flex;
+  flex: 0 0 88px;
 }
-@media (prefers-reduced-motion: reduce) {
-  .mobile-title {
-    animation: none;
-  }
+.has-search .mobile-leading {
+  flex-basis: 44px;
+}
+.mobile-header-action {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+}
+.mobile-header-action:hover {
+  background: var(--hover);
+}
+.mobile-header-action:active,
+.mobile-header-action[aria-expanded='true'] {
+  background: var(--pressed);
+}
+.mobile-center {
+  display: flex;
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+}
+.mobile-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 650;
+}
+.mobile-header-search {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  gap: 8px;
+  padding: 0 4px 0 11px;
+  margin: 0 4px;
+  border-radius: 12px;
+  background: var(--subtle);
+}
+.mobile-header-search input {
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  font-size: 16px;
+}
+.clear-search {
+  width: 44px;
 }
 </style>

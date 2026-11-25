@@ -8,12 +8,16 @@ const props = defineProps<{
   busy: boolean
   loading: boolean
   lastResult?: CaseRecord | null
+  desktopWeb?: boolean
+  pausedUpload?: string
 }>()
 const emit = defineEmits<{
   crop: [value: Crop]
   capture: [source: 'camera' | 'album']
   resume: []
   result: []
+  'retry-upload': []
+  'identify-crop': []
 }>()
 const choices: [Crop, string][] = [
   ['wheat', '小麦'],
@@ -21,24 +25,17 @@ const choices: [Crop, string][] = [
   ['peanut', '花生'],
 ]
 const ready = computed(() => props.models.some((item) => item.crop === props.crop && item.ready))
-const scope = computed(() =>
-  props.loading
-    ? '正在准备识别服务…'
-    : ready.value
-      ? '小麦：条锈病、叶锈病、白粉病及健康参考'
-      : props.crop === 'wheat'
-        ? '图片识别暂不可用，仍可进行咨询。'
-        : '该作物暂未开放图片识别，可先咨询。',
-)
+const scope = computed(() => {
+  if (props.loading) return '正在准备识别服务…'
+  if (ready.value) return '已开放照片识别'
+  return props.crop === 'wheat'
+    ? '图片识别暂不可用，仍可询问 AI。'
+    : '该作物暂未开放图片识别，可先询问 AI。'
+})
 </script>
 <template>
   <view class="photo-page">
-    <view class="photo-heading"
-      ><view
-        ><text class="photo-title">拍照识别</text
-        ><text class="photo-subtitle">选择作物，拍摄或上传症状照片。</text></view
-      ></view
-    >
+    <text class="photo-subtitle">选择作物，拍摄或上传症状照片。</text>
     <view class="photo-panel">
       <view class="crop-choices" role="group" aria-label="选择照片中的作物"
         ><button
@@ -51,18 +48,30 @@ const scope = computed(() =>
           <AppIcon :name="id" :size="27" /><text>{{ name }}</text>
         </button></view
       >
+      <button class="crop-lookup-link" :disabled="busy" @click="emit('identify-crop')">
+        <AppIcon name="leaf" :size="17" />
+        <text>不确定作物？识别作物</text>
+        <AppIcon name="right" :size="15" />
+      </button>
       <view class="camera-stage"
         ><view class="camera-halo"
           ><button
             class="button primary camera-shutter"
-            aria-label="拍摄作物照片"
+            :aria-label="desktopWeb ? '从电脑上传作物照片' : '拍摄作物照片'"
             :disabled="busy"
-            @click="emit('capture', 'camera')"
+            @click="emit('capture', desktopWeb ? 'album' : 'camera')"
           >
-            <AppIcon name="camera" white :size="39" /></button></view
-        ><text class="camera-title">拍摄作物照片</text
-        ><text class="camera-description">对准有异常的叶片，保持画面清晰</text
-        ><button class="album-button" :disabled="busy" @click="emit('capture', 'album')">
+            <AppIcon :name="desktopWeb ? 'upload' : 'camera'" white :size="39" /></button></view
+        ><text class="camera-title">{{ desktopWeb ? '从电脑上传作物照片' : '拍摄作物照片' }}</text
+        ><text class="camera-description">{{
+          desktopWeb ? '选择清晰的症状近照，单张不超过 8MB' : '对准有异常的叶片，保持画面清晰'
+        }}</text
+        ><button
+          v-if="!desktopWeb"
+          class="album-button"
+          :disabled="busy"
+          @click="emit('capture', 'album')"
+        >
           <AppIcon name="upload" :size="17" /><text>从相册上传</text>
         </button></view
       >
@@ -70,6 +79,14 @@ const scope = computed(() =>
         ><view class="scope-dot" :class="{ ready }" /><text>{{ scope }}</text></view
       >
     </view>
+    <!-- #ifdef H5 -->
+    <view v-if="pausedUpload" class="paused-upload">
+      <text role="status">当前网络已断开。照片暂留在本页，联网后可继续上传。</text>
+      <button class="button quiet" @click="emit('retry-upload')">
+        继续上传{{ pausedUpload }}照片
+      </button>
+    </view>
+    <!-- #endif -->
     <button v-if="lastResult" class="recent-result" @click="emit('result')">
       <image :src="imageUrl(lastResult)" mode="aspectFill" />
       <view
@@ -80,14 +97,14 @@ const scope = computed(() =>
     <button
       class="photo-consult-entry"
       :disabled="busy"
-      aria-label="进入文字咨询"
+      aria-label="询问 AI"
       @click="emit('resume')"
     >
       <view class="photo-consult-icon"><AppIcon name="chat" :size="23" /></view>
-      <view><text>不拍照，直接问</text><text>咨询种植问题或了解药品作用</text></view>
+      <view><text>不拍照，直接问</text><text>询问种植问题或了解药品作用</text></view>
       <AppIcon name="right" :size="18" />
     </button>
-    <text class="photo-tip">可在同一次问诊中补充叶背和整株照片。单张不超过 8MB。</text>
+    <text class="photo-tip">可在同一条记录中补充叶背和整株照片。单张不超过 8MB。</text>
   </view>
 </template>
 <style scoped>
@@ -95,24 +112,9 @@ const scope = computed(() =>
   max-width: 680px;
   margin: 8px auto 20px;
 }
-.photo-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 15px;
-  margin-bottom: 26px;
-}
-.photo-heading > view {
-  min-width: 0;
-}
-.photo-title {
-  display: block;
-  font-size: 26px;
-  font-weight: 650;
-  letter-spacing: -0.5px;
-}
 .photo-subtitle {
   display: block;
+  margin-bottom: 18px;
   font-size: 13px;
   color: var(--muted);
   margin-top: 9px;
@@ -131,6 +133,22 @@ const scope = computed(() =>
   padding: 5px;
   margin: 20px 22px 0;
   border-radius: 13px;
+}
+.crop-lookup-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 4px 12px;
+  margin: 4px auto 0;
+  border-radius: 12px;
+  color: var(--accent);
+  font-size: 13px;
+}
+.crop-lookup-link:hover,
+.crop-lookup-link:active {
+  background: var(--hover);
 }
 .crop-choices > button {
   flex: 1;
@@ -226,12 +244,6 @@ const scope = computed(() =>
 @media (max-width: 760px) {
   .photo-page {
     margin: 5px auto 10px;
-  }
-  .photo-heading {
-    margin-bottom: 21px;
-  }
-  .photo-title {
-    font-size: 24px;
   }
   .photo-subtitle {
     font-size: 11px;
@@ -343,14 +355,28 @@ const scope = computed(() =>
   font-size: 11px;
 }
 @media (max-width: 760px) {
-  .photo-title {
-    display: none;
-  }
-  .photo-heading {
-    margin-bottom: 19px;
-  }
   .photo-subtitle {
     margin-top: 0;
   }
 }
+/* #ifdef H5 */
+.paused-upload {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 12px 14px;
+  margin-top: 12px;
+  border-radius: 14px;
+  background: var(--warning-soft);
+  color: var(--ink);
+  font-size: 13px;
+}
+@media (max-width: 760px) {
+}
+.album-button {
+  min-height: 44px;
+}
+/* #endif */
 </style>

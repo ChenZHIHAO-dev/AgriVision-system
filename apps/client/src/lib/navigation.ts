@@ -6,8 +6,8 @@ export interface ViewPath {
   caseId: string | null
   layers: CaseLayer[]
 }
-export function initialPath(): ViewPath {
-  return { page: 'identify', caseId: null, layers: [] }
+export function initialPath(page: MainPage = 'identify'): ViewPath {
+  return { page, caseId: null, layers: [] }
 }
 export function selectPage(path: ViewPath, page: MainPage): ViewPath {
   if (path.page === page) return path

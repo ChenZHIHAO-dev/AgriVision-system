@@ -1,7 +1,4 @@
 <script lang="ts">
-// #ifdef H5
-import { installViewportMetrics } from './lib/viewport'
-// #endif
 export default {
   onLaunch() {
     // #ifdef H5
@@ -35,7 +32,6 @@ export default {
         button.click()
       }
     })
-    installViewportMetrics()
     enhance()
     // #endif
   },

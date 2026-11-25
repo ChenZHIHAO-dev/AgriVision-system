@@ -5,6 +5,20 @@ from pydantic import BaseModel, Field, StringConstraints
 Crop = Literal["wheat", "maize", "peanut"]
 
 
+class CropCandidate(BaseModel):
+    id: str
+    name: str
+    score: float = Field(ge=0, le=1)
+
+
+class CropRecognitionResponse(BaseModel):
+    status: Literal["recognized", "uncertain", "needs_retake", "model_unavailable", "service_error"]
+    crop_id: str | None = None
+    candidates: list[CropCandidate] = Field(default_factory=list)
+    model_version: str | None = None
+    quality_issues: list[str] = Field(default_factory=list)
+
+
 class DemoRequest(BaseModel):
     crop: Crop = "wheat"
 
@@ -30,10 +44,7 @@ class LoginRequest(BaseModel):
     username: str = Field(min_length=1, max_length=24)
     password: str = Field(min_length=1, max_length=64, repr=False)
     remember: bool = False
-
-
-class RegisterRequest(LoginRequest):
-    name: str = Field(min_length=1, max_length=20)
+    continue_case_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
 
 
 class GuestEndRequest(BaseModel):

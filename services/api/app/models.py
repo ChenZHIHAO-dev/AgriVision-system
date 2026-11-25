@@ -3,6 +3,8 @@ import json
 from pathlib import Path
 import sys
 
+from ml.agrivision_ml import architecture_available
+
 from .knowledge import CROP_NAMES
 
 
@@ -19,12 +21,17 @@ class ModelRegistry:
             labels = raw["labels"]
             valid = (
                 (raw.get("validated") is True or (self.settings.allow_experimental_models and raw.get('development_ready') is True)) and not raw.get("development_only") and raw.get("crop") == crop
-                and raw.get("architecture") in {"efficientnet_b0", "mobilenet_v3_small"}
+                and architecture_available(raw.get("architecture"))
                 and len(labels) >= 2 and len(set(labels)) == len(labels)
                 and isinstance(raw.get("version"), str) and bool(raw["version"])
                 and isinstance(raw.get("input_size"), int) and 64 <= raw["input_size"] <= 1024
                 and isinstance(raw.get("label_names"), dict) and set(labels) <= set(raw["label_names"])
-                and all(label == 'healthy' or (label=='wheat_other' and crop=='wheat') or (self.knowledge.get(label) or {}).get("crop") == crop for label in labels)
+                # 模型标签属于模型包，资料卡可随后补充；仍校验作物命名空间，避免跨作物装载。
+                and all(
+                    label == "healthy" or label.startswith(crop + "_")
+                    or (self.knowledge.get(label) or {}).get("crop") == crop
+                    for label in labels
+                )
                 and (path.parent / "weights.pt").is_file()
                 and 0 < raw.get("threshold", 0) < 1
                 and 0 <= raw.get("margin", -1) < 1
@@ -35,13 +42,18 @@ class ModelRegistry:
 
     def status(self):
         torch_available = importlib.util.find_spec("torch") is not None
-        return [{
-            "crop": crop, "name": name,
-            "ready": bool(self.metadata(crop)) and torch_available,
-            "classes": len((self.metadata(crop) or {}).get("labels", [])),
-            "version": (self.metadata(crop) or {}).get("version"),
-            'experimental':bool((self.metadata(crop) or {}).get('development_ready')) and not (self.metadata(crop) or {}).get('validated',False),
-        } for crop, name in CROP_NAMES.items()]
+        statuses = []
+        for crop, name in CROP_NAMES.items():
+            metadata = self.metadata(crop) or {}
+            statuses.append({
+                "crop": crop,
+                "name": name,
+                "ready": bool(metadata) and torch_available,
+                "classes": len(metadata.get("labels", [])),
+                "version": metadata.get("version"),
+                "experimental": bool(metadata.get("development_ready")) and not metadata.get("validated"),
+            })
+        return statuses
 
     def predict(self, crop, image_path: Path):
         metadata = self.metadata(crop)

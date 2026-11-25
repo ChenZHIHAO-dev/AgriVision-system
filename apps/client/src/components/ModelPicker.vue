@@ -15,7 +15,7 @@ const options = [
   {
     value: 'deepseek-flash',
     label: 'DeepSeek Flash',
-    description: '日常咨询与公开资料检索',
+    description: '日常问答与公开资料检索',
   },
   {
     value: 'deepseek-v4-pro',

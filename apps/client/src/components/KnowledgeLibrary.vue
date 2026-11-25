@@ -46,47 +46,57 @@ const settling = ref(false)
 const openedByButton = ref(false)
 const toolsId = 'library-tools-' + Math.random().toString(36).slice(2, 8)
 const isCompact = computed(() => toolsOffset.value >= TOOLS_HEIGHT / 2)
+let nativeSticky = false
+// #ifdef MP-WEIXIN
+nativeSticky = true
+// #endif
+const showFilterToggle = computed(() => nativeSticky || isCompact.value || openedByButton.value)
 const filterLabel = computed(() => crops.find((crop) => crop.id === filter.value)?.name || '筛选')
 let scrollTop = 0
+let toolProgress = 0
 let idle: ReturnType<typeof setTimeout> | undefined
 
 const pinStyle = computed(() => {
-  // #ifndef H5
+  // #ifndef H5 || MP-WEIXIN
   return props.reading ? { transform: 'translateY(' + (props.readOffset || 0) + 'px)' } : undefined
   // #endif
 })
 
+function applyToolsOffset(offset: number, animate: boolean) {
+  toolProgress = offset
+  settling.value = animate
+  toolsOffset.value = offset
+}
+
 function scrollReading(nextTop: number) {
-  if (!props.reading) return
-  if (nextTop === scrollTop) return
+  if (!props.reading || nextTop === scrollTop) return
   clearTimeout(idle)
   openedByButton.value = false
-  settling.value = false
   const delta = nextTop - Math.max(TOP_MARGIN, scrollTop)
-  toolsOffset.value =
-    nextTop <= TOP_MARGIN ? 0 : Math.min(TOOLS_HEIGHT, Math.max(0, toolsOffset.value + delta))
+  toolProgress =
+    nextTop <= TOP_MARGIN ? 0 : Math.min(TOOLS_HEIGHT, Math.max(0, toolProgress + delta))
   scrollTop = nextTop
+  // On WeChat, only the secondary toolbar animates between its two positions.
+  // The search row remains pinned by WXSS, independently of scroll events.
+  if (!nativeSticky || toolProgress === 0 || toolProgress === TOOLS_HEIGHT) {
+    applyToolsOffset(toolProgress, nativeSticky)
+  }
   if (nextTop > TOOLS_HEIGHT + TOP_MARGIN && toolsOffset.value < TOOLS_HEIGHT) {
-    idle = setTimeout(() => {
-      settling.value = true
-      toolsOffset.value = TOOLS_HEIGHT
-    }, 1200)
+    idle = setTimeout(() => applyToolsOffset(TOOLS_HEIGHT, true), 1200)
   }
 }
 
 function toggleTools() {
   clearTimeout(idle)
-  settling.value = true
-  openedByButton.value = !openedByButton.value
-  toolsOffset.value = openedByButton.value ? 0 : TOOLS_HEIGHT
+  openedByButton.value = isCompact.value
+  applyToolsOffset(openedByButton.value ? 0 : TOOLS_HEIGHT, true)
 }
 
 function restartReading() {
   if (!props.reading) return
   clearTimeout(idle)
   openedByButton.value = false
-  settling.value = false
-  toolsOffset.value = 0
+  applyToolsOffset(0, false)
   emit('resetScroll')
 }
 
@@ -108,14 +118,15 @@ onBeforeUnmount(() => clearTimeout(idle))
           />
         </view>
         <button
-          v-if="isCompact || openedByButton"
+          v-if="showFilterToggle"
           class="reading-toggle"
-          :aria-label="openedByButton ? '收起资料工具' : '展开作物筛选与资料工具'"
+          :class="{ 'native-filter-toggle': nativeSticky }"
+          :aria-label="isCompact ? '展开作物筛选与资料工具' : '收起资料工具'"
           :aria-controls="toolsId"
-          :aria-expanded="openedByButton"
+          :aria-expanded="!isCompact"
           @click="toggleTools"
         >
-          <text>{{ openedByButton ? '收起' : filterLabel }}</text>
+          <text>{{ isCompact ? filterLabel : '收起' }}</text>
           <AppIcon name="chevron" :size="13" />
         </button>
       </view>
@@ -648,7 +659,7 @@ onBeforeUnmount(() => clearTimeout(idle))
   position: relative;
   z-index: 2;
   min-height: var(--reading-search-height);
-  /* #ifdef H5 */
+  /* #ifdef H5 || MP-WEIXIN */
   position: sticky;
   top: 0;
   /* #endif */
@@ -687,6 +698,9 @@ onBeforeUnmount(() => clearTimeout(idle))
   background: var(--subtle);
   color: var(--ink);
   font-size: 12px;
+}
+.native-filter-toggle {
+  width: 66px;
 }
 .reading-toggle[aria-expanded='true'] :deep(.app-icon) {
   transform: rotate(180deg);

@@ -67,7 +67,7 @@ const retryable = computed(
             ><text>{{ action }}</text></view
           ></view
         >
-        <text class="medication-note">具体用药请按产品标签和当地农技指导确认。</text>
+        <text class="result-note">照片识别结果和建议仅供参考，请以实际情况为准。</text>
         <view v-if="record.advice.products.length" class="matched-products"
           ><view v-for="product in record.advice.products" :key="product.id"
             ><text>{{ product.name }}</text
@@ -81,7 +81,7 @@ const retryable = computed(
         >
         <button
           v-if="retryable"
-          class="button secondary full-width"
+          class="button quiet full-width result-retry"
           :disabled="busy"
           @click="emit('retry')"
         >
@@ -282,12 +282,15 @@ const retryable = computed(
   color: var(--accent);
   font-size: 11px;
 }
-.medication-note {
+.result-note {
   display: block;
   font-size: 11px;
   color: var(--muted);
   line-height: 1.8;
   padding: 10px 0 16px;
+}
+.result-retry {
+  margin-bottom: 12px;
 }
 .details-toggle {
   display: flex;
@@ -380,7 +383,7 @@ const retryable = computed(
   .score-explanation {
     font-size: 9px;
   }
-  .medication-note {
+  .result-note {
     font-size: 10px;
   }
   .brief-sources > button {

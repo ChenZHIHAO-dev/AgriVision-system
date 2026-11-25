@@ -110,21 +110,21 @@ onUnmounted(() => {
       :style="{ '--drawer-safe-top': safeTop ? safeTop + 'px' : undefined }"
       role="dialog"
       aria-modal="true"
-      aria-label="咨询侧栏"
+      aria-label="对话侧栏"
     >
       <view class="drawer-heading">
         <button
           class="drawer-brand"
-          aria-label="返回宛农植保首页"
+          aria-label="返回宛田观叶首页"
           @click="emit('navigate', 'home')"
         >
           <view class="drawer-mark"><AppIcon name="leaf" tone="white" :size="20" /></view>
-          <text>宛农植保</text>
+          <text>宛田观叶</text>
         </button>
         <view class="drawer-heading-actions">
           <button
             class="drawer-icon-button drawer-search-toggle"
-            :aria-label="user ? '搜索历史问诊' : '登录后搜索历史问诊'"
+            :aria-label="user ? '搜索历史记录' : '登录后搜索历史记录'"
             :aria-expanded="searchOpen"
             @click="toggleSearch"
           >
@@ -132,7 +132,7 @@ onUnmounted(() => {
           </button>
           <button
             class="drawer-icon-button drawer-close"
-            aria-label="关闭咨询侧栏"
+            aria-label="关闭对话侧栏"
             @click="emit('close')"
           >
             <AppIcon name="close" :size="21" />
@@ -147,7 +147,7 @@ onUnmounted(() => {
           :adjust-position="false"
           :maxlength="80"
           confirm-type="search"
-          aria-label="搜索历史问诊"
+          aria-label="搜索历史记录"
           placeholder="搜标题、作物或对话"
           placeholder-class="drawer-search-placeholder"
           @keyboardheightchange="emit('keyboard', $event.detail.height)"
@@ -159,7 +159,7 @@ onUnmounted(() => {
 
       <view class="drawer-navigation">
         <button @click="emit('navigate', 'identify')">
-          <AppIcon name="camera" :size="18" /><text>拍照问诊</text>
+          <AppIcon name="camera" :size="18" /><text>拍照识别</text>
         </button>
       </view>
 
@@ -174,11 +174,11 @@ onUnmounted(() => {
 
       <view class="drawer-footer">
         <button class="drawer-new" @click="emit('new')">
-          <AppIcon name="new" :size="18" /><text>新建咨询</text>
+          <AppIcon name="new" :size="18" /><text>新建对话</text>
         </button>
         <button
           class="drawer-account"
-          :aria-label="user ? '打开我的账户' : '登录后保存问诊'"
+          :aria-label="user ? '打开我的账户' : '登录后查看记录'"
           @click="user ? emit('navigate', 'profile') : emit('login')"
         >
           <view class="drawer-avatar">
@@ -187,7 +187,7 @@ onUnmounted(() => {
           </view>
           <view class="drawer-account-copy">
             <text>{{ user ? user.name : '访客' }}</text>
-            <text>{{ user ? '我的账户' : '登录后保存问诊' }}</text>
+            <text>{{ user ? '我的账户' : '登录后查看记录' }}</text>
           </view>
           <AppIcon name="right" :size="15" />
         </button>
