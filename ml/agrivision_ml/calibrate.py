@@ -21,7 +21,7 @@ def calibrate(bundle, data_root, manifest, device='auto'):
     digest=hashlib.sha256(manifest.read_bytes()).hexdigest()
     if metadata['manifest_sha256']!=digest: raise ValueError('Calibration manifest differs from training')
     rows=[row for row in read_manifest(manifest) if row['split']=='val']
-    loader=DataLoader(Images(data_root,rows,metadata['labels'],metadata['input_size']),batch_size=24)
+    loader=DataLoader(Images(data_root,rows,metadata['labels'],metadata['input_size'],resize=metadata.get('resize','stretch')),batch_size=24)
     # 将所有验证样本的分类 logits 与真实标签收集起来，接下来多次试温度也能复用这份前向结果。
     logits,targets=[],[]
     with torch.inference_mode():

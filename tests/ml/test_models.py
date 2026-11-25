@@ -11,7 +11,7 @@ from ml.agrivision_ml.model import build_model
 from ml.agrivision_ml.train import Images, _task_metadata, read_manifest
 
 
-@pytest.mark.parametrize('architecture', ['efficientnet_b0', 'mobilenet_v3_small', 'convnext_tiny'])
+@pytest.mark.parametrize('architecture', ['efficientnet_b0', 'mobilenet_v3_small', 'convnext_tiny', 'efficientnet_v2_s'])
 def test_networks_support_configured_output_classes(architecture):
     torch.set_num_threads(4)
     network=build_model(architecture,4).eval()
@@ -74,7 +74,7 @@ def test_crop_bundle_calibration_and_evaluation_reject_reserved_predictions(tmp_
 
     for module in (calibrate, evaluate):
         monkeypatch.setattr(module, "Predictor", StaticPredictor)
-        monkeypatch.setattr(module, "Images", lambda *_: torch.utils.data.TensorDataset(logits, classes))
+        monkeypatch.setattr(module, "Images", lambda *_, **kwargs: torch.utils.data.TensorDataset(logits, classes))
         monkeypatch.setattr(module, "read_manifest", lambda _: [
             {"split": split} for split in ("val", "test") for _ in classes
         ])
@@ -93,3 +93,19 @@ def test_crop_bundle_calibration_and_evaluation_reject_reserved_predictions(tmp_
     metadata = json.loads(metadata_file.read_text(encoding="utf-8"))
     assert metadata["task"] == "crop_identification"
     assert metadata["validated"] and metadata["field_verified"]
+
+
+def test_letterbox_training_and_inference_share_geometry():
+    # 长方形图补边后仍保留原色区域比例。评估与推理调用同一变换。
+    from PIL import Image
+    from ml.agrivision_ml.augmentation import preprocessing, MEAN, STD
+    photo = Image.new("RGB", (400, 200), (255, 0, 0))
+    transform = preprocessing(224, resize="letterbox")
+    tensor = transform(photo)
+    decoded = tensor * torch.tensor(STD)[:, None, None] + torch.tensor(MEAN)[:, None, None]
+    assert tensor.shape == (3, 224, 224)
+    assert torch.allclose(decoded[:, 112, 112], torch.tensor([1., 0., 0.]), atol=1e-6)
+    assert torch.allclose(decoded[:, 0, 0], torch.tensor([124., 116., 104.])/255)
+    for _ in range(30):
+        augmented = preprocessing(224, True, resize="letterbox", augmentation="field")(photo)
+        assert augmented.shape == tensor.shape and torch.isfinite(augmented).all()

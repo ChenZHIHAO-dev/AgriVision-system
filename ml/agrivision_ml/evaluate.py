@@ -18,7 +18,7 @@ def evaluate(args):
     rows = [r for r in read_manifest(args.manifest) if r["split"] == args.split]
     if not rows:
         raise ValueError("No images in requested split")
-    loader = DataLoader(Images(args.data_root, rows, metadata["labels"], metadata["input_size"]), batch_size=8)
+    loader = DataLoader(Images(args.data_root, rows, metadata["labels"], metadata["input_size"], resize=metadata.get("resize", "stretch")), batch_size=8)
     # 先在整个划分上统计准确率、各类召回、Macro-F1 和混淆矩阵。
     report = evaluate_loader(predictor.model, loader, predictor.device, len(metadata["labels"]))
     report.update({"split": args.split, "manifest_sha256": hashlib.sha256(args.manifest.read_bytes()).hexdigest(), "model_version": metadata["version"], "field_verified": args.field_verified})

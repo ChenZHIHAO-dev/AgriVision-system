@@ -43,7 +43,10 @@ class Predictor:
         self.model = build_model(self.metadata["architecture"], len(self.labels))
         self.model.load_state_dict(torch.load(bundle / "weights.pt", map_location="cpu", weights_only=True))
         self.model.to(self.device).eval()
-        self.transform = preprocessing(self.metadata["input_size"])
+        # 新包从 metadata 还原等比补边方式；历史包缺少 resize 时沿用原来的拉伸规则。
+        self.transform = preprocessing(
+            self.metadata["input_size"], resize=self.metadata.get("resize", "stretch"),
+        )
 
     # 单张图变成 1×C×H×W 的批次张量，按校准温度计算类别分数，最后返回前 3 个候选。
     @torch.inference_mode()

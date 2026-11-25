@@ -73,10 +73,10 @@ def read_manifest(path):
 
 # 按需从清单读图。DataLoader 每请求一个索引，这里返回一个图像张量和对应的类别下标。
 class Images(Dataset):
-    def __init__(self, root, rows, labels, size, training=False):
+    def __init__(self, root, rows, labels, size, training=False, *, resize='stretch', augmentation='light'):
         self.root, self.rows, self.labels = root.resolve(), rows, labels
         # 训练传入 training=True，每次读图都会重新抽取增强参数。验证、校准和评估沿用固定的图像变换。
-        self.transform = preprocessing(size, training)
+        self.transform = preprocessing(size, training, resize=resize, augmentation=augmentation)
         self.verify_each_read = True
 
     def __len__(self):
@@ -154,7 +154,7 @@ def train(args):
     # 分别建立训练和验证 DataLoader。训练会随机打乱并增强，验证按固定顺序读图。测试集留给独立评估。
     loaders = {}
     for split in ('train','val'):
-        dataset = Images(args.data_root,[row for row in rows if row['split']==split],labels,args.input_size,split=='train')
+        dataset = Images(args.data_root,[row for row in rows if row['split']==split],labels,args.input_size,split=='train', resize=args.resize, augmentation=args.augmentation)
         # 启动前已经查过文件哈希，训练轮次里直接解码即可。workers 控制读图进程，CUDA 时使用锁页内存。
         dataset.verify_each_read = False
         workers = getattr(args,'workers',0)
@@ -167,9 +167,11 @@ def train(args):
     # CUDA 可以使用 AMP 混合精度。自动模式下 MobileNetV4 用 FP32，其他 CUDA 架构用 AMP。
     precision = getattr(args, "precision", "auto")
     use_amp = device.type == "cuda" and (
-        precision == "amp" or (precision == "auto" and args.architecture != MOBILENET_V4)
+        precision in {"amp", "bf16"} or (precision == "auto" and args.architecture != MOBILENET_V4)
     )
-    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+    # BF16 保留较大的指数范围，在本机 Ampere 显卡上可避免 FP16 溢出造成的跳步。
+    amp_dtype = torch.bfloat16 if precision == "bf16" else torch.float16
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp and precision != "bf16")
     updates = 0
 
     # 只统计实际执行的优化器更新。AMP 遇到无效梯度时可能跳过一步，读过一个批次并不一定更新了参数。
@@ -181,15 +183,20 @@ def train(args):
     # 按训练集中的类别频率设置损失权重。样本少的类权重较高，读图比例仍由 DataLoader 决定。
     counts = np.array([sum(row['label']==label and row['split']=='train' for row in rows) for label in labels])
     if not counts.all(): raise ValueError('Every class needs training images')
-    class_weights = torch.tensor(counts.sum()/(len(labels)*counts),dtype=torch.float32,device=device)
+    class_weights = torch.tensor((counts.sum()/(len(labels)*counts)) ** args.class_weight_power,dtype=torch.float32,device=device)
     # 用余弦调度降低学习率，目标下限是初始学习率的 5%。后面只在当轮确有参数更新时推进调度。
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=args.epochs,eta_min=args.lr*.05)
     best, stale, history = -1., 0, []
     args.output.mkdir(parents=True, exist_ok=True)
     # 模型包记录结构、标签顺序、输入尺寸、清单哈希和训练参数。校准、评估和部署都需要按这些信息解释权重。
-    metadata = {"schema_version": 1, **task_metadata, "architecture": args.architecture, "labels": labels, "label_names": config["labels"], "input_size": args.input_size, "normalization": "imagenet", "resize": "stretch", "version": datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S"), "threshold": .7, "margin": .12, "validated": False, "development_only": args.development_only or bool(args.max_batches), "manifest_sha256": hashlib.sha256(args.manifest.read_bytes()).hexdigest(), "seed": args.seed}
+    metadata = {"schema_version": 1, **task_metadata, "architecture": args.architecture, "labels": labels, "label_names": config["labels"], "input_size": args.input_size, "normalization": "imagenet", "resize": args.resize, "augmentation": args.augmentation, "version": datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S"), "threshold": .7, "margin": .12, "validated": False, "development_only": args.development_only or bool(args.max_batches), "manifest_sha256": hashlib.sha256(args.manifest.read_bytes()).hexdigest(), "seed": args.seed}
     metadata.update({'pretrained':not args.no_pretrained,'temperature':1.0,'release_stage':'training','training_config':{key:str(value) if isinstance(value,Path) else value for key,value in vars(args).items()},'train_counts':counts.tolist(),'torch':torch.__version__,'device':str(device)})
-    metadata["precision"] = "amp" if use_amp else "fp32"
+    metadata["precision"] = precision if use_amp else "fp32"
+    # 本轮实际参数和代码版本写进模型包，便于复现和回滚。
+    import subprocess
+    metadata["code_commit"] = subprocess.run(
+        ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True,
+    ).stdout.strip()
     train_loader = loaders["train"]
     # max_batches 可截取少量训练批次做流程检查。这类模型包会标为仅供开发使用。
     train_steps = min(len(train_loader), args.max_batches) if args.max_batches > 0 else len(train_loader)
@@ -202,11 +209,17 @@ def train(args):
         model.train(train_backbone)
         model.requires_grad_(train_backbone)
         model.classifier.train().requires_grad_(True)
+        # 可固定预训练 BN 统计，卷积参数和 BN 的仿射参数仍参与微调。
+        if args.freeze_bn:
+            for module in model.modules():
+                if isinstance(module, torch.nn.modules.batchnorm._BatchNorm):
+                    module.eval()
         # 为当前轮次单独累计加权损失、权重和 Top-1 正确数。
         loss_sum = torch.zeros((), device=device)
         weight_sum = torch.zeros_like(loss_sum)
         correct = torch.zeros((), dtype=torch.long, device=device)
         samples = 0
+        max_gradient_norm = 0.0
         # 逐批读取训练集。进度条的总批次数也会反映 max_batches 的限制。
         with tqdm(
             islice(train_loader, train_steps), total=train_steps, desc=f"{epoch_progress} train",
@@ -219,11 +232,15 @@ def train(args):
                 # 每批清掉上一批梯度。前向得到 logits，计算加权平均损失，再反向传播和更新参数。
                 optimizer.zero_grad(set_to_none=True)
                 target = target.to(device)
-                with torch.autocast(device_type=device.type, enabled=use_amp):
+                with torch.autocast(device_type=device.type, enabled=use_amp, dtype=amp_dtype):
                     logits = model(images.to(device))
                     batch_loss, batch_weight = classification_loss(logits, target, class_weights)
                     loss = batch_loss / batch_weight
                 scaler.scale(loss).backward()
+                # 先还原梯度尺度再裁剪。记录裁剪前范数，帮助定位后续 loss 突增。
+                scaler.unscale_(optimizer)
+                gradient_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+                max_gradient_norm = max(max_gradient_norm, float(gradient_norm))
                 scaler.step(optimizer)
                 scaler.update()
                 # 记录指标时从计算图分离损失和预测，避免把反向传播的数据保留到后续批次。
@@ -242,8 +259,12 @@ def train(args):
             "train_accuracy": correct.item() / samples if samples else None,
             "seconds": round(time.perf_counter() - started, 2),
             "lr": optimizer.param_groups[0]["lr"],
+            "train_images_seen": samples,
+            "max_gradient_norm": max_gradient_norm,
         })
         report["optimizer_updates"] = updates - previous_updates
+        # 每个 epoch 保存最后状态，异常之后可以检查实际权重；最佳权重另存 weights.pt。
+        torch.save(model.state_dict(), args.output / "last-weights.pt")
         history.append(report)
         print(json.dumps({
             "epoch": epoch + 1,
@@ -293,9 +314,14 @@ def parser():
     result.add_argument("--seed", type=int, default=42)
     result.add_argument("--device", default="auto")
     result.add_argument(
-        "--precision", choices=("auto", "fp32", "amp"), default="auto",
+        "--precision", choices=("auto", "fp32", "amp", "bf16"), default="auto",
         help="Auto uses FP32 for MobileNetV4 and CPU, AMP for other CUDA models",
     )
+    result.add_argument("--resize", choices=("stretch", "letterbox"), default="stretch")
+    result.add_argument("--augmentation", choices=("light", "field"), default="light")
+    result.add_argument("--class-weight-power", type=float, default=1.0)
+    result.add_argument("--grad-clip", type=float, default=1.0)
+    result.add_argument("--freeze-bn", action="store_true")
     result.add_argument('--workers',type=int,default=2)
     result.add_argument("--no-pretrained", action="store_true")
     result.add_argument("--max-batches", type=int, default=0, help="Limit training batches only, keeping full validation")
