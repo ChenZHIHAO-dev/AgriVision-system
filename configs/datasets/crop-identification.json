@@ -1,0 +1,159 @@
+{
+  "task": "crop_identification",
+  "description": "目标种类清单，不代表已收齐数据或已上线的模型类别。先按真实照片覆盖情况决定首发范围。",
+  "targets": [
+    {
+      "id": "wheat",
+      "name": "小麦",
+      "scientific_name": "Triticum aestivum"
+    },
+    {
+      "id": "maize",
+      "name": "玉米",
+      "scientific_name": "Zea mays"
+    },
+    {
+      "id": "peanut",
+      "name": "花生",
+      "scientific_name": "Arachis hypogaea"
+    },
+    {
+      "id": "rice",
+      "name": "水稻",
+      "scientific_name": "Oryza sativa"
+    },
+    {
+      "id": "soybean",
+      "name": "大豆",
+      "scientific_name": "Glycine max",
+      "excluded_taxa": [
+        "Glycine max subsp. soja"
+      ],
+      "taxonomy_note": "GBIF 将野大豆作为 Glycine max 下的亚种收录，本任务栽培大豆类别排除它。"
+    },
+    {
+      "id": "sweet_potato",
+      "name": "红薯",
+      "scientific_name": "Ipomoea batatas"
+    },
+    {
+      "id": "rapeseed",
+      "name": "甘蓝型油菜",
+      "scientific_name": "Brassica napus"
+    },
+    {
+      "id": "sesame",
+      "name": "芝麻",
+      "scientific_name": "Sesamum indicum"
+    },
+    {
+      "id": "tomato",
+      "name": "番茄",
+      "scientific_name": "Solanum lycopersicum"
+    },
+    {
+      "id": "cucumber",
+      "name": "黄瓜",
+      "scientific_name": "Cucumis sativus"
+    },
+    {
+      "id": "watermelon",
+      "name": "西瓜",
+      "scientific_name": "Citrullus lanatus"
+    },
+    {
+      "id": "pepper",
+      "name": "辣椒",
+      "scientific_name": "Capsicum annuum"
+    },
+    {
+      "id": "grape",
+      "name": "葡萄",
+      "scientific_name": "Vitis vinifera"
+    },
+    {
+      "id": "peach",
+      "name": "桃",
+      "scientific_name": "Prunus persica"
+    }
+  ],
+  "collection": {
+    "provider": "GBIF occurrence search",
+    "url": "https://techdocs.gbif.org/en/openapi/v1/occurrence",
+    "default_country": "CN",
+    "photo_license_allowlist": [
+      "CC0",
+      "CC-BY",
+      "CC-BY-SA"
+    ],
+    "review_required": [
+      "物种标注",
+      "叶片/整株/花/果实等器官",
+      "水印及拼图",
+      "非目标植物/模糊/遮挡",
+      "同一次观察归组"
+    ],
+    "note": "来自公开人类观察记录，标签并非人工复核结论；默认不收 NC/ND/缺少许可的照片。中国范围不足时保留缺口，不用增加噪声替代真实样本。"
+  },
+  "surveyed_sources": [
+    {
+      "id": "cropdeep",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6427818/",
+      "region": "中国研究团队温室采集，具体拍摄地区需作者确认",
+      "images": 31147,
+      "classes": "30 个作物/生长阶段类别 + person",
+      "organs": "叶、花、果实、多生长阶段和温室环境",
+      "license": "论文 CC-BY 不等于数据许可；数据条款需作者确认",
+      "availability": "原文明确需邮件向通讯作者索取，无已核验直接下载地址",
+      "status": "needs_author_request"
+    },
+    {
+      "id": "plantnet-300k-v2",
+      "url": "https://zenodo.org/records/10419064",
+      "paper": "https://openreview.net/pdf?id=eLYinD0TtIt",
+      "region": "公众植物观察；本版元数据不含逐图地区字段",
+      "images": 306087,
+      "species": 1000,
+      "organs": "leaf, flower, habit, fruit 等",
+      "license": "逐图 cc-by-sa/cc-by-nc/cc-by-nc-sa；不能只看 Zenodo 页面 CC-BY",
+      "availability": "已下载两份元数据；未下载 41.8 GB 全图包",
+      "scope_check": "核对后 14 个初选目标物种均不在本版 species_metadata.csv，不用于当前目标分类训练",
+      "status": "metadata_only_out_of_scope"
+    },
+    {
+      "id": "plantclef-2025",
+      "url": "https://www.imageclef.org/node/332",
+      "region": "以欧洲西南部植物区系为主",
+      "images": "约 140 万",
+      "species": "约 7800",
+      "organs": "单株、多器官训练；多物种样方测试是不同输入任务",
+      "license": "须保留逐图许可/作者，不能整体假定一种许可",
+      "availability": "160/281 GB 单株图包；本轮未下载",
+      "status": "candidate_for_transfer_not_local_field_validation"
+    },
+    {
+      "id": "aarhus-plant-seedlings-v2",
+      "url": "https://vision.eng.au.dk/plant-seedlings-dataset/",
+      "paper": "https://arxiv.org/abs/1711.05458",
+      "region": "丹麦 Aarhus Flakkebjerg",
+      "plants": "约 960 株，重复时序拍摄",
+      "species": 12,
+      "organs": "幼苗（玉米、小麦、甜菜和 9 类杂草）",
+      "license": "CC-BY-SA，要求引用",
+      "availability": "V2 约 1.7 GB，官方可下载；本轮未下载",
+      "status": "auxiliary_seedlings_only_not_whole_lifecycle"
+    },
+    {
+      "id": "cropandweed",
+      "url": "https://github.com/cropandweed/cropandweed-dataset",
+      "paper": "https://openaccess.thecvf.com/content/WACV2023/papers/Steininger_The_CropAndWeed_Dataset_A_Multi-Modal_Learning_Approach_for_Efficient_Crop_WACV_2023_paper.pdf",
+      "region": "奥地利多田块及室外试验场",
+      "images": 8034,
+      "species": 74,
+      "organs": "早期生长阶段，实例框/掩码/茎位置",
+      "license": "自定义非商业许可，限制数据再分发；见原仓库 LICENCE",
+      "availability": "原作者公开下载入口；本轮未下载",
+      "status": "research_candidate_license_and_target_scope_review"
+    }
+  ]
+}

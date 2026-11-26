@@ -392,3 +392,88 @@ uv pip install --python .venv/Scripts/python.exe -r requirements-ml.txt
 阅读源码从 [cross_validation.py](../ml/agrivision_ml/cross_validation.py) 的 `make_folds`、`prepare`、`run` 开始。需要修改最大轮数可加 `--epochs`；需要比较增强可用 `--augmentation field`，用另一个明确命名的**实验结果目录**，不要复制数据。保持相同折划分比较才有意义。
 
 本轮额外逐张复核了 3 对相似图候选：2 对是同一叶片的不同照片，写入 `data/wheat/review/confirmed-group-links.csv`，交叉验证前合组；另 1 对是病叶与健康麦穗，属于哈希误报，不合并。原工作清单和七组历史结果没有改写。已修复近重复索引的 4 段候选漏检问题，新预处理使用 7 段覆盖 6 位距离阈值；感知相似仍不等于标注正确。
+
+## 10. 玉米与花生：从来源到训练（2026-11-27）
+
+仍在项目根目录 `F:\college\AgriVision` 的 PowerShell 中运行，使用同一个 `.venv`。本节所有输出都是固定路径；当前已经完成的下载和预处理不需要重复运行。
+
+### 10.1 查看原始来源和筛选表
+
+原始来源配置在 `configs/datasets/maize-peanut.json`，类别中文名在 `configs/labels/maize.json` 和 `peanut.json`。原图只有一份，位于 `data/<作物>/sources`。执行下面的命令重新检查已有原图，更新数量、尺寸、重复、来源和标签审计；不做增强、不训练：
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.preprocessing.source_collection --audit
+```
+
+下载缺失的 Mendeley 原始文件用下面命令。程序按配置中的来源、许可和文件校验值保存，已校验的文件会复用：
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.preprocessing.source_collection --download
+```
+
+PlantVillage 彩色玉米四类使用单独的作者数据入口；不下载灰度、去背景副本：
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.preprocessing.plantvillage_source
+```
+
+以下两条把来源审计整理为可编辑的 `data/<作物>/review/disease-review.csv`，并打印统计。**只检查，不生成工作图**。人工筛选时修改 `decision` 为 `keep`、`drop` 或留空，CSV 用 UTF-8 保存：
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.preprocessing.crop_review --crop maize --check
+```
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.preprocessing.crop_review --crop peanut --check
+```
+
+`review_basis=source_labels_internal_experiment` 表示本轮明确接受原作者标签做内部实验，**不是已逐张人工审核**。来源被标为 hold、无可靠病名、已有增强却无母图关系的照片不会被此开关放入训练；人工 drop 也会保留。当前尚无完整同叶/同株 ID，近重复分组不能补造这些采集信息。
+
+### 10.2 预处理：当前已经完成
+
+| 工作集 | 来源与范围 | 工作图 / 近重复组 | train / val / test |
+| --- | --- | --- | --- |
+| `data/maize/prepared` | PlantVillage：大斑、普通锈、灰斑、健康四类 | 3,704 / 3,655 | 2,587 / 553 / 564 |
+| `data/peanut/prepared` | x6x5jkk873 v2：叶斑病类、链格孢叶斑、锈病、健康四类 | 1,600 / 1,291 | 1,123 / 237 / 240 |
+
+玉米输入 3,852 张，其中 148 张落在 15 个近重复跨标签冲突组，已暂缓并保留原图；这不是人工确认其中哪张错标。花生输入已做精确像素去重，工作图仍为 1,600 张。玉米主要 256×256，花生工作图为 1024×769；预处理保留长宽比，不在这一步拉伸成方形。训练/推理再使用同样的等比例缩放与补边到模型输入大小。
+
+下面记录的是**首次生成工作集时实际使用的命令**，供读源码和重新准备时参考。现在 prepared 已存在，直接重跑会提示已存在，避免覆盖正在训练的数据。要调整数据，先改同一份筛选表并核对统计，在没有实验读取时再明确替换这份工作集，不新增 01/02 目录：
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.preprocessing.crop_review --crop maize --source plantvillage-maize-color --accept-source-labels --output data/maize/prepared
+```
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.preprocessing.crop_review --crop peanut --source mendeley-x6x5jkk873-v2 --accept-source-labels --output data/peanut/prepared
+```
+
+入口是 `preprocessing/crop_review.py`，复用 `wheat_review.build_dataset`：解码、方向校正、RGB/JPEG 工作图、去重分组、按组划分，最后写 `manifest.csv`、`sources.csv`、`labels.json`、`manifest.report.json`。这一步**没有做随机数据增强**。
+
+本轮玉米没有把厄瓜多尔小斑病直接拼成第五类：那样可能让模型靠不同来源的背景区分病种。厄瓜多尔图保留为另一个待核来源；南非田间图单独用于外测设计，不混入训练。花生锈病只有 120 张，早晚叶斑也没有分开，仍需继续补足来源和可靠标签。
+
+### 10.3 交叉验证与在线增强
+
+先生成五折 CSV，不复制照片、不训练：
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.cross_validation --data-root data/maize/prepared/images --manifest data/maize/prepared/manifest.csv --labels data/maize/prepared/labels.json --output artifacts/experiments/maize-cv
+```
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.cross_validation --data-root data/peanut/prepared/images --manifest data/peanut/prepared/manifest.csv --labels data/peanut/prepared/labels.json --output artifacts/experiments/peanut-cv
+```
+
+加 `--run` 才开始训练。当前小麦队列占用 GPU，**不要同时另开玉米、花生训练**；按小麦 → 玉米 → 花生串行。完整训练命令：
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.cross_validation --data-root data/maize/prepared/images --manifest data/maize/prepared/manifest.csv --labels data/maize/prepared/labels.json --output artifacts/experiments/maize-cv --run
+```
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.cross_validation --data-root data/peanut/prepared/images --manifest data/peanut/prepared/manifest.csv --labels data/peanut/prepared/labels.json --output artifacts/experiments/peanut-cv --run
+```
+
+默认比较 Swin-T 224 与 ConvNeXt-Tiny 320，每方案五折、每折最多 20 epoch。`augmentation.py` 在 `train.py` 每批读取时随机变换，增强图只在内存中使用，不另存一批照片。验证、校准和外层评估不做随机增强。少数类当前用损失权重调整，不声称通过生成图片增加了独立样本数量。
+
+玉米/花生这些折只保证已知近重复组隔离，是**来源内部的模型对照**；没有真实植株 ID，不能称为跨植株、跨田块或国内田间验证。部署前还需看独立来源、混淆类别和手机真图结果。最终指标继续汇总在本文件，不另建多个实验 Markdown。

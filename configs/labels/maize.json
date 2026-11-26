@@ -1,1 +1,11 @@
-{"crop":"maize","labels":{"maize_northern_blight":"玉米大斑病","maize_southern_blight":"玉米小斑病","maize_common_rust":"玉米普通锈病","maize_southern_rust":"玉米南方锈病","healthy":"未发现已支持病害的明显特征"}}
+{
+  "crop": "maize",
+  "labels": {
+    "maize_northern_blight": "玉米大斑病",
+    "maize_southern_blight": "玉米小斑病",
+    "maize_common_rust": "玉米普通锈病",
+    "maize_southern_rust": "玉米南方锈病",
+    "healthy": "未发现已支持病害的明显特征",
+    "maize_gray_leaf_spot": "玉米灰斑病"
+  }
+}

@@ -1,0 +1,239 @@
+{
+  "schema_version": 1,
+  "reviewed_on": "2026-11-27",
+  "note": "只采集原始来源，不自动授权加入训练；每个来源保留区域、许可、原标签和审核状态。",
+  "sources": [
+    {
+      "id": "mendeley-22p2vcbxfk-v3",
+      "crop": "peanut",
+      "provider": "mendeley",
+      "dataset_id": "22p2vcbxfk",
+      "version": 3,
+      "url": "https://data.mendeley.com/datasets/22p2vcbxfk/3",
+      "paper": "https://doi.org/10.1016/j.dib.2023.109185",
+      "license": "CC BY 4.0",
+      "region": "India, Koppal, Karnataka",
+      "download": true,
+      "default_review": "hold",
+      "notes": [
+        "原文称10361张、6类；有预处理，独立原图数待核实。",
+        "Early Rust与Rust保留原标签，但不能当两种疾病；营养缺乏不是病原病害。",
+        "本地发现大量dr_命名的派生增强图且原图映射缺失，整来源先hold，不用于验证/测试；不能依据dr_后的序号认定母图。",
+        "全量解码10361张，其中10个精确像素重复条目，8个涉及healthy/营养缺乏标签冲突；不自动重标。"
+      ],
+      "part": "leaf",
+      "label_map": {
+        "early_leaf_spot_1": "peanut_early_leaf_spot",
+        "late_leaf_spot_1": "peanut_late_leaf_spot",
+        "early_rust_1": "peanut_rust",
+        "rust_1": "peanut_rust",
+        "healthy_leaf_1": "healthy",
+        "nutrition_deficiency_1": "peanut_nutrient_deficiency"
+      },
+      "hold_reason": "包含大量既有增强图，母图对应关系不完整；先不参与训练/验证/测试。",
+      "visual_review": {
+        "sample_count": 48,
+        "method": "每个原始类别按文件名排序均匀抽取最多8张，查看联系表",
+        "finding": "抽样未见明显文字水印或拼图；未逐图人工审核，不能保证全库无水印",
+        "reviewed_on": "2026-11-27"
+      }
+    },
+    {
+      "id": "mendeley-x6x5jkk873-v2",
+      "crop": "peanut",
+      "provider": "mendeley",
+      "dataset_id": "x6x5jkk873",
+      "version": 2,
+      "url": "https://data.mendeley.com/datasets/x6x5jkk873/2",
+      "paper": "https://doi.org/10.1016/j.dib.2024.110763",
+      "license": "CC BY 4.0",
+      "region": "India, Ramchandrapur, Purba Medinipur, West Bengal",
+      "download": true,
+      "default_review": "review",
+      "notes": [
+        "公共子目录核实1720张原图、约521 MB；原文报告4624x3472，实际分辨率由审计确认。",
+        "早晚叶斑病混合标注，不可硬拆两个类别；Rosette的国内适用性待核实。"
+      ],
+      "part": "leaf",
+      "label_map": {
+        "ALTERNARIA LEAF SPOT": "peanut_alternaria_leaf_spot",
+        "HEALTHY": "healthy",
+        "LEAF SPOT (EARLY AND LATE)": "peanut_leaf_spot",
+        "ROSETTE": "",
+        "RUST": "peanut_rust"
+      },
+      "hold_labels": {
+        "ROSETTE": "国内部署病种范围未核实；仅保留原图，不列为支持疾病。"
+      },
+      "visual_review": {
+        "sample_count": 40,
+        "method": "每个原始类别按文件名排序均匀抽取最多8张，查看联系表",
+        "finding": "抽样未见明显文字水印或拼图；未逐图人工审核，不能保证全库无水印",
+        "reviewed_on": "2026-11-27"
+      }
+    },
+    {
+      "id": "mendeley-49dd6srhm6-v1",
+      "crop": "maize",
+      "provider": "mendeley",
+      "dataset_id": "49dd6srhm6",
+      "version": 1,
+      "url": "https://data.mendeley.com/datasets/49dd6srhm6/1",
+      "license": "CC BY 4.0",
+      "region": "unknown",
+      "download": true,
+      "default_review": "hold",
+      "notes": [
+        "发布页没有采集地点、方法和类别细节，不能按作者姓名认定国内来源。",
+        "实际3214张256x256，单Corn目录+siglip2描述，缺可信人工病类标签，不能用于监督疾病训练。"
+      ],
+      "part": "leaf",
+      "label_map": {},
+      "hold_reason": "缺少可核实的疾病类别标注，仅有模型描述。",
+      "visual_review": {
+        "sample_count": 8,
+        "method": "每个原始类别按文件名排序均匀抽取最多8张，查看联系表",
+        "finding": "抽样未见明显文字水印或拼图；未逐图人工审核，不能保证全库无水印",
+        "reviewed_on": "2026-11-27"
+      }
+    },
+    {
+      "id": "cds-osf-s6ru5",
+      "crop": "maize",
+      "provider": "osf",
+      "url": "https://osf.io/s6ru5/",
+      "paper": "https://arxiv.org/abs/2110.12084",
+      "license": "unconfirmed: public OSF node_license is null",
+      "region": "USA, ACRE, West Lafayette, Indiana",
+      "download": false,
+      "default_review": "hold",
+      "notes": [
+        "论文1597张分类原图、三类；另有增强图及严重度图，不能混作独立样本。",
+        "原始OSF可访问但未找到明确数据许可，暂缓下载，未以镜像许可代替作者许可。"
+      ],
+      "part": "leaf"
+    },
+    {
+      "id": "mendeley-hmkd6nbngr-v1",
+      "crop": "maize",
+      "provider": "mendeley",
+      "dataset_id": "hmkd6nbngr",
+      "version": 1,
+      "url": "https://data.mendeley.com/datasets/hmkd6nbngr/1",
+      "license": "CC BY 4.0",
+      "region": "unknown / mixed public repositories",
+      "download": false,
+      "default_review": "hold",
+      "notes": [
+        "1.70 GB，混合田间与已有公开库，需厘清来源、重复和标签；不重复下载扩大表面数量。"
+      ],
+      "part": "leaf"
+    },
+    {
+      "id": "mendeley-w56xxnykcc-v1",
+      "crop": "maize",
+      "provider": "mendeley",
+      "dataset_id": "w56xxnykcc",
+      "version": 1,
+      "url": "https://data.mendeley.com/datasets/w56xxnykcc/1",
+      "license": "CC BY 4.0",
+      "region": "Ecuador, Manabi, three experimental plantations",
+      "download": true,
+      "default_review": "review",
+      "notes": [
+        "1079张田间叶片原图，约239 MB；地理与设备元数据随图提供。",
+        "页面把common rust与Southern rust混用，锈病类必须核对后才能映射；asphalt_stain和stenocarpella也需核实国内适用范围。",
+        "Data.csv含N1/N2/N3三个地块和地理位置，作为collection_group保留；没有单株/同叶ID。类别与地块有混杂，不能当足量5折独立采集组。"
+      ],
+      "part": "leaf",
+      "label_map": {
+        "bipolaris": "maize_southern_blight",
+        "healthy": "healthy",
+        "asphalt_stain": "",
+        "common_rust": "",
+        "stenocarpella": ""
+      },
+      "hold_labels": {
+        "common_rust": "发布页同时写common rust和Southern rust，暂不猜测。",
+        "asphalt_stain": "Phyllachora maydis，国内病种范围与标签译名待核实。",
+        "stenocarpella": "国内病种范围与标签译名待核实。"
+      },
+      "visual_review": {
+        "sample_count": 40,
+        "method": "每个原始类别按文件名排序均匀抽取最多8张，查看联系表",
+        "finding": "抽样未见明显文字水印或拼图；未逐图人工审核，不能保证全库无水印",
+        "reviewed_on": "2026-11-27"
+      },
+      "metadata_csv": "CornLeafDiseaseCollection/Data.csv",
+      "metadata_delimiter": ";"
+    },
+    {
+      "id": "plantvillage-maize-color",
+      "crop": "maize",
+      "provider": "github",
+      "url": "https://github.com/spMohanty/PlantVillage-Dataset",
+      "license": "CC BY-SA 3.0",
+      "license_evidence": "https://huggingface.co/datasets/mohanty/PlantVillage/raw/main/README.md",
+      "region": "USA (controlled-background collection; per-image region not supplied)",
+      "part": "leaf",
+      "download": false,
+      "default_review": "review",
+      "label_map": {
+        "Corn_(maize)___Cercospora_leaf_spot Gray_leaf_spot": "maize_gray_leaf_spot",
+        "Corn_(maize)___Common_rust_": "maize_common_rust",
+        "Corn_(maize)___Northern_Leaf_Blight": "maize_northern_blight",
+        "Corn_(maize)___healthy": "healthy"
+      },
+      "notes": [
+        "只取作者彩色玉米4类，不取灰度/去背景副本。",
+        "已保存官方leaf-map.json和train/test，但实际leaf-map没有玉米条目，3852张均无可还原作者叶ID。group标unknown，不把fallback文件名当采集组。",
+        "下载命令：python -m ml.agrivision_ml.preprocessing.plantvillage_source",
+        "原始论文说明CC-BY-SA3.0并明确训练算法同许可；部署或分发需保留作者署名及许可信息。"
+      ],
+      "visual_review": {
+        "sample_count": 32,
+        "method": "每个原始类别按文件名排序均匀抽取最多8张，查看联系表",
+        "finding": "抽样未见明显文字水印或拼图；未逐图人工审核，不能保证全库无水印",
+        "reviewed_on": "2026-11-27"
+      },
+      "paper": "https://arxiv.org/pdf/1511.08060"
+    },
+    {
+      "id": "pretoria-field-20237613-v1",
+      "crop": "maize",
+      "provider": "figshare",
+      "url": "https://doi.org/10.25403/UPresearchdata.20237613.v1",
+      "license": "CC BY 4.0",
+      "region": "South Africa, multiple sites/times",
+      "download": true,
+      "default_review": "hold",
+      "part": "leaf",
+      "notes": [
+        "官方原图2355张，多标签含GLS/NCLB/普通锈/南方锈/PLS及Other/未知；不能强改单标签。",
+        "原始ZIP10755639029字节，分段续传到同一archives/leaf_images.zip.part，官方MD5通过后原包+解压各保留一份。",
+        "实际ZIP为扁平leaf_images/目录，CSV无站点/植株/叶ID；308张文件名明写Cedara，仅作为站点提示，其余站点unknown。",
+        "外部评估整来源固定保留；纯单标签PV四类候选1109张，另保留多标签891张（含17条无症状与病症/未知冲突，先hold）以及不在四类内的情形。",
+        "许可为作者官方CC BY4.0，与项目自有代码许可分别记录。"
+      ],
+      "article_id": 20237613,
+      "version": 1,
+      "task": "multilabel_external_evaluation",
+      "hold_reason": "整个来源固定作为田间外部评估候选；不进入训练/交叉验证，保留多标签。",
+      "download_command": "python -m ml.agrivision_ml.preprocessing.figshare_source --article 20237613 --version 1 --crop maize --source pretoria-field-20237613-v1",
+      "audit_command": "python -m ml.agrivision_ml.preprocessing.pretoria_field",
+      "evaluation_directory": "data/maize/evaluation"
+    }
+  ],
+  "taxonomy_references": [
+    {
+      "title": "玉米病害和病原名称整理及其汉译名称规范化探讨",
+      "url": "https://www.chinaagrisci.com/CN/10.3864/j.issn.0578-1752.2020.02.006",
+      "use": "对照英文病名、病原和中文规范名称；不据名称推断数据采集地区。"
+    },
+    {
+      "title": "花生生长中后期病虫害有哪些 怎么防治",
+      "url": "https://www.agri.cn/sc/zxjc/zwbch/202311/t20231129_8129154.htm",
+      "use": "国内叶斑病类别范围参考：褐斑病、黑斑病、网斑病。此配置不生成用药建议。"
+    }
+  ]
+}

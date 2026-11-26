@@ -129,7 +129,7 @@ def resolution_counts(sources):
 
 
 # 总入口依次整理临时图片、构建带分组的清单、留存选中的图，然后一起发布产物。
-def build_dataset(selection, labels, output, seed=42):
+def build_dataset(selection, labels, output, seed=42, *, crop="wheat"):
     if not selection.photos:
         raise ValueError("筛选表没有可预处理的 keep 照片。请先确认类别和路径。")
     selected_labels = {photo.label for photo in selection.photos}
@@ -168,7 +168,7 @@ def build_dataset(selection, labels, output, seed=42):
         write_rows(stage / "manifest.csv", MANIFEST_FIELDS, manifest)
         write_rows(stage / "sources.csv", SOURCE_FIELDS, sources)
         (stage / "labels.json").write_text(
-            json.dumps({"crop": "wheat", "labels": ready_labels}, ensure_ascii=False, indent=2) + "\n",
+            json.dumps({"crop": crop, "labels": ready_labels}, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
         (stage / "manifest.report.json").write_text(

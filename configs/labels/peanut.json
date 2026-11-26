@@ -1,1 +1,9 @@
-{"crop":"peanut","labels":{"peanut_leaf_spot":"花生叶斑病类","peanut_rust":"花生锈病","healthy":"未发现已支持病害的明显特征"}}
+{
+  "crop": "peanut",
+  "labels": {
+    "peanut_leaf_spot": "花生叶斑病类",
+    "peanut_rust": "花生锈病",
+    "healthy": "未发现已支持病害的明显特征",
+    "peanut_alternaria_leaf_spot": "花生链格孢叶斑病（Alternaria leaf spot）"
+  }
+}
