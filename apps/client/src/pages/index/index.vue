@@ -534,7 +534,7 @@ function requestBusinessLogin(
   photoSource: 'album' | 'camera' = 'album',
   photoTarget: 'identify' | 'supplement' | 'crop' = 'identify',
 ) {
-  openAuth('登录后可使用拍照识别、AI 对话和资料服务。', {
+  openAuth('登录后可使用拍照识别和 AI 对话，并保存记录。', {
     action,
     photoSource,
     photoTarget,
@@ -683,7 +683,7 @@ async function signOut() {
   waitingForNetwork.value = false
   note.value = ''
   await refresh()
-  showToast('已退出登录，使用在线功能时请重新登录。')
+  showToast('已退出登录。识别、AI 对话和历史记录需重新登录。')
 }
 function changeProvince(value: string) {
   province.value = value
@@ -1787,7 +1787,7 @@ function newFromDrawer() {
             <template v-else-if="tab === 'history'">
               <view v-if="!user" class="panel empty-state login-empty"
                 ><view class="empty-icon">🌾</view><text class="section-title">登录后查看记录</text
-                ><text class="muted">登录后可拍照识别、询问 AI、查阅资料并保存记录。</text
+                ><text class="muted">资料可直接查阅；登录后可拍照识别、询问 AI 并保存记录。</text
                 ><button
                   class="button primary"
                   @click="openAuth('登录后可保存并查看你的历史记录。')"

@@ -97,7 +97,7 @@ const emit = defineEmits<{
       <AppIcon name="logout" :size="19" /><text>退出登录</text>
     </button>
     <!-- #ifndef MP-WEIXIN -->
-    <text class="profile-footnote">退出后，使用在线功能时需重新登录。</text>
+    <text class="profile-footnote">退出后，识别、AI 对话和历史记录需重新登录。</text>
     <!-- #endif -->
   </view>
 </template>

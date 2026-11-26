@@ -400,8 +400,8 @@ def main():
     parser.add_argument('--threads', type=int, default=2)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--c-values', type=float, nargs='+', default=[.1, 1., 10.])
-    parser.add_argument('--min-test-accuracy', type=float, default=.90)
-    parser.add_argument('--min-test-macro-f1', type=float, default=.90)
+    parser.add_argument('--min-test-accuracy', type=float, default=.95)
+    parser.add_argument('--min-test-macro-f1', type=float, default=.95)
     args = parser.parse_args()
     if args.views < 0 or args.threads < 1 or args.batch_size < 1 or any(c <= 0 for c in args.c_values):
         parser.error('视图数非负；线程、批量和 C 必须为正数')

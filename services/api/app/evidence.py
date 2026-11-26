@@ -104,7 +104,17 @@ def aggregate_images(case):
             )
             + "。这些是不同照片的初步线索，不自动选取一种病害。"
         )
-        steps = ["确认照片是否来自同一株或同一块田。不同地块的照片请分别识别", *steps]
+        # 不同照片可以确实呈现不同病害；这并不代表照片缺失或画质失败。
+        # 先核对各自的采集对象与症状，只有逐图质量失败时才提出明确补拍原因。
+        steps = [
+            "确认照片是否来自同一株或同一块田，分别记录各张照片的采集位置",
+            "按每张照片的初步线索核对对应症状，不自动合并为同一种病害",
+            "可补充症状出现时间、田间分布和近期施药或施肥情况",
+        ]
+        for item in unresolved:
+            if item["status"] == "needs_retake":
+                reason = "、".join(item["quality_issues"]) or "画质未通过检查"
+                steps.append(f"第{item['image_index']}张：{reason}，方便时补拍清晰照片")
     elif hypotheses:
         hypothesis = next(iter(hypotheses.values()))
         disease_id = hypothesis["disease_id"]
@@ -129,6 +139,7 @@ def aggregate_images(case):
         status, outcome = "identified", "healthy_reference"
         title = "已处理照片未见已支持病害的明显特征"
         summary = f"照片已收到。{len(healthy)} 张照片未见本版已支持病害的明显特征，不能据此排除其他病害或非病害原因。"
+        steps = ["继续观察叶片和植株的变化；若仍发现异常，可以描述具体表现以核对本版尚未覆盖的原因"]
     else:
         statuses = {item["status"] for item in results}
         if statuses == {"needs_retake"}:

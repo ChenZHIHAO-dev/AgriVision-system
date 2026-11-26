@@ -186,13 +186,14 @@ def test_explicit_multi_crop_question_does_not_match_case_specific_products(text
     def forbidden(*args, **kwargs):
         pytest.fail("a multi-crop treatment question cannot use products from one case")
 
-    settings = SimpleNamespace(deepseek_model="deepseek-flash", get_deepseek_key=forbidden)
+    settings = SimpleNamespace(deepseek_model="deepseek-flash", get_deepseek_key=lambda: "")
     knowledge = Knowledge(ROOT)
     monkeypatch.setattr(knowledge, "matching_products", forbidden)
     record = case(crop="wheat", stage="苗期", disease_id="wheat_powdery_mildew")
     result = asyncio.run(Chat(settings, knowledge).answer(record, text, []))
-    assert result["provider"] == "rules"
+    assert result["provider"] == "knowledge"
     assert result["products"] == []
+    assert "小麦白粉病" not in result["text"]
 
 
 @pytest.mark.parametrize("text", [

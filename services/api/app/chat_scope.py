@@ -9,6 +9,7 @@ import re
 from .knowledge import CROP_NAMES, query_crop_scope
 from .intake import context_reply
 from .conversation_policy import case_followup
+from .treatment_policy import MEDICATION
 
 
 SCOPE_GUIDANCE = (
@@ -102,5 +103,6 @@ def within_agricultural_scope(case, text, history):
         or TOPICAL_FOLLOW_UP.fullmatch(text.strip())
         or case_followup(text)
         or FIELD_SYMPTOM.search(text)
+        or MEDICATION.search(text)
         or context_reply(text)
     )

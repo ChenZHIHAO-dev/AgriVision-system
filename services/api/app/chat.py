@@ -11,12 +11,9 @@ from .conversation_policy import asks_photo_guidance, conversation_scope, field_
 from .chat_scope import SCOPE_GUIDANCE, within_agricultural_scope
 from .recognition import recognition_state
 from .evidence import aggregate_images
+from .treatment_policy import MEDICATION, DOSAGE, requires_label_review
 
 MODELS = ("deepseek-flash", "deepseek-v4-pro")
-MEDICATION = re.compile(
-    r"配方|剂量|用量|混配|兑水|农药|打药|用药|药剂|药物|用什么药|喷什么|多少.*(?:克|毫升|倍)"
-)
-DOSAGE = re.compile(r"\d+(?:\.\d+)?\s*(?:毫升|ml\b|克|g\b|倍液)", re.I)
 MISSING_IMAGE = re.compile(
     r"(?:没有|没|未|未能)收到.{0,12}(?:图片|照片)|(?:没有|没|未)返回.{0,12}(?:识别结果|图像结果)|(?:没有|没|无)可用的?(?:图像|图片)识别结果"
 )
@@ -179,7 +176,7 @@ class Chat:
                 if source not in sources:
                     sources.append(source)
         medication_general = is_general_question(text)
-        if MEDICATION.search(text) and (not medication_general or "标签" in text):
+        if requires_label_review(text):
             products = (
                 []
                 if case["is_demo"] or medication_general or (scope is not None and len(scope) > 1)
@@ -287,6 +284,7 @@ class Chat:
             "补充资料全部可选。已跳过的字段不再追问；已给过拍照建议或用户表示不拍、没有照片时不要反复催图。"
             "response_policy.optional_suggestions会由界面独立展示，不在正文重复这些问题。缺少资料时先给适用范围明确的通用答复。"
             "作物、生育期等已明确的信息不要重复追问。通用概念、术语、标签阅读和拍照方法直接解释，结合具体田块作判断时说明缺少信息带来的不确定性。不要编造未知信息。"
+            "询问用药或防治方向时，先结合对应病害资料回答，不用通用上传提示替代答案。只在资料有明确依据时介绍有效成分方向；这不代表具体产品已登记适用，也不替用户作出必须施药的决定。"
             "上传资料可能缺少登记和适用性审核，不将其中的剂量直接当成可用处方；具体药剂用量与混配交由标签规则核对。"
             + (
                 "本轮允许联网检索。需要时优先检索农业主管部门、农技推广或研究机构的公开资料，引用真实来源并区分发布时间；只在实际检索后说明已联网。不要把用户资料中的私人或商业敏感内容作为查询词。"

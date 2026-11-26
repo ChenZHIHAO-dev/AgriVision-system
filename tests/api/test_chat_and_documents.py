@@ -446,3 +446,44 @@ def test_new_wheat_recognition_sends_matched_evidence_to_provider(tmp_path, monk
     assert context["knowledge"][0]["sources"] == card["sources"]
     assert all(source in result["sources"] for source in card["sources"])
     assert result["products"] == []
+
+
+@pytest.mark.parametrize("question", ["用什么药？", "这种情况怎么用药？", "药剂如何选？", "这种病的防治方向是什么？"])
+def test_treatment_direction_keeps_photo_context_and_calls_provider(question, tmp_path, monkeypatch):
+    seen = {}
+
+    async def respond(_self, url, **kwargs):
+        seen.update(kwargs["json"])
+        return httpx.Response(200, json={"choices": [{"message": {
+            "content": "结合已有的小麦叶锈病初步线索，可按资料核对田间病叶比例及扩展情况。药剂方向应再核对具体产品登记和标签。"
+        }}]}, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", respond)
+    settings = Settings(root=ROOT, runtime=tmp_path, models=tmp_path, deepseek_key="fake-treatment-test")
+    record = {
+        "crop": "wheat", "stage": "苗期", "location": "", "note": "", "is_demo": False,
+        "status": "identified", "disease_id": "wheat_leaf_rust", "title": "疑似小麦叶锈病",
+        "images": [{"id": "already-uploaded"}],
+        "candidates": [{"id": "wheat_leaf_rust", "name": "小麦叶锈病", "score": .98}],
+    }
+    result = asyncio.run(Chat(settings, Knowledge(ROOT)).answer(record, question, []))
+    assert result["provider"] == "deepseek"
+    context = json.loads(seen["messages"][0]["content"].rsplit("\n", 1)[-1])
+    assert context["recognition"]["image_received"] is True
+    assert context["knowledge"][0]["id"] == "wheat_leaf_rust"
+    assert context["response_policy"]["field_question"] is True
+    assert result["products"] == [] and not result.get("photo_suggestion")
+
+
+@pytest.mark.parametrize("question", ["小麦每亩用多少毫升药？", "小麦这些药可以混配吗？", "小麦农药怎么兑水？", "怎么看农药标签？"])
+def test_dose_mixing_and_labels_still_use_reviewed_product_flow(question, tmp_path, monkeypatch):
+    async def forbidden(*args, **kwargs):
+        pytest.fail("a language model must not invent an unreviewed application rate")
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", forbidden)
+    settings = Settings(root=ROOT, runtime=tmp_path, models=tmp_path, deepseek_key="fake-treatment-test")
+    record = {"crop": "wheat", "stage": "苗期", "location": "", "note": "", "is_demo": False,
+              "status": "awaiting_image", "images": [], "disease_id": None}
+    result = asyncio.run(Chat(settings, Knowledge(ROOT)).answer(record, question, []))
+    assert result["provider"] == "rules"
+    assert "标签" in result["text"] and result["products"] == []

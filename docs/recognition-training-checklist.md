@@ -313,7 +313,7 @@ ConvNeXt 使用卷积与 LayerNorm，Swin 使用分层窗口自注意力；两�
 
 内部测试不代表完成独立田间验证。本机 `.env` 已设置为：
 
-- `AGRIVISION_MODEL_DIR=artifacts/experiments/wheat-study/06-swin-transformer`：含有 `wheat` 子目录的目录。
+- `AGRIVISION_MODEL_DIR=artifacts/models`：统一的部署目录，当前包含小麦与花生；实验结果仍保留在各自实验目录。
 - `AGRIVISION_DEVICE=cpu`：本机常驻 CPU 推理，也可切换为 `cuda`。
 - `AGRIVISION_ALLOW_EXPERIMENTAL_MODELS=1`：允许本地加载该内部测试模型。
 
@@ -417,6 +417,14 @@ uv pip install --python .venv/Scripts/python.exe -r requirements-ml.txt
 
 拒识对照优先复用成熟方法，而不是只增加任意阈值：[ViM（CVPR 2022）](https://openaccess.thecvf.com/content/CVPR2022/html/Wang_ViM_Out-of-Distribution_With_Virtual-Logit_Matching_CVPR_2022_paper.html)结合分类输出与特征主子空间残差，[ReAct（NeurIPS 2021）](https://proceedings.neurips.cc/paper/2021/hash/01894d6f048493d2cacde3c579c315a3-Abstract.html)调整激活以改善覆盖外检测。它们是后续候选对照，尚未在本项目验证；需要独立的覆盖内/覆盖外照片分别报告误拒和漏拒，不能拿论文中的 ImageNet 指标作为小麦上线成绩。
 
+### 9.3 真实上传预处理一致性
+
+用同一个八类 Swin-T 对 853 张原 test 做了全量 CPU 复核，并通过 API 的实际 `prepare_image` 再处理一次后推理。原保存预测、CPU 原图、API JPEG90 工作图的 top-1 均为 844/853 正确，准确率 98.9449%、Macro-F1 98.8955%；新增类别改变 0 张，质量/解码拒绝 0 张。原来的 9 张误判仍然存在。
+
+分数不完全相同：固定阈值下接收数从 851 变为 853，新增两张都正确；一张叶锈病的最高分从 0.486752 变为 0.912303，说明再压缩会影响校准。这里没有按 test 调阈值或图像质量参数。后续需在原 val 按真实上传流程校准，然后独立报告测试效果。
+
+这些工作图已是 RGB JPEG、无 EXIF 方向、长边不超过 1024，因此本次主要比较 JPEG 再压缩；没有覆盖手机原图旋转、API 2400 长边缩放或田间来源差异。逐图记录在 `.cache/vision-review/upload-parity.csv`，汇总及哈希在同名 `.json`；未保存一套转换后的图片。
+
 ## 10. 玉米与花生：从来源到训练（2026-11-27）
 
 仍在项目根目录 `F:\college\AgriVision` 的 PowerShell 中运行，使用同一个 `.venv`。本节所有输出都是固定路径；当前已经完成的下载和预处理不需要重复运行。
@@ -488,7 +496,7 @@ PlantVillage 彩色玉米四类使用单独的作者数据入口；不下载灰�
 .\.venv\Scripts\python.exe -m ml.agrivision_ml.cross_validation --data-root data/peanut/prepared/images --manifest data/peanut/prepared/manifest.csv --labels data/peanut/prepared/labels.json --output artifacts/experiments/peanut-cv
 ```
 
-加 `--run` 才开始训练。当前小麦队列占用 GPU，**不要同时另开玉米、花生训练**；按小麦 → 玉米 → 花生串行。完整训练命令：
+加 `--run` 才开始训练。小麦十个开发折已结束，玉米、花生的完整微调仍在既有队列中，**不要同时另开训练**；按玉米 → 花生 → 作物种类串行。完整训练命令：
 
 ```powershell
 .\.venv\Scripts\python.exe -m ml.agrivision_ml.cross_validation --data-root data/maize/prepared/images --manifest data/maize/prepared/manifest.csv --labels data/maize/prepared/labels.json --output artifacts/experiments/maize-cv --run
@@ -515,6 +523,32 @@ PlantVillage 彩色玉米四类使用单独的作者数据入口；不下载灰�
 | 花生 | convnext_tiny / 320 | 275 | 97.82% | 98.15% | 1 |
 
 结果和混淆矩阵在 `artifacts/experiments/<作物>-linear-probe/<架构>/fold-1`。这只是来源内部的一折比较，不能替代完整五折、国内田间或手机实测。玉米另用未参与训练的 Pretoria 田间来源做外域诊断，花生尚缺质量和标签均可靠的独立外域来源。下一步把端到端微调与这些结果放在同一划分比较，最后再训练、校准部署包；不直接发布开发折模型。
+
+### 10.5 五折冻结特征、最终留出与云端结果（2026-11-27）
+
+两作物的缓存五折已经完整结束。每折的训练/内层验证/外层评估按组隔离；按外层平均 Macro-F1 选择架构，再仅用原始 train 拟合、原始 val 选择 C 并校准，最后各运行一次原始 test。下面不是完整网络微调的结果。
+
+| 作物 | 冻结骨干 | 完成折数 | 折平均准确率 | 折平均 Macro-F1 | F1 标准差 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 玉米 | Swin-T 224 | 5 | 97.07% | 96.02% | 1.00 个百分点 |
+| 玉米 | ConvNeXt-Tiny 320 | 5 | 97.55% | 96.61% | 0.56 个百分点 |
+| 花生 | Swin-T 224 | 5 | 96.69% | 96.88% | 0.88 个百分点 |
+| 花生 | ConvNeXt-Tiny 320 | 5 | 97.19% | 97.54% | 1.30 个百分点 |
+
+| 最终候选 | 原始 test | 准确率 / Macro-F1 | 逐类注意事项 | 当前处理 |
+| --- | ---: | --- | --- | --- |
+| 花生 ConvNeXt-Tiny 320，`20261126-205154` | 240 图 / 194 组 | 97.50% / 97.74% | 链格孢叶斑召回 62/68，91.18%；6 张混为叶斑病类；锈病测试仅 19 张 | 已接入单管理员内测；国内田间未验证 |
+| 玉米 ConvNeXt-Tiny 320，`20261126-211334` | 564 图 | 98.58% / 97.99% | 灰斑病召回 71/75，94.67%，与大斑病混淆 | 独立田间诊断失败，保持服务不可用 |
+
+**玉米外域问题必须与内部成绩一起看。** 未参与训练的 Pretoria 单标签田间图 1,090 张上，ConvNeXt 最终包准确率 **40.28%**、Macro-F1 **33.34%**。普通锈病召回 6/107（5.61%）、灰斑 185/618（29.94%）、大斑 70/140（50.00%）、健康 178/225（79.11%）。内部固定阈值仍接收 750 张，其中只有 46.27% 正确；高分误判没有被阈值解决。Swin 第1折冻结头对照同样失败：准确率 43.30%、Macro-F1 35.53%，普通锈病召回 5/107；因划分和输入尺寸不同，不据此宣布某架构优胜。标签映射已检查，不把这份结果解释成类序颠倒，也不据此删掉难图。下一步改善田间训练覆盖并与端到端微调对照；该来源已用于开发诊断，后续不能混入训练后继续称它为独立外测。
+
+结果保存在 `artifacts/experiments/<作物>-linear-probe/grouped-cv`：`summary.json` 是五折汇总，`selection.json` 是原 test 前固定的架构选择，`final-refit/result.json` 和 `predictions-test.csv` 是最终留出结果，`confusion-test.png` 是混淆矩阵。玉米外域报告在 `final-refit/external-pretoria`。线性头不是按 epoch 微调，不伪造 loss 曲线；完整微调的曲线仍在各 `*-cv/<架构>/fold-*` 目录。
+
+花生包约 27.82M 参数，在实际 2 vCPU / 4 GiB 云机 CPU 两线程的串行推理中位 **780 ms**、P95 **818 ms**，进程峰值约 **507 MiB**。两个 HTTPS 入口共 8 次四类样图上传/识别通过，退出后不可再读测试记录。四张样图只是接口兼容性检查，不是新的准确率测试。小麦与花生常驻后 API 服务约 500 MiB，云机可用内存约 2.4 GiB；这不是高并发容量承诺。
+
+最终包保留原始候选元数据；部署副本才标记 `development_ready=true`，仍为 `validated=false`、`field_verified=false`。每个任务只用一份 `artifacts/models/<作物>`，上一版最多保留一个回退目录。程序不会把开发折直接发布。
+
+复现入口是 `ml/agrivision_ml/cached_probe_cv.py`，不是重新整理图片的命令。它复用公开预训练骨干的特征，只在当前折的训练索引上取增强视图。已有运行配置带源码与数据哈希；改代码后不覆盖旧实验记录或假装恢复。两次已完成的实际命令均明确用了 0.95/0.95 验收值，默认值现在也统一为 0.95；历史 recipe 不改写。
 
 ## 11. 作物种类识别：先整理来源，再训练
 

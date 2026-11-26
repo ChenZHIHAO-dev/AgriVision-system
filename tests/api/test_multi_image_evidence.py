@@ -140,3 +140,23 @@ def test_followup_carries_each_photo_disease_card_to_provider(tmp_path, monkeypa
     assert context["knowledge_coverage"]["uncovered_hypothesis_ids"] == []
     assert {card["id"] for card in context["knowledge"]} >= {"wheat_leaf_rust", "wheat_powdery_mildew"}
     assert not answer.get("photo_suggestion")
+
+
+def test_different_clear_photos_do_not_request_the_same_upload_again():
+    result = aggregate_images(record(["wheat_leaf_rust", "wheat_stripe_rust"]))
+    steps = result["evidence"]["next_steps"]
+    assert result["evidence"]["total_images"] == 2
+    assert steps and not any("补拍" in step or "上传" in step for step in steps)
+    assert "采集位置" in steps[0]
+
+
+def test_only_failed_photo_is_named_for_retake_in_a_mixed_set():
+    result = aggregate_images(record(["wheat_leaf_rust", "wheat_stripe_rust", "blur"]))
+    retakes = [step for step in result["evidence"]["next_steps"] if "补拍" in step]
+    assert len(retakes) == 1 and "第3张" in retakes[0] and "需要对焦" in retakes[0]
+
+
+def test_healthy_reference_does_not_require_another_photo():
+    result = aggregate_images(record(["healthy"]))
+    assert not any("补拍" in step for step in result["evidence"]["next_steps"])
+    assert "不能据此排除" in result["evidence"]["summary"]

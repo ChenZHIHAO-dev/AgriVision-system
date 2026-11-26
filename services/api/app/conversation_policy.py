@@ -10,14 +10,14 @@ FIELD_SYMPTOMS = re.compile(
     r"发黄|黄化|黄斑|白斑|斑点|病斑|白粉|枯萎|腐烂|倒伏|长虫|虫卵|缺水|药害|"
     r"叶片有|叶子有|叶面有|叶背有|苗不齐|出苗不齐|烂根|死棵|不长|长势差"
 )
-FIELD_REFERENCE = re.compile(r"我家|我这|我种|这块田|这株|这片田|本次识别|这次识别|这次照片|这组照片|刚才.*结果|刚刚.*结果|这个结果|这张(?:照片|图片)")
+FIELD_REFERENCE = re.compile(r"我家|我这|我种|这块田|这株|这片田|这种病|这类病|这个病|该病|本次识别|这次识别|这次照片|这组照片|刚才.*结果|刚刚.*结果|这个结果|这张(?:照片|图片)")
 DECLINE_PHOTO = re.compile(r"不拍|不上传|不提供(?:照片|图片)|没有(?:照片|图片)|没(?:有)?法拍|不方便拍|先不(?:拍|传)")
 
 
 # 这些词本身不足以说明农业范围，只有 scope 模块确认已有作物、照片或
 # 用户农业历史时才作为追问放行。用问题意图识别，避免逐句枚举用户说法。
 CASE_FOLLOWUP = re.compile(
-    r"症状|病情|(?:什么|哪种|哪一类)病|(?:怎么|怎样|如何)(?:办|治|处理|解决|防治|改善)"
+    r"症状|病情|防治|防控|(?:什么|哪种|哪一类)病|(?:怎么|怎样|如何)(?:办|治|处理|解决|防治|改善)"
     r"|(?:有什么|有没有|给.{0,4})(?:建议|办法|方案|解决方案|处理方法)"
     r"|(?:后续|下一步|接下来|这种情况).{0,8}(?:建议|处理|解决|防治)"
     r"|(?:上面|刚才|之前|已经|刚刚).{0,16}(?:照片|图片|识别)"
@@ -58,12 +58,12 @@ def conversation_scope(text, history):
 
 def field_question(case, text):
     """普通农业知识直接解释；明确的田间症状或识别接续才需要个案观察。"""
-    if is_general_question(text):
+    if is_general_question(text) and not (case.get("images") and FIELD_REFERENCE.search(text)):
         return False
     if re.search(r"怎么预防|如何预防|如何防治|防治方法|介绍一下|种植方法|种植要点|管理要点", text) and not FIELD_REFERENCE.search(text):
         return False
     photo_followup = case.get("images") and (
-        case_followup(text) or re.search(r"观察|识别|照片|图片|结果", text)
+        case_followup(text) or re.search(r"观察|识别|照片|图片|结果|用药|药剂|打药|喷药|防控|防治|用什么药", text)
     )
     return bool(FIELD_SYMPTOMS.search(text) or FIELD_REFERENCE.search(text) or photo_followup)
 

@@ -63,7 +63,7 @@ def create_app(settings=None):
     case_locks = {}
     lock_guard = Lock()
 
-    app = FastAPI(title="AgriVision API", version="1.5.0-beta.4")
+    app = FastAPI(title="AgriVision API", version="1.5.0-beta.5")
     app.add_middleware(RequestBodyLimit, max_upload=settings.max_upload)
     # 注册顺序与原实现一致：CORS 在最外层，其次鉴权/额度，再检查请求体。
     app.add_middleware(AccountScopeMiddleware, auth=auth, settings=settings)
