@@ -17,8 +17,9 @@ def test_source_download_keeps_existing_crop_audit(tmp_path, monkeypatch):
     old = source('already-downloaded')
     new = source('new-download')
     external = source('multilabel-field', task='multilabel_external_evaluation')
+    single_external = source('singlelabel-field', task='singlelabel_external_evaluation')
     config = tmp_path / 'sources.json'
-    config.write_text(json.dumps({'sources': [old, new, external]}), encoding='utf-8')
+    config.write_text(json.dumps({'sources': [old, new, external, single_external]}), encoding='utf-8')
 
     def add_image(item, color):
         path = tmp_path / 'data/maize/sources' / item['id'] / 'raw/healthy/photo.jpg'
@@ -27,6 +28,7 @@ def test_source_download_keeps_existing_crop_audit(tmp_path, monkeypatch):
 
     add_image(old, 'green')
     add_image(external, 'blue')
+    add_image(single_external, 'yellow')
     downloads = []
     def download(item):
         downloads.append(item['id'])

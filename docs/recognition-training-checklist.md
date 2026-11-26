@@ -497,7 +497,7 @@ PlantVillage 彩色玉米四类使用单独的作者数据入口；不下载灰�
 
 ### 11.1 原图与筛图
 
-当前 GBIF 来源下载，以及花生/水稻/大豆的栽培观察补充仍在进行。原图放 `data/crop-identification/sources`；运行中的采集表不要手工编辑。人工决定统一写在 `data/crop-identification/review/species-review.csv`。
+本轮 GBIF 来源及花生/水稻/大豆/黄瓜栽培观察补充已完成。原图放 `data/crop-identification/sources`，人工决定统一写在 `data/crop-identification/review/species-review.csv`。5,184 张入选图预处理后为 5,166 张、14 类、2,503 组；最终测试 779 张独立于开发折。工作集已生成，不要在实验运行中重复替换。逐类数量与来源见[数据说明](data-sources.md#作物种类候选)。
 
 采集完先执行这条，只同步统一筛选表、打印数量，不复制图、不增强、不训练：
 

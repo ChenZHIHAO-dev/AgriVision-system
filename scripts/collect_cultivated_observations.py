@@ -1,6 +1,6 @@
 """补充 GBIF 不充分覆盖的栽培作物观察；小批量取公开许可照片，不抓取整站。
 
-只补花生/水稻/大豆。iNaturalist casual 可包含人工栽培记录，不等于专家审核；
+默认补花生/水稻/大豆；--crops 可补其他稀缺目标。iNaturalist casual 包含栽培记录，不等于专家审核；
 保留质量级别和栽培标记，供独立筛图。按照片 ID 复用已有 GBIF 文件。
 官方建议元数据约 1 请求/秒，本入口顺序请求且每次间隔 1.1 秒。
 """
@@ -93,13 +93,17 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--max-images',type=int,default=400)
     parser.add_argument('--refresh',action='store_true')
+    parser.add_argument('--crops',nargs='+',default=['peanut','rice','soybean'],help='目标清单中的作物 ID')
     args=parser.parse_args()
     config=json.loads((ROOT/'configs/datasets/crop-identification.json').read_text(encoding='utf-8-sig'))
-    targets=[row for row in config['targets'] if row['id'] in {'peanut','rice','soybean'}]
+    known={row['id'] for row in config['targets']}
+    if not set(args.crops)<=known:parser.error('指定的作物不在目标配置中')
+    targets=[row for row in config['targets'] if row['id'] in args.crops]
     base=ROOT/'data/crop-identification';folder=base/'sources/inat-cultivated';folder.mkdir(parents=True,exist_ok=True)
     table=base/'review/inat-cultivated.csv';existing=existing_photos()
     previous={row['id']:row for row in csv.DictReader(table.open(encoding='utf-8-sig'))} if table.exists() else {}
-    report={}
+    report_path=folder/'source.json'
+    report=json.loads(report_path.read_text(encoding='utf-8')) if report_path.exists() else {}
     for target in targets:
         data=observations(target,folder,args.refresh)
         selected=list(candidates(target,data,existing))[:args.max_images]

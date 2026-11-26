@@ -6,10 +6,11 @@ from threading import Lock
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
+from .access import AccountScopeMiddleware, require_account
 from .attachments import extract_document
 from .auth import ACCOUNT_PROVIDER, AuthManager
 from .case_views import now, seed_photo_transcript, serialize_case
@@ -25,7 +26,7 @@ from .knowledge import CROP_NAMES, Knowledge, crop_scope_conflicts, query_crop_s
 from .models import ModelRegistry
 from .recognition import recognition_state
 from .repository import CaseRepository
-from .security import RequestBodyLimit, RequestLimits, business_category
+from .security import RequestBodyLimit
 from .schemas import (
     CaseUpdate,
     ConsultationRequest,
@@ -60,89 +61,18 @@ def create_app(settings=None):
     registry = ModelRegistry(settings, knowledge)
     crop_recognizer = CropRecognizer(settings)
     chat = Chat(settings, knowledge)
-    limits = RequestLimits()
     case_locks = {}
     lock_guard = Lock()
 
     app = FastAPI(title="AgriVision API", version="1.5.0-beta.1")
     app.add_middleware(RequestBodyLimit, max_upload=settings.max_upload)
+    # 注册顺序与原实现一致：CORS 在最外层，其次鉴权/额度，再检查请求体。
+    app.add_middleware(AccountScopeMiddleware, auth=auth, settings=settings)
     app.state.registry = registry
     app.state.crop_recognizer = crop_recognizer
     app.state.store = store
     app.state.chat = chat
     app.state.auth = auth
-
-    @app.middleware("http")
-    async def account_scope(request: Request, call_next):
-        path, method = request.url.path, request.method
-        if not path.startswith("/api/") or method == "OPTIONS":
-            return await call_next(request)
-        async def business_response():
-            response = await call_next(request)
-            response.headers["Cache-Control"] = "private, no-store"
-            return response
-
-        public = (method, path) in {
-            ("GET", "/api/health"), ("GET", "/api/meta"),
-            ("POST", "/api/auth/login"), ("POST", "/api/auth/register"),
-        }
-        bearer = request.headers.get("authorization", "")
-        token = bearer[7:] if bearer.startswith("Bearer ") else ""
-        viewer = auth.verify(token) if token else None
-        image_match = re.fullmatch(r"/api/cases/([^/]+)/images/([^/]+)", path)
-        image_owner = None
-        if method == "GET" and image_match:
-            image_owner = auth.image_owner(
-                request.query_params.get("access_token", ""), *image_match.groups()
-            )
-        # 登录和启动元信息允许失效的旧 token；全部业务入口默认拒绝匿名访问。
-        if not public and viewer is None and image_owner is None:
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "登录已过期，请重新登录" if token else "请先登录后使用服务"},
-                headers={"WWW-Authenticate": "Bearer", "Cache-Control": "private, no-store"},
-            )
-        scope = "u_" + viewer["id"] if viewer else image_owner or ""
-        request.state.viewer = viewer
-        request.state.owner = scope
-        request.state.token = token
-        headers = [(key, value) for key, value in request.scope["headers"] if key != b"x-client-id"]
-        if scope:
-            headers.append((b"x-client-id", scope.encode()))
-        request.scope["headers"] = headers
-        try:
-            if method == "POST" and path == "/api/auth/login":
-                # 只信任 ASGI 服务器给出的地址，不接受客户端伪造 X-Forwarded-For。
-                address = request.client.host if request.client else "unknown"
-                key = ("login", address)
-                with limits.slot("login", 2):
-                    ticket = limits.reserve(key, settings.login_attempts, settings.login_window_seconds)
-                    response = await business_response()
-                    if response.status_code < 400:
-                        limits.discard(key, ticket)
-                    return response
-            category = business_category(method, path)
-            if category:
-                maximum = settings.chat_concurrency if category == "chat" else settings.recognition_concurrency
-                with limits.slot(category, maximum):
-                    if category == "chat":
-                        limits.reserve(("chat-hour", scope), settings.chat_per_hour, 3600)
-                        limits.reserve(("chat-day", scope), settings.chat_per_day, 86400)
-                    else:
-                        limits.reserve(("recognition", scope), settings.recognition_per_minute, 60)
-                    return await business_response()
-            return await business_response()
-        except HTTPException as exc:
-            return JSONResponse(
-                status_code=exc.status_code, content={"detail": exc.detail},
-                headers={**(exc.headers or {}), "Cache-Control": "private, no-store"},
-            )
-
-    def require_account(request: Request):
-        if not request.state.viewer:
-            raise HTTPException(
-                401, "请先登录后使用服务", headers={"WWW-Authenticate": "Bearer"}
-            )
 
     def finish_sign_in(request, result, continue_case_id):
         guest_owner = request.state.owner

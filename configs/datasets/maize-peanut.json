@@ -210,9 +210,11 @@
       "part": "leaf",
       "notes": [
         "官方原图2355张，多标签含GLS/NCLB/普通锈/南方锈/PLS及Other/未知；不能强改单标签。",
-        "原始ZIP10755639029字节，分段续传到同一archives/leaf_images.zip.part，官方MD5通过后原包+解压各保留一份。",
+        "原始ZIP10755639029字节，已完成官方MD5、解压CRC和2355张完整解码；原包与原图各保留一份，不另建编号数据副本。",
         "实际ZIP为扁平leaf_images/目录，CSV无站点/植株/叶ID；308张文件名明写Cedara，仅作为站点提示，其余站点unknown。",
         "外部评估整来源固定保留；纯单标签PV四类候选1109张，另保留多标签891张（含17条无症状与病症/未知冲突，先hold）以及不在四类内的情形。",
+        "全量精确查重发现27个重复条目，10个同像素组的标签不一致（20张）全部hold；去重/排除冲突后单标签4类外测1090张，其他标签原样保留。",
+        "70张分层抽样未见明显数字水印/拼图；有采样笔迹、手套、衬板以及Other类记录照。未进行2355张逐图人工审核。",
         "许可为作者官方CC BY4.0，与项目自有代码许可分别记录。"
       ],
       "article_id": 20237613,
@@ -222,6 +224,106 @@
       "download_command": "python -m ml.agrivision_ml.preprocessing.figshare_source --article 20237613 --version 1 --crop maize --source pretoria-field-20237613-v1",
       "audit_command": "python -m ml.agrivision_ml.preprocessing.pretoria_field",
       "evaluation_directory": "data/maize/evaluation"
+    },
+    {
+      "id": "planthead-peanut-17053222",
+      "crop": "peanut",
+      "provider": "zenodo",
+      "record": 17053222,
+      "url": "https://zenodo.org/records/17053222",
+      "license": "CC BY 4.0",
+      "region": "Kenya; PLANTHEAD / EWA-BELT, University of Nairobi",
+      "part": "leaf",
+      "download": false,
+      "default_review": "hold",
+      "task": "singlelabel_external_evaluation",
+      "notes": [
+        "原作者6个病原/健康压缩包共115068345字节；固定整个来源做田间外部评估，不混入当前印度花生训练来源。",
+        "早、晚叶斑原标签分别保留；与当前模型比较时可合为peanut_leaf_spot，但不能反向拆开印度来源的混合标签。",
+        "Rosette和Phoma只保留源标注，国内适用范围及当前模型覆盖尚未确认；本来源没有Alternaria，因此只能检查当前4类中的3类。",
+        "许可来自Zenodo官方记录，不将本项目代码许可替代第三方数据许可。",
+        "发布页来源信息通过后实图抽样发现明显PDPs文字水印，质量未通过；可映射病名不等于可用数据。",
+        "实际630张可解码图片、17个精确重复条目；48张分层抽样发现水印。全来源hold，可用训练/正式外测数为0。"
+      ],
+      "download_command": "python -m ml.agrivision_ml.preprocessing.zenodo_source --record 17053222 --crop peanut --source planthead-peanut-17053222",
+      "audit_command": "python -m ml.agrivision_ml.preprocessing.planthead_peanut",
+      "evaluation_directory": "data/peanut/evaluation",
+      "hold_reason": "实图抽样发现PDPs数字水印；整来源暂缓，不进入训练或正式外测，不做去水印。",
+      "visual_review": {
+        "decision": "hold",
+        "reason": "多张抽样图有明显PDPs数字水印，整来源暂缓；不用于训练或正式外测，不进行去水印。",
+        "sample_count": 48,
+        "method": "6个原始类别各均匀抽样8张，查看联系表；未全量逐图人工审核",
+        "findings": [
+          "6个原始类别的抽样中均见PDPs数字水印，位置和旋转方向不固定",
+          "多为摘叶置于背景板、泥地或浅色底面，并非均为在株生长场景",
+          "全量630张可解码，17个精确像素重复条目；原包内PDF和无后缀辅助文件不算训练图片"
+        ]
+      }
+    },
+    {
+      "id": "mendeley-xwnvpkpkxk-v2",
+      "crop": "maize",
+      "provider": "mendeley",
+      "dataset_id": "xwnvpkpkxk",
+      "version": 2,
+      "url": "https://data.mendeley.com/datasets/xwnvpkpkxk/2",
+      "license": "CC BY 4.0",
+      "region": "unknown; author affiliation China Agricultural University is not collection-site evidence",
+      "part": "leaf",
+      "download": true,
+      "default_review": "hold",
+      "task": "damage_severity_candidate",
+      "notes": [
+        "完整公开目录1249张、437230373字节，V4/V6/V8生育期与健康/轻/中/重虫损等级。不是叶部病害类别，不加入当前病害训练。",
+        "1249张已完整下载并通过官方SHA256；全量解码0错误，135个精确重复条目，1114张唯一像素。",
+        "24张按12个阶段/等级组合均衡抽样未见明显水印/拼图；没有同株/同叶ID，不能将编号当独立采集组。",
+        "24组/48张同像素照片跨虫损等级冲突，见来源metadata/label-conflicts.json；不自动改标签。",
+        "V8健康97张为3024至5712像素边长，其余1152张256x256；分辨率与阶段/类别混杂，未纳入本轮训练。"
+      ],
+      "hold_reason": "原标注为甜菜夜蛾虫损等级及V4/V6/V8生育期，不是当前叶部病类；采集地点和同株ID未公布。",
+      "visual_review": {
+        "decision": "hold_for_disease_and_damage_training",
+        "sample_count": 24,
+        "method": "12个生育期/虫损等级组合各抽首尾2张，检查联系表；未逐图人工审核",
+        "finding": "抽样未见明显数字水印或拼图；自然田间多光照、杂草/土壤背景，局部叶片损伤程度需要复核",
+        "notes": [
+          "24组/48张精确相同图片被分到不同虫损等级，不根据多数票自动重标",
+          "除V8健康97张高分辨率照片外，其余1152张全为256x256，存在类别/阶段与成像质量混杂",
+          "标签任务不同于当前病害四分类；整来源hold，后续作物种类识别可另行审核复用"
+        ],
+        "reviewed_on": "2026-11-27"
+      }
+    },
+    {
+      "id": "scau-peanut-2021-1950",
+      "crop": "peanut",
+      "provider": "paper",
+      "url": "https://www.mdpi.com/2076-3417/11/4/1950",
+      "license": "not_published_for_original_dataset",
+      "region": "China, Guangzhou, South China Agricultural University",
+      "part": "leaf",
+      "download": false,
+      "default_review": "hold",
+      "notes": [
+        "国内原始研究：约2000张采集图裁剪为6029张，含健康、锈病、叶斑、灼伤、混合症状。",
+        "论文Data Availability Statement为Not applicable，未发现自建原图下载库；不能把论文开放许可当全数据许可。"
+      ]
+    },
+    {
+      "id": "henan-peanut-2023-01370",
+      "crop": "peanut",
+      "provider": "paper",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10248705/",
+      "license": "not_published_for_original_dataset",
+      "region": "China, Henan planting base; leaf images photographed in laboratory",
+      "part": "leaf",
+      "download": false,
+      "default_review": "hold",
+      "notes": [
+        "论文报告9420张，含健康、疮痂、灰斑、网斑、炭疽；不是可直接下载的田间手机图库。",
+        "Data Availability为Not applicable，附录并非完整图像库，后续仅记录补充缺口。"
+      ]
     }
   ],
   "taxonomy_references": [

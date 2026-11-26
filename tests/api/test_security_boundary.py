@@ -201,3 +201,17 @@ def test_authenticated_viewer_cannot_read_another_owner_record(app, account_head
         assert client.get("/api/cases/" + foreign["id"], headers=headers).status_code == 404
         assert client.delete("/api/cases/" + foreign["id"], headers=headers).status_code == 404
         assert [item["id"] for item in client.get("/api/cases", headers=headers).json()["items"]] == [own["id"]]
+
+
+def test_request_limits_are_isolated_between_application_instances(tmp_path, admin_hash, account_headers):
+    # 中间件模块可复用，但不同应用不能因同一账号ID而共享内存中的限流额度。
+    first_settings = Settings(root=ROOT, runtime=tmp_path / "first", models=tmp_path / "models",
+                              admin_password_hash=admin_hash, chat_per_day=1)
+    second_settings = replace(first_settings, runtime=tmp_path / "second")
+    with TestClient(create_app(first_settings)) as first, TestClient(create_app(second_settings)) as second:
+        for client in (first, second):
+            headers = account_headers(client)
+            record = client.post("/api/consultations", headers=headers, json={}).json()
+            path = "/api/cases/" + record["id"] + "/messages"
+            assert client.post(path, headers=headers, json={"text": "怎样拍清楚叶片？"}).status_code == 201
+            assert client.post(path, headers=headers, json={"text": "怎样拍清楚叶片？"}).status_code == 429

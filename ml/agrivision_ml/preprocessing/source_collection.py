@@ -14,6 +14,7 @@ import hashlib
 import json
 import time
 import zipfile
+import zlib
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -33,6 +34,16 @@ def save_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
 
+def write_csv(path: Path, rows: list[dict], fieldnames: list[str] | None = None) -> None:
+    # 即使筛选后为空，也重写表头，避免上次的旧候选清单残留而被误用。
+    fieldnames = fieldnames or list(rows[0])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('w', encoding='utf-8-sig', newline='') as stream:
+        writer = csv.DictWriter(stream, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
 def sha256(path: Path) -> str:
     """流式计算校验和，不把大压缩包一次读入内存。"""
     digest = hashlib.sha256()
@@ -46,6 +57,15 @@ def get_json(client: httpx.Client, url: str) -> Any:
     response = client.get(url)
     response.raise_for_status()
     return response.json()
+
+
+def md5_file(path: Path) -> str:
+    """MD5 仅用于与源站文件一致性核验，不用于密码安全。"""
+    digest = hashlib.md5()
+    with path.open('rb') as stream:
+        for block in iter(lambda: stream.read(4 * 1024 * 1024), b''):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def download_file(client: httpx.Client, record: dict, destination: Path, progress_enabled: bool = True) -> None:
@@ -75,23 +95,33 @@ def download_file(client: httpx.Client, record: dict, destination: Path, progres
             time.sleep(1 + attempt)
 
 
-def extract_zip(archive: Path, output: Path) -> None:
-    """保留压缩包与原目录；先检查全部成员路径，避免 ZIP 写出来源目录。"""
+def extract_zip(archive: Path, output: Path) -> list[dict]:
+    """逐个成员核对路径、解压校验 CRC；已存在且 CRC 相同的成员可直接复用。"""
     output.mkdir(parents=True, exist_ok=True)
     boundary = output.resolve()
+    inventory = []
     with zipfile.ZipFile(archive) as zipped:
         members = zipped.infolist()
-        for entry in members:
-            target = (boundary / entry.filename).resolve()
+        for member in members:
+            target = (boundary / member.filename).resolve()
             if not target.is_relative_to(boundary):
-                raise ValueError(f'压缩包含目录外路径：{entry.filename}')
-        for entry in tqdm(members, desc='Extracting', unit='file'):
-            if entry.is_dir():
+                raise ValueError(f'ZIP 路径越界：{member.filename}')
+            inventory.append({'path': member.filename, 'size': member.file_size,
+                              'compressed_size': member.compress_size, 'crc32': f'{member.CRC:08x}', 'directory': member.is_dir()})
+        for member in tqdm(members, desc='Extracting original images', unit='file', mininterval=5):
+            if member.is_dir():
                 continue
-            target = boundary / entry.filename
-            if target.exists() and target.stat().st_size == entry.file_size:
-                continue
-            zipped.extract(entry, boundary)
+            target = boundary / member.filename
+            if target.exists() and target.stat().st_size == member.file_size:
+                crc = 0
+                with target.open('rb') as stream:
+                    for block in iter(lambda: stream.read(1024 * 1024), b''):
+                        crc = zlib.crc32(block, crc)
+                if crc == member.CRC:
+                    continue
+            # zipfile 在读完成员时校验 CRC，损坏压缩成员会抛错而非悄悄接受。
+            zipped.extract(member, boundary)
+    return inventory
 
 
 def mendeley_inventory(client: httpx.Client, source: dict) -> tuple[dict, list[dict], dict[str, Path]]:
@@ -287,15 +317,26 @@ def main() -> None:
     sources = [s for s in all_sources if not args.source or s['id'] in args.source]
     if args.download:
         for source in sources:
-            if source.get('download') and source['provider'] == 'mendeley':
+            if not source.get('download'):
+                continue
+            if source['provider'] == 'mendeley':
                 collect_source(source)
+            elif source['provider'] == 'figshare':
+                # 大文件续传与源站校验独立放在提供方模块，审计规则不与下载耦合。
+                from .figshare_source import collect as collect_figshare
+                collect_figshare(source['article_id'], source['version'], source['crop'], source['id'], workers=4)
+            elif source['provider'] == 'zenodo':
+                from .zenodo_source import collect as collect_zenodo
+                collect_zenodo(source['record'], source['crop'], source['id'])
+            else:
+                raise ValueError(f"未提供下载适配器：{source['provider']}；请使用来源配置中的专用命令。")
     if args.audit:
         for crop in sorted({s['crop'] for s in sources}):
             # --source 可以缩小下载任务，但 source-audit 是整个作物的固定索引。
             # 从配置重新取该作物所有已落盘来源，避免增量下载后覆盖旧来源的审计。
             # 多标签外部评估有专用清单，不能混入按父目录解释单标签的审计。
             downloaded = [s for s in all_sources if s['crop'] == crop
-                          and s.get('task') != 'multilabel_external_evaluation'
+                          and s.get('task') not in {'multilabel_external_evaluation', 'singlelabel_external_evaluation'}
                           and (ROOT / 'data' / crop / 'sources' / s['id'] / 'raw').is_dir()]
             audit_crop(crop, downloaded)
 

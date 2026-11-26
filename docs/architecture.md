@@ -44,7 +44,8 @@ flowchart LR
 | [API 组装](../services/api/app/application.py) | 组装路由与服务，接收运行配置，调用识别、存储和问答 |
 | [记录结果](../services/api/app/case_views.py) | 组织对外记录、照片识别消息、参考资料和访问令牌 |
 | [图像服务](../services/api/app/models.py) | `imaging.py` 质检，`crop_recognition.py` 做作物候选，`models.py` 按作物加载病害模型，`evidence.py` 和 `recognition.py` 汇总回执 |
-| [账户与存储](../services/api/app/repository.py) | `auth.py` 核验管理员和会话，统一入口校验业务权限；`repository.py` 按账户隔离，`store.py` 持久化 |
+| [访问边界](../services/api/app/access.py) | 统一 HTTP 身份、会话图片授权、账户归属和额度；`auth.py` 只管凭证/签名，`security.py` 只管资源限制 |
+| [账户记录与存储](../services/api/app/repository.py) | `repository.py` 按账户隔离记录，`store.py` 负责 SQLite 与图片文件；界面不直接访问数据库 |
 | [问答与资料](../services/api/app/chat.py) | `conversation_policy.py` 决定可选建议与跨作物语境，`context.py` 提取明确资料，`intake.py` 处理资料回复；`knowledge.py` 检索资料，`chat.py` 组织本地或 DeepSeek 回答 |
 | [训练与推理](../ml/agrivision_ml) | 筛选、预处理、分组划分、训练、校准、评估和模型包推理 |
 | [公开资料](../knowledge) | 结构化资料卡、资讯和用药登记。当前有 18 张资料卡和 3 条资讯，登记表为空 |
