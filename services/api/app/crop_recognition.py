@@ -33,7 +33,11 @@ class CropRecognizer:
             temperature = raw.get("temperature", 1.0)
             valid = (
                 raw.get("task") == "crop_identification"
-                and raw.get("validated") is True
+                # 与病害模型共用发布开关：内部评估包可用于本地联调，未审核包不会自动开放。
+                and (
+                    raw.get("validated") is True
+                    or (self.settings.allow_experimental_models and raw.get("development_ready") is True)
+                )
                 and not raw.get("development_only")
                 and architecture_available(raw.get("architecture"))
                 and isinstance(labels, list)
@@ -60,7 +64,11 @@ class CropRecognizer:
 
     def status(self):
         metadata = self.metadata()
-        return {"ready": metadata is not None, "version": metadata["version"] if metadata else None}
+        return {
+            "ready": metadata is not None,
+            "version": metadata["version"] if metadata else None,
+            "experimental": bool(metadata and metadata.get("validated") is not True),
+        }
 
     def predict(self, image: BytesIO) -> CropRecognitionResponse:
         metadata = self.metadata()
@@ -95,6 +103,10 @@ class CropRecognizer:
                 crop_id=top.id if accepted else None,
                 candidates=candidates,
                 model_version=metadata["version"],
+                experimental=metadata.get("validated") is not True,
             )
         except (ImportError, RuntimeError, OSError, ValueError, KeyError, TypeError):
-            return CropRecognitionResponse(status="service_error", model_version=metadata["version"])
+            return CropRecognitionResponse(
+                status="service_error", model_version=metadata["version"],
+                experimental=metadata.get("validated") is not True,
+            )

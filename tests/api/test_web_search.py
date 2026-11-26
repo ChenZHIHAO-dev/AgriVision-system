@@ -30,7 +30,13 @@ def test_optional_web_search_returns_actual_citations_without_exposing_provider_
             "server_tool_calls": [
                 {
                     "reasoning_content": "PRIVATE_PROVIDER_REASONING",
-                    "calls": [{"type": "deepseek_web_search", "status": "completed"}],
+                    "calls": [{
+                        "type": "deepseek_web_search", "status": "completed",
+                        "sources": [{
+                            "url": "https://example.org/agri", "title": "公开农技资料",
+                            "published_at": "2026-11-20",
+                        }],
+                    }],
                 }
             ],
         }
@@ -61,6 +67,7 @@ def test_optional_web_search_returns_actual_citations_without_exposing_provider_
     assert payload["tools"] == [{"type": "deepseek_web_search"}]
     assert answer["web_search_used"] is True
     assert answer["sources"][0]["url"] == "https://example.org/agri"
+    assert answer["sources"][0]["date"] == "2026-11-20"
     assert "PRIVATE_PROVIDER_REASONING" not in str(answer)
 
 
@@ -72,3 +79,49 @@ def test_pro_web_combination_is_explicitly_rejected(tmp_path):
                 {}, "问题", [], "deepseek-v4-pro", web_search=True
             )
         )
+
+
+@pytest.mark.parametrize("enabled,status,source_url", [
+    (False, "completed", "https://example.org/agri"),
+    (True, "failed", "https://example.org/agri"),
+    (True, "completed", "https://example.org/other"),
+    (True, "completed", ""),
+])
+def test_unconfirmed_web_citation_is_not_exposed(tmp_path, monkeypatch, enabled, status, source_url):
+    async def respond(_self, url, **kwargs):
+        message = {
+            "content": "请记录作物症状出现的部位和时间。",
+            "annotations": [{"type": "url_citation", "url_citation": {
+                "url": "https://example.org/agri", "title": "不应展示的引用",
+            }}],
+            "server_tool_calls": [{"calls": [{
+                "type": "deepseek_web_search", "status": status,
+                "sources": [{"url": source_url, "title": "返回的搜索结果"}] if source_url else [],
+            }]}],
+        }
+        return httpx.Response(200, json={"choices": [{"message": message}]}, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", respond)
+    settings = Settings(root=ROOT, runtime=tmp_path, models=tmp_path, deepseek_key="fake-citation-test")
+    case = {"crop": "wheat", "stage": "苗期", "location": "", "note": "", "is_demo": False, "status": "awaiting_image"}
+    result = asyncio.run(Chat(settings, Knowledge(ROOT)).answer(
+        case, "请查阅公开农技资料", [], web_search=enabled
+    ))
+    assert result["provider"] == "deepseek"
+    assert result["sources"] == []
+    assert result["web_search_used"] is (enabled and status == "completed")
+
+
+def test_citation_metadata_does_not_expose_credential():
+    from app.chat import web_citations
+
+    message = {
+        "annotations": [{"type": "url_citation", "url_citation": {
+            "url": "https://example.org/agri", "title": "资料",
+        }}],
+        "server_tool_calls": [{"calls": [{
+            "type": "deepseek_web_search", "status": "completed",
+            "sources": [{"url": "https://example.org/agri", "title": "fake-citation-secret"}],
+        }]}],
+    }
+    assert web_citations(message, enabled=True, secret="fake-citation-secret") == ([], True)

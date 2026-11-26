@@ -278,3 +278,22 @@ def test_pending_question_persists_with_account_case_across_server_restart(
             == 200
         )
     assert len(generated) == 1
+
+
+@pytest.mark.parametrize("alias,crop", [
+    ("麦子", "wheat"), ("苞谷", "maize"), ("包谷", "maize"), ("落花生", "peanut"),
+])
+def test_crop_alias_resumes_pending_question_after_stage_is_given(app_client, alias, crop):
+    client, generated = app_client
+    path = new_case(client)
+    original = "叶片有斑点，如何观察？"
+    client.post(path + "/messages", headers=OWNER, json={"text": original})
+    answer = client.post(path + "/messages", headers=OWNER, json={"text": "种的是" + alias})
+    assert answer.status_code == 201
+    assert answer.json()["follow_up"]["field"] == "stage"
+    assert generated == []
+    answer = client.post(path + "/messages", headers=OWNER, json={"text": "现在是苗期"})
+    assert answer.status_code == 201
+    assert len(generated) == 1
+    assert generated[0]["text"] == original
+    assert generated[0]["crop"] == crop

@@ -17,6 +17,7 @@ class CropRecognitionResponse(BaseModel):
     candidates: list[CropCandidate] = Field(default_factory=list)
     model_version: str | None = None
     quality_issues: list[str] = Field(default_factory=list)
+    experimental: bool = False
 
 
 class DemoRequest(BaseModel):

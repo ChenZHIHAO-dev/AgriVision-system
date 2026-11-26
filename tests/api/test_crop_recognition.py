@@ -1,5 +1,6 @@
 """Crop identity has its own result, bundle, and upload lifetime."""
 
+from dataclasses import replace
 from io import BytesIO
 import json
 from pathlib import Path
@@ -67,7 +68,7 @@ def test_guest_crop_upload_without_weights_returns_no_guess_or_record(client, mo
 
     monkeypatch.setattr(client.app.state.registry, "predict", unexpected)
     monkeypatch.setattr(client.app.state.chat, "answer", unexpected)
-    assert client.get("/api/meta").json()["crop_recognition"] == {"ready": False, "version": None}
+    assert client.get("/api/meta").json()["crop_recognition"] == {"ready": False, "version": None, "experimental": False}
     response = upload(client)
     assert response.status_code == 200
     assert response.json() == {
@@ -76,6 +77,7 @@ def test_guest_crop_upload_without_weights_returns_no_guess_or_record(client, mo
         "candidates": [],
         "model_version": None,
         "quality_issues": [],
+        "experimental": False,
     }
 
     store = client.app.state.store
@@ -113,7 +115,7 @@ def test_crop_upload_reuses_validation_and_skips_prediction_for_blurry_photo(cli
 ])
 def test_wrong_task_and_unreleased_bundles_stay_unavailable(client, overrides):
     write_crop_bundle(client, **overrides)
-    assert client.get("/api/meta").json()["crop_recognition"] == {"ready": False, "version": None}
+    assert client.get("/api/meta").json()["crop_recognition"] == {"ready": False, "version": None, "experimental": False}
     assert upload(client).json()["status"] == "model_unavailable"
 
 
@@ -146,7 +148,7 @@ def test_independent_crop_model_supports_more_taxa_than_disease_models(
 
     monkeypatch.setattr(inference, "Predictor", FakePredictor)
     assert client.get("/api/meta").json()["crop_recognition"] == {
-        "ready": True, "version": "unit-crop-version"
+        "ready": True, "version": "unit-crop-version", "experimental": False
     }
     result = upload(client).json()
     assert result["status"] == status
@@ -156,3 +158,42 @@ def test_independent_crop_model_supports_more_taxa_than_disease_models(
         {"id": label, "name": metadata["label_names"][label], "score": score}
         for label, score in (scores or [])
     ]
+
+
+@pytest.mark.parametrize(("enabled", "development_only", "ready"), [
+    (False, False, False),
+    (True, False, True),
+    (True, True, False),
+])
+def test_experimental_crop_bundle_uses_explicit_runtime_switch(
+    client, monkeypatch, enabled, development_only, ready
+):
+    from ml.agrivision_ml import inference
+
+    runtime = client.app.state.crop_recognizer
+    runtime.settings = replace(runtime.settings, allow_experimental_models=enabled)
+    metadata = write_crop_bundle(
+        client, validated=False, development_ready=True, development_only=development_only
+    )
+
+    class FakePredictor:
+        def __init__(self, bundle, device):
+            self.metadata = metadata
+
+        def predict(self, image):
+            return [
+                {"id": "wheat", "score": .95},
+                {"id": "rice", "score": .03},
+                {"id": "unknown", "score": .02},
+            ]
+
+    monkeypatch.setattr(inference, "Predictor", FakePredictor)
+    assert client.get("/api/meta").json()["crop_recognition"] == {
+        "ready": ready,
+        "version": "unit-crop-version" if ready else None,
+        "experimental": ready,
+    }
+    result = upload(client).json()
+    assert result["status"] == ("recognized" if ready else "model_unavailable")
+    assert result["experimental"] is ready
+    assert result["crop_id"] == ("wheat" if ready else None)

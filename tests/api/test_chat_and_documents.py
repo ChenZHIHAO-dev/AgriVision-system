@@ -333,3 +333,71 @@ def test_local_fallback_cites_only_material_used(tmp_path, monkeypatch, has_docu
         assert "田间记录.txt" in result["text"] and "前日降雨" in result["text"]
     else:
         assert "补拍" in result["text"]
+
+
+@pytest.mark.parametrize("disease_id,name", [
+    ("wheat_glume_blotch", "小麦颖枯病"),
+    ("wheat_barley_yellow_dwarf", "小麦黄矮病"),
+    ("wheat_septoria_leaf_blotch", "小麦壳针孢叶枯病"),
+])
+def test_new_recognition_without_knowledge_card_does_not_borrow_another_disease(tmp_path, disease_id, name):
+    settings = Settings(root=ROOT, runtime=tmp_path, models=tmp_path)
+    case = {
+        "crop": "wheat", "stage": "苗期", "location": "", "note": "", "is_demo": False,
+        "status": "identified", "disease_id": disease_id, "title": "疑似" + name,
+        "images": [{"id": "photo"}], "candidates": [{"id": disease_id, "name": name}],
+    }
+    result = asyncio.run(Chat(settings, Knowledge(ROOT)).answer(
+        case, "叶片上像撒了一层白粉，需要怎样观察？", []
+    ))
+    assert result["notice_code"] == "not_configured"
+    assert name in result["text"]
+    assert "尚未覆盖" in result["text"]
+    assert "白粉病" not in result["text"]
+    assert result["sources"] == []
+
+
+def test_general_concept_can_use_other_disease_card_without_changing_recognition(tmp_path):
+    settings = Settings(root=ROOT, runtime=tmp_path, models=tmp_path)
+    case = {
+        "crop": "wheat", "stage": "苗期", "location": "", "note": "", "is_demo": False,
+        "status": "identified", "disease_id": "wheat_glume_blotch", "title": "疑似小麦颖枯病",
+        "images": [{"id": "photo"}], "candidates": [],
+    }
+    result = asyncio.run(Chat(settings, Knowledge(ROOT)).answer(case, "什么是小麦白粉病？", []))
+    assert "小麦白粉病" in result["text"]
+    assert result["sources"]
+    assert case["disease_id"] == "wheat_glume_blotch"
+
+
+def test_provider_receives_explicit_knowledge_gap_and_no_assumed_region(tmp_path, monkeypatch):
+    seen = {}
+
+    async def respond(_self, url, **kwargs):
+        seen.update(kwargs["json"])
+        return httpx.Response(200, json={"choices": [{"message": {
+            "content": "模型初步提示疑似小麦颖枯病，目前还缺少对应审核资料。"
+        }}]}, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", respond)
+    settings = Settings(root=ROOT, runtime=tmp_path, models=tmp_path, deepseek_key="fake-coverage-test")
+    case = {
+        "crop": "wheat", "stage": "苗期", "location": "", "note": "", "is_demo": False,
+        "status": "identified", "disease_id": "wheat_glume_blotch", "title": "疑似小麦颖枯病",
+        "images": [{"id": "photo"}], "candidates": [],
+    }
+    result = asyncio.run(Chat(settings, Knowledge(ROOT)).answer(
+        case, "叶片上像撒了一层白粉，需要怎样观察？", []
+    ))
+    assert result["provider"] == "deepseek"
+    system = seen["messages"][0]["content"]
+    context = json.loads(system.rsplit("\n", 1)[-1])
+    assert context["knowledge"] == []
+    assert context["knowledge_coverage"] == {
+        "recognized_disease_id": "wheat_glume_blotch",
+        "recognized_disease_card_available": False,
+        "retrieved_card_ids": [],
+    }
+    assert context["location"] == ""
+    assert "服务河南南阳及周边" not in system
+    assert result["sources"] == []

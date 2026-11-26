@@ -121,6 +121,7 @@ export interface CaseRecord {
   advice: { summary: string; actions: string[]; sources: Source[]; products: Product[] }
 }
 export interface CropIdentification {
+  experimental?: boolean
   status: 'recognized' | 'uncertain' | 'needs_retake' | 'model_unavailable' | 'service_error'
   crop_id: string | null
   candidates: { id: string; name: string; score: number }[]
@@ -128,7 +129,7 @@ export interface CropIdentification {
   quality_issues: string[]
 }
 export interface Meta {
-  crop_recognition?: { ready: boolean; version: string | null }
+  crop_recognition?: { ready: boolean; version: string | null; experimental?: boolean }
   version: string
   models: {
     crop: Crop

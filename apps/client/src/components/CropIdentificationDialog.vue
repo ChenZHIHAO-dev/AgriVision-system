@@ -47,16 +47,24 @@ const status = computed(() => {
   <UiDialog title="识别作物" subtitle="先确认是什么作物，再识别病虫害。" @close="emit('close')">
     <image v-if="photo" class="crop-lookup-photo" :src="photo" mode="aspectFit" />
     <text v-if="accepted" class="crop-lookup-name">可能是{{ accepted.name }}</text>
+    <text v-if="result?.experimental" class="crop-lookup-status">
+      测试模型结果，仅供参考；请先确认作物。
+    </text>
     <text class="crop-lookup-status" role="status">{{ status }}</text>
     <text v-for="issue in result?.quality_issues || []" :key="issue" class="crop-lookup-status">
       {{ issue }}
     </text>
     <view
-      v-if="result?.status === 'uncertain' && result.candidates.length"
+      v-if="['recognized', 'uncertain'].includes(result?.status || '') && result?.candidates.length"
       class="crop-lookup-candidates"
     >
-      <text v-for="item in result.candidates" :key="item.id">{{ item.name }}</text>
+      <text v-for="item in result.candidates" :key="item.id">
+        {{ item.name }} {{ Math.round(item.score * 100) }}%
+      </text>
     </view>
+    <text v-if="result?.candidates.length" class="crop-lookup-status">
+      百分比为模型候选分数，不代表实际识别正确率。
+    </text>
     <view v-if="ready" class="crop-lookup-actions">
       <button
         v-if="!desktopWeb"

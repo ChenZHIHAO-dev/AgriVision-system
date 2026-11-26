@@ -1,6 +1,6 @@
 import re
 
-from .knowledge import CROP_NAMES
+from .knowledge import CROP_NAMES, query_crop_scope
 
 STAGES = {
     'wheat':['苗期','返青起身期','拔节孕穗期','抽穗扬花期','灌浆成熟期'],
@@ -11,10 +11,12 @@ STAGES = {
 
 def fill_explicit_context(case, text):
     if not case.get('crop'):
-        matches = [crop for crop,name in CROP_NAMES.items() if name in text]
-        if len(matches)==1:
-            case['crop'] = matches[0]
-            case['crop_name'] = CROP_NAMES[matches[0]]
+        # 与检索共用作物别名，避免用户回复“麦子 / 苞谷”后仍被重复追问。
+        scope = query_crop_scope(text)
+        if scope and len(scope) == 1 and next(iter(scope)) in CROP_NAMES:
+            crop = next(iter(scope))
+            case['crop'] = crop
+            case['crop_name'] = CROP_NAMES[crop]
             if not case.get('images'): case['title'] = case['crop_name']+'种植问答'
     if case.get('crop') and case.get('stage') in ('','不清楚'):
         for stage in STAGES[case['crop']]:
