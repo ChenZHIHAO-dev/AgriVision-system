@@ -232,13 +232,16 @@ test('general questions can be sent from an empty consultation without crop inta
     assert.equal(updated.pending_question, undefined)
   }
 })
-test('text consultation collects crop and growth stage without repeating a filled field', async () => {
+test('field questions answer first and offer optional information without a pending task', async () => {
   const app = await demoMember()
   let record = await app.previewRequest('/api/consultations', 'POST', {})
   record = await app.previewRequest('/api/cases/' + record.id + '/messages', 'POST', {
     text: '叶片有斑点，先观察什么？',
   })
-  assert.equal(record.messages.at(-1).follow_up.field, 'crop')
+  assert.equal(record.messages.at(-1).context_suggestion.field, 'crop')
+  assert.equal(record.messages.at(-1).provider, 'preview')
+  assert.ok(record.messages.at(-1).photo_suggestion)
+  assert.equal(record.pending_question, undefined)
   record = await app.previewRequest('/api/cases/' + record.id + '/messages', 'POST', {
     text: '这次咨询小麦，目前处于苗期。',
   })
@@ -297,23 +300,39 @@ test('conversation title is independent of the case label and persists during pr
   assert.equal(renamed.messages.length, updated.messages.length)
 })
 
-test('static preview resumes the original question after selection without a fake user message', async () => {
+test('optional fields can be skipped or filled without creating messages or blocking later answers', async () => {
   const app = await demoMember()
   const record = await app.previewRequest('/api/consultations', 'POST', {})
   const path = '/api/cases/' + record.id
-  await app.previewRequest(path + '/messages', 'POST', { text: '小麦叶片白斑如何处理？' })
-  let updated = await app.previewRequest(path, 'GET')
-  const question = updated.pending_question.id
-  await app.previewRequest(path + '/context', 'POST', { stage: '苗期' })
-  const answer = await app.previewRequest(path + '/resume', 'POST', { question_id: question })
-  updated = await app.previewRequest(path, 'GET')
+  let updated = await app.previewRequest(path + '/messages', 'POST', {
+    text: '小麦叶片白斑如何观察？',
+  })
+  assert.equal(updated.messages.at(-1).provider, 'preview')
+  assert.equal(updated.messages.at(-1).context_suggestion.field, 'stage')
   assert.equal(updated.pending_question, undefined)
-  assert.equal(updated.messages.length, 3)
-  assert.deepEqual(
-    updated.messages.filter((item) => item.role === 'user').map((item) => item.text),
-    ['小麦叶片白斑如何处理？'],
-  )
-  const replay = await app.previewRequest(path + '/resume', 'POST', { question_id: question })
-  assert.deepEqual(replay, answer)
-  assert.equal((await app.previewRequest(path, 'GET')).messages.length, 3)
+  const count = updated.messages.length
+  updated = await app.previewRequest(path + '/context', 'POST', {
+    skip_context_fields: ['stage', 'location'],
+  })
+  assert.equal(updated.messages.length, count)
+  updated = await app.previewRequest(path + '/messages', 'POST', { text: '叶片还应该怎么看？' })
+  assert.equal(updated.messages.at(-1).provider, 'preview')
+  assert.equal(updated.messages.at(-1).context_suggestion, undefined)
+  assert.equal(updated.messages.at(-1).photo_suggestion, undefined)
+  updated = await app.previewRequest(path + '/context', 'POST', { stage: '苗期', location: '河南' })
+  assert.equal(updated.messages.length, count + 2)
+  assert.deepEqual(updated.skipped_context_fields, [])
+  assert.equal(updated.pending_question, undefined)
+})
+
+
+test('declining photos does not answer with another photography tutorial', async () => {
+  const app = await demoMember()
+  const record = await app.previewRequest('/api/consultations', 'POST', {})
+  const updated = await app.previewRequest('/api/cases/' + record.id + '/messages', 'POST', {
+    text: '暂时不提供照片，可以先看看可能的原因吗？',
+  })
+  const answer = updated.messages.at(-1)
+  assert.equal(answer.photo_suggestion, undefined)
+  assert.doesNotMatch(answer.text, /先拍一张|补一张|怎样拍清/)
 })

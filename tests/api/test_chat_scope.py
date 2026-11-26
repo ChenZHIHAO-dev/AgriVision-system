@@ -161,20 +161,21 @@ def test_photo_report_and_context_followups_do_not_allow_extra_unrelated_tasks()
 @pytest.mark.parametrize("text", ["黄瓜白粉病怎么用药？", "请说明番茄的病害", "玉米叶片用什么药？"])
 def test_new_crop_does_not_reuse_previous_photo_or_product(text, monkeypatch):
     def forbidden(*args, **kwargs):
-        pytest.fail("a crop mismatch must not read credentials, search products, or call a provider")
+        pytest.fail("an unconfigured provider must not be called")
 
     monkeypatch.setattr(httpx.AsyncClient, "post", forbidden)
-    settings = SimpleNamespace(deepseek_model="deepseek-flash", get_deepseek_key=forbidden)
-    knowledge = SimpleNamespace(search=forbidden, get=forbidden, matching_products=forbidden)
+    settings = SimpleNamespace(deepseek_model="deepseek-flash", get_deepseek_key=lambda: "")
+    knowledge = Knowledge(ROOT)
     record = case(
         crop="wheat", disease_id="wheat_powdery_mildew", images=[{"id": "prior-wheat-image"}]
     )
     result = asyncio.run(Chat(settings, knowledge).answer(record, text, [], web_search=True))
-    assert result["notice_code"] == "crop_mismatch"
-    assert "新建一条文字对话" in result["text"]
-    assert result["products"] == result["sources"] == []
-    assert not result["web_search_used"]
+    assert result["provider"] in {"rules", "knowledge"}
+    assert result.get("notice_code") != "crop_mismatch"
+    assert result["products"] == []
+    assert "小麦白粉病" not in result["text"]
     assert "recognition" not in result
+    assert record["crop"] == "wheat" and record["images"]
 
 
 @pytest.mark.parametrize("text", [

@@ -60,6 +60,7 @@ class ConsultationRequest(BaseModel):
 
 
 class CaseUpdate(BaseModel):
+    skip_context_fields: list[Literal["crop", "stage", "location"]] = Field(default_factory=list, max_length=3)
     conversation_title: (
         Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
         | None

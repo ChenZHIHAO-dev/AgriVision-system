@@ -174,7 +174,10 @@ def test_general_questions_do_not_require_crop_or_stage(tmp_path, account_header
             headers=owner,
             json={"text": "我这块田的叶片有白斑，怎么处理？"},
         ).json()
-        assert field_question["follow_up"]["field"] == "crop"
+        assert field_question["provider"] == "knowledge"
+        assert field_question["context_suggestion"]["field"] == "crop"
+        assert field_question["context_suggestion"]["optional"] is True
+        assert "follow_up" not in field_question
 
 
 def test_text_consultation_collects_context_with_choice_cards(tmp_path, account_headers, admin_hash):
@@ -192,8 +195,8 @@ def test_text_consultation_collects_context_with_choice_cards(tmp_path, account_
             json={"text": "叶片上有黄斑，应该怎么观察？"},
         ).json()
         assert (
-            first["provider"] == "clarification"
-            and first["follow_up"]["field"] == "crop"
+            first["provider"] == "knowledge"
+            and first["context_suggestion"]["field"] == "crop"
         )
         assert (
             client.post(
@@ -204,7 +207,9 @@ def test_text_consultation_collects_context_with_choice_cards(tmp_path, account_
         second = client.post(
             path + "/messages", headers=owner, json={"text": "是小麦。"}
         ).json()
-        assert second["follow_up"]["field"] == "stage"
+        assert second["provider"] == "rules"
+        assert "follow_up" not in second
+        assert "pending_question_id" not in second
         client.post(path + "/context", headers=owner, json={"stage": "拔节孕穗期"})
         final = client.post(
             path + "/messages", headers=owner, json={"text": "接着说说检查方法。"}

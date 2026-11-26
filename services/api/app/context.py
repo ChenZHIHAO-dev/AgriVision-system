@@ -18,22 +18,13 @@ def fill_explicit_context(case, text):
             case['crop'] = crop
             case['crop_name'] = CROP_NAMES[crop]
             if not case.get('images'): case['title'] = case['crop_name']+'种植问答'
-    if case.get('crop') and case.get('stage') in ('','不清楚'):
+    if case.get('crop') and case.get('stage') in ('','不清楚','暂不确定'):
         for stage in STAGES[case['crop']]:
             if stage in text:
                 case['stage'] = stage
                 break
 
 
-def follow_up(case):
-    if not case.get('crop'):
-        return {'field':'crop','prompt':'这次想问哪种作物？','options':[{'value':crop,'label':name} for crop,name in CROP_NAMES.items()]}
-    if case.get('stage') in ('','不清楚'):
-        return {'field':'stage','prompt':'目前处于哪个生育期？','options':[{'value':stage,'label':stage} for stage in STAGES[case['crop']]]+[{'value':'暂不确定','label':'先不填写'}]}
-    return None
-
-
-# Keep field-specific treatment and diagnosis on the existing intake route.
 GENERAL_QUESTION = re.compile(
     r"^\s*(?:请问[,，：:\s]*)?什么是.{1,30}[?？。！!]*$|"
     r"^\s*.{1,30}(?:是什么|是什么意思|有什么作用|是做什么的|有何区别|有什么区别)[?？。！!]*$|"

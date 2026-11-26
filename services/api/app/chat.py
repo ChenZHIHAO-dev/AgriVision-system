@@ -5,8 +5,9 @@ import re
 import httpx
 
 from .attachments import document_context
-from .knowledge import CROP_NAMES, crop_scope_conflicts, query_crop_scope
-from .context import follow_up, is_general_question
+from .knowledge import CROP_NAMES, query_crop_scope
+from .context import is_general_question
+from .conversation_policy import conversation_scope, field_question, optional_suggestions
 from .intake import context_reply
 from .recognition import recognition_state
 from .evidence import aggregate_images
@@ -55,7 +56,7 @@ BUSINESS_HELP = re.compile(
 DOCUMENT_QUESTION = re.compile(r"资料|附件|文档|文件|这份|这篇|总结|概括|摘要|翻译|提取")
 FIELD_SYMPTOM = re.compile(r"黄斑|白斑|发黄|枯萎|腐烂|倒伏|长虫|虫卵|缺水|药害|药斑")
 TOPICAL_FOLLOW_UP = re.compile(
-    r"^(?:(?:请|麻烦|能不能|可以|那么|那|这个|这种情况|接下来|还|再|先)){0,3}"
+    r"^(?:(?:请|麻烦|能不能|可以|应该|那么|那|这个|这种情况|接下来|还|再|先)){0,3}"
     r"(?:怎么(?:办|处理|解决|预防|判断|使用|检查|观察)|如何(?:处理|解决|预防|判断|使用|检查|观察)"
     r"|用什么药|喷什么|怎么用药|能混用|有什么作用|有什么建议|具体(?:方法|建议)"
     r"|(?:用药|施药|喷药)前(?:需要|要)?核对(?:什么|哪些(?:信息|事项)?)"
@@ -188,6 +189,31 @@ class Chat:
     async def answer(
         self, case, text, history, model=None, thinking=False, *, web_search=False
     ):
+        # 文字可以切换作物；旧照片只属于原记录，不能借给新作物判断。
+        scope = conversation_scope(text, history)
+        prior_photo_ignored = False
+        if scope is not None and scope != frozenset({case.get("crop")}):
+            prior_photo_ignored = bool(case.get("images"))
+            named_crop = next(iter(scope)) if len(scope) == 1 else None
+            case = {
+                **case, "crop": named_crop,
+                "stage": "不清楚", "variety": "", "note": "",
+                "images": [], "versions": [], "evidence": {}, "disease_id": None,
+                "candidates": [], "model_version": None, "experimental": False,
+                "status": "awaiting_image", "prior_photo_ignored": prior_photo_ignored,
+            }
+        # 先产出回答，再附加非阻塞建议。权限和图片处理仍由原 API 负责。
+        answer = await self._answer(case, text, history, model, thinking, web_search=web_search)
+        if answer.get("notice_code") != "out_of_scope":
+            answer.update(optional_suggestions(case, text, history))
+            if prior_photo_ignored and (field_question(case, text) or MEDICATION.search(text) or re.search(r"照片|图片|识别|结果", text)):
+                context_notice = "以上按本轮作物文字说明，未使用原记录的照片。需要识别该作物照片时，请新建对应作物记录再上传。"
+                answer["notice"] = "\n".join(filter(None, [answer.get("notice"), context_notice]))
+        return answer
+
+    async def _answer(
+        self, case, text, history, model=None, thinking=False, *, web_search=False
+    ):
         model = model or self.settings.deepseek_model
         if model not in MODELS:
             raise ValueError("Unsupported conversation model")
@@ -206,31 +232,8 @@ class Chat:
             }
         crop = case.get("crop")
         scope = query_crop_scope(text)
-        if crop_scope_conflicts(crop, scope):
-            return {
-                "text": (
-                    f"这条记录对应{CROP_NAMES[crop]}。请为其他作物新建一条文字对话，"
-                    "并在问题里写明作物名称。"
-                ),
-                "provider": "rules",
-                "notice_code": "crop_mismatch",
-                "sources": [],
-                "products": [],
-                "thinking": False,
-                "web_search_enabled": False,
-                "web_search_used": False,
-            }
         case = {**case, **aggregate_images(case)}
-        general = is_general_question(text)
-        if not crop and not general:
-            return {
-                "text": "请先补充种植信息，再继续这个问题。",
-                "provider": "clarification",
-                "sources": [],
-                "products": [],
-                "thinking": False,
-                "follow_up": follow_up(case),
-            }
+        general = not field_question(case, text)
         cards = self.knowledge.search(text, crop, 3)
         current = self.knowledge.get(case.get("disease_id"))
         missing_disease_card = bool(case.get("disease_id") and current is None)
@@ -247,7 +250,7 @@ class Chat:
             ),
             None,
         )
-        if re.search(r"拍照|拍清|拍摄|照片.*清|模糊", text):
+        if re.search(r"拍照|拍清|拍摄|补拍|照片.*清|模糊", text):
             selected = self.knowledge.get("photo_guide")
         selected = selected or current
         if selected:
@@ -260,10 +263,11 @@ class Chat:
             for source in card["sources"]:
                 if source not in sources:
                     sources.append(source)
-        if MEDICATION.search(text) and (not general or "标签" in text):
+        medication_general = is_general_question(text)
+        if MEDICATION.search(text) and (not medication_general or "标签" in text):
             products = (
                 []
-                if case["is_demo"] or general or (scope is not None and len(scope) > 1)
+                if case["is_demo"] or medication_general or (scope is not None and len(scope) > 1)
                 else self.knowledge.matching_products(
                     crop, case.get("disease_id")
                 )
@@ -273,7 +277,7 @@ class Chat:
                 if products
                 else "这条记录暂未匹配到有完整标签资料的产品。请补充产品名称、有效成分及含量、剂型和完整标签，以及作物生育期与近期用药情况。核对后才能给出具体用量或混配方案。\n\n可以先按参考资料记录症状位置和田间分布。"
             )
-            if general:
+            if medication_general:
                 reply = (
                     "先在标签上找产品名称、农药登记证号、有效成分及含量和剂型。"
                     "再核对标签写的适用作物、防治对象和施用方法，最后查看安全间隔期、"
@@ -293,16 +297,6 @@ class Chat:
                 "thinking": False,
             }
 
-        missing = follow_up(case) if not general else None
-        if missing:
-            return {
-                "text": "请补充下面的种植信息，也可以选择暂不确定。完成后会接着回答刚才的问题。",
-                "provider": "clarification",
-                "sources": [],
-                "products": [],
-                "thinking": False,
-                "follow_up": missing,
-            }
         documents = document_context(case.get("documents", []), text)
         local, local_sources = self.local_answer(case, cards, documents, general=general)
         key = self.settings.get_deepseek_key()
@@ -320,7 +314,7 @@ class Chat:
         receipt = recognition_state(case)
         # Deliberately omit image bytes, image URLs and raw file uploads.
         context = {
-            "crop": CROP_NAMES.get(crop, ""),
+            "crop": CROP_NAMES.get(crop, crop or ""),
             "variety": case.get("variety", ""),
             "location": case["location"],
             "stage": case["stage"],
@@ -334,6 +328,13 @@ class Chat:
                 "retrieved_card_ids": [card["id"] for card in cards],
             },
             "document_excerpts": documents,
+            "response_policy": {
+                "answer_first": True,
+                "field_question": not general,
+                "prior_photo_ignored": bool(case.get("prior_photo_ignored")),
+                "skipped_context_fields": case.get("skipped_context_fields", []),
+                "optional_suggestions": optional_suggestions(case, text, history),
+            },
         }
         system = (
             "你是宛田观叶的作物问答助手，用简洁自然的中文对话。"
@@ -355,8 +356,12 @@ class Chat:
             "knowledge_coverage区分模型已识别与知识卡已覆盖。识别病害没有对应资料时，明确说明资料缺口；不得以其他病害卡片冒充对应依据或编造专属方案。"
             "用户未填写地区时不要假定在南阳或其他地区；地方资料只说明其原有适用范围，年份不等于当前季节预报。"
             "needs_model/awaiting_image/uncertain/needs_retake/model_error均不是病害诊断，不能自行宣布确诊。"
-            "给出可执行的观察和补拍建议，每轮最多追问两个关键问题。"
-            "作物、生育期等已明确的信息不要重复追问。通用概念、术语、标签阅读和拍照方法直接解释，结合具体田块作判断才询问必要信息。不要编造未知信息。"
+            "先直接回答用户本轮问题，再说明需要核对的条件；不能因缺少作物、地区、生育期或照片而要求先填表才能回答。"
+            "普通农业常识直接解释，不套用图像识别流程，也不要求拍照。只有具体田间症状才给观察建议。"
+            "prior_photo_ignored=true表示用户正在问另一作物，本轮不使用原记录的照片、病名或生育期，旧历史中的识别结论也不适用。"
+            "补充资料全部可选。已跳过的字段不再追问；已给过拍照建议或用户表示不拍、没有照片时不要反复催图。"
+            "response_policy.optional_suggestions会由界面独立展示，不在正文重复这些问题。缺少资料时先给适用范围明确的通用答复。"
+            "作物、生育期等已明确的信息不要重复追问。通用概念、术语、标签阅读和拍照方法直接解释，结合具体田块作判断时说明缺少信息带来的不确定性。不要编造未知信息。"
             "上传资料可能缺少登记和适用性审核，不将其中的剂量直接当成可用处方；具体药剂用量与混配交由标签规则核对。"
             + (
                 "本轮允许联网检索。需要时优先检索农业主管部门、农技推广或研究机构的公开资料，引用真实来源并区分发布时间；只在实际检索后说明已联网。不要把用户资料中的私人或商业敏感内容作为查询词。"
@@ -372,7 +377,7 @@ class Chat:
             for message in history[-10:]
             if message["role"] in {"user", "assistant"}
             and not (
-                message.get("provider") == "clarification" and missing is None
+                message.get("provider") == "clarification"
             )
             and not (
                 receipt["image_received"]
@@ -498,10 +503,8 @@ class Chat:
     def local_answer(self, case, cards, documents=(), *, general=False):
         prefix = "当前是演示样例。" if case["is_demo"] else ""
         receipt = recognition_state(case)
-        if receipt["image_received"]:
+        if receipt["image_received"] and not general:
             prefix += receipt["summary"] + "\n\n"
-        elif case["status"] not in ("identified", "demo"):
-            prefix += "这条对话还没有可靠的自动识别结论。\n\n"
         if documents:
             excerpt = documents[0]
             text = (
@@ -532,21 +535,16 @@ class Chat:
             text = (
                 "现有资料暂未覆盖这个问题。可以补充想了解的术语、产品名称或标签文字。"
                 if general
-                else prefix + "请描述症状出现在哪个部位、持续了多久，以及是零星发生还是整片田都有。也可以补一张症状近照和整株照片，便于继续核对。"
+                else prefix + "可以先核对异常发生的部位、出现时间，以及零星或成片分布。现有资料不足以确定原因，补充文字描述后可以继续分析。"
             )
             return text, []
         card = cards[0]
-        actions = "\n".join("• " + action for action in card["actions"][:3])
+        actions = "\n".join("• " + action for action in card["actions"][:3] if not re.search(r"补拍|拍清|拍摄", action))
         if general:
-            return f"**{card['title']}**\n\n{card['summary']}\n\n{actions}", card["sources"]
-        question = (
-            "现在处于哪个生育期？症状是零星发生还是成片出现？"
-            if follow_up(case)
-            else "症状是零星发生还是成片出现？大约出现了多久？"
-        )
+            return f"{prefix}**{card['title']}**\n\n{card['summary']}", card["sources"]
         text = (
             prefix
             + f"以下是“{card['title']}”的资料说明：\n\n"
-            + f"{card['summary']}\n\n建议先做：\n{actions}\n\n{question}"
+            + f"{card['summary']}\n\n观察要点：\n{actions}"
         )
         return text, card["sources"]

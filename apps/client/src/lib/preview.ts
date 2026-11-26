@@ -1,4 +1,12 @@
-import type { CaseRecord, Crop, KnowledgeCard, Message, Meta, FollowUp } from './api'
+import type {
+  CaseRecord,
+  Crop,
+  KnowledgeCard,
+  Message,
+  Meta,
+  ContextSuggestion,
+  ContextField,
+} from './api'
 import { asset } from './assets'
 import { dataMode } from './transport'
 import type { User } from './auth'
@@ -115,16 +123,13 @@ function isGeneralQuestion(text: string) {
 }
 function reply(record: CaseRecord, text: string): Message {
   const general = isGeneralQuestion(text)
-  if (!record.crop && !general)
-    return {
-      role: 'assistant',
-      text: '这次想问哪种作物？',
-      created_at: stamp(),
-      provider: 'clarification',
-      sources: [],
-      products: [],
-      follow_up: clarification(record)!,
-    }
+  const fieldQuestion =
+    !general &&
+    /发黄|黄化|白斑|黄斑|斑点|病斑|白粉|枯萎|腐烂|倒伏|长虫|虫卵|叶片有|叶子有|我家|我这|我种|这块田|这株|本次识别|这次照片/.test(
+      text,
+    )
+  const declinedPhoto = /不拍|不上传|不提供照片|没有(?:照片|图片)|不方便拍|先不(?:拍|传)/.test(text)
+  const photoQuestion = !declinedPhoto && /怎么拍|如何拍|拍清|拍摄方法|拍哪些|照片.*模糊/.test(text)
   let card = previewCards.find((item) => item.id === record.disease_id)
   const scoped = previewCards.filter(
     (item) => !record.crop || item.crop === record.crop || item.crop === 'general',
@@ -135,8 +140,8 @@ function reply(record: CaseRecord, text: string): Message {
         item.title.includes(text) ||
         item.keywords.some((word) => word.length > 2 && text.includes(word)),
     ) || card
-  if (/拍照|拍摄|照片|拍清/.test(text))
-    card = previewCards.find((item) => item.id === 'photo_guide')
+  if (declinedPhoto && card?.id === 'photo_guide') card = undefined
+  if (photoQuestion) card = previewCards.find((item) => item.id === 'photo_guide')
   const medicine = /用药|药物|配方|剂量|用量|混配|农药|打药|喷什么|用什么药/.test(text)
   let answer: string
   if (general && medicine && text.includes('标签'))
@@ -144,17 +149,10 @@ function reply(record: CaseRecord, text: string): Message {
       '先找产品名称、登记证号和有效成分，再核对标签上的适用作物、防治对象和施用方法，最后看安全间隔期与防护要求。'
   else if (medicine && !general)
     answer =
-      '目前还没有录入公司的产品标签资料。请先核对产品名称、有效成分和含量、剂型、适用作物与防治对象，以及标签用法。\n\n准备好完整标签、生育期和近期施药记录后，再由农技人员确认用量与混配方案。你可以先查看这条记录里的田间检查建议。'
-  else if (!general && clarification(record))
-    return {
-      role: 'assistant',
-      text: '请先补充种植信息，也可以选择暂不确定。',
-      created_at: stamp(),
-      provider: 'clarification',
-      sources: [],
-      products: [],
-      follow_up: clarification(record)!,
-    }
+      '目前还没有可核验的产品标签资料。请先核对产品名称、有效成分和含量、剂型、适用作物与防治对象，以及标签用法。\n\n准备好完整标签、生育期和近期施药记录后，再由农技人员确认用量与混配方案。你可以先查看这条记录里的田间检查建议。'
+  else if (general && /生育期/.test(text))
+    answer =
+      '生育期是作物从萌发到成熟过程中所处的生长阶段。例如小麦有苗期、拔节孕穗期、抽穗扬花期和灌浆成熟期。同一种症状在不同阶段的含义可能不同，知道阶段有助于解释田间情况；不清楚也可以继续描述。'
   else if (general)
     answer = card
       ? card.summary +
@@ -165,10 +163,13 @@ function reply(record: CaseRecord, text: string): Message {
           .join('\n')
       : '现有预览资料暂未覆盖这个问题。可以补充想了解的术语、产品名称或标签文字。'
   else if (card)
-    answer = `${record.is_demo ? '这是一条演示记录。' : '目前还没有自动识别结论。'}以下是「${card.title}」的资料参考：\n\n${card.summary}\n\n${card.actions.map((action) => '• ' + action).join('\n')}\n\n症状大约出现了多久？是零星发生还是成片出现？`
+    answer = `${record.is_demo ? '这是一条演示记录。' : '目前还没有自动识别结论。'}以下是「${card.title}」的资料参考：\n\n${card.summary}\n\n${card.actions
+      .filter((action) => photoQuestion || !/补拍|拍清|拍摄/.test(action))
+      .map((action) => '• ' + action)
+      .join('\n')}`
   else
     answer =
-      '先把田间情况记录清楚 🌱\n\n• 症状出现在叶片、麦穗还是根茎部？\n• 大约出现了多久，是零星还是成片发生？\n• 近期是否施过药、灌过水或遇到连续降雨？\n\n可以再补一张症状近照和整株照片。当前回答来自植保资料，AI 问答服务暂不可用。'
+      '先把田间情况记录清楚 🌱\n\n• 症状出现在叶片、麦穗还是根茎部？\n• 大约出现了多久，是零星还是成片发生？\n• 近期是否施过药、灌过水或遇到连续降雨？\n\n以上是田间观察要点。离线预览只提供资料参考，不连接 AI 问答服务。'
   return {
     role: 'assistant',
     text: answer,
@@ -176,26 +177,48 @@ function reply(record: CaseRecord, text: string): Message {
     provider: 'preview',
     sources: medicine ? [] : card?.sources || [],
     products: [],
-    follow_up: general ? undefined : clarification(record) || undefined,
+    // 离线演示也先给资料回答，建议只影响后续信息，不生成待回答任务。
+    context_suggestion: fieldQuestion ? optionalContext(record) || undefined : undefined,
+    photo_suggestion:
+      fieldQuestion &&
+      !declinedPhoto &&
+      !record.images.length &&
+      !record.messages.some((message) => message.photo_suggestion)
+        ? { prompt: '如果方便，可添加症状近照和整株照片，帮助核对。', optional: true }
+        : undefined,
   }
 }
-function clarification(record: CaseRecord): FollowUp | null {
-  if (!record.crop)
+function optionalContext(record: CaseRecord): ContextSuggestion | null {
+  const skipped = [
+    ...(record.skipped_context_fields || []),
+    ...record.messages.flatMap((message) =>
+      message.context_suggestion ? [message.context_suggestion.field] : [],
+    ),
+  ]
+  if (!record.crop && !skipped.includes('crop'))
     return {
+      optional: true,
       field: 'crop',
-      prompt: '这次想问哪种作物？',
+      prompt: '补充作物，有助于说明具体情况',
       options: Object.entries(cropNames).map(([value, label]) => ({ value, label })),
     }
-  if (!record.stage || record.stage === '不清楚')
+  if (record.crop && (!record.stage || record.stage === '不清楚') && !skipped.includes('stage'))
     return {
+      optional: true,
       field: 'stage',
-      prompt: '目前处于哪个生育期？',
+      prompt: '也可以补充目前的生育期',
       options: [
         ...stages[record.crop]
           .filter((stage) => !['不清楚', '暂不确定'].includes(stage))
           .map((stage) => ({ value: stage, label: stage })),
-        { value: '暂不确定', label: '先不填写' },
       ],
+    }
+  if (!record.location && !skipped.includes('location'))
+    return {
+      field: 'location',
+      prompt: '补充大致地区，便于参考当地情况',
+      options: [],
+      optional: true,
     }
   return null
 }
@@ -262,6 +285,14 @@ export async function previewRequest(
     return { ok: true }
   }
   if (match[2] === 'context') {
+    const requestedSkip =
+      (raw as { skip_context_fields?: ContextField[] })?.skip_context_fields || []
+    const skipped = new Set(record.skipped_context_fields || [])
+    for (const field of requestedSkip) skipped.add(field)
+    for (const field of ['crop', 'stage', 'location'] as const)
+      if (data[field]?.trim()) skipped.delete(field)
+    record.skipped_context_fields = [...skipped]
+
     if (data.conversation_title !== undefined) {
       requirePreviewAccount()
       const title = data.conversation_title.trim().replace(/\s+/g, ' ')
@@ -285,7 +316,6 @@ export async function previewRequest(
     if (completed) return completed
     if (!record.pending_question || record.pending_question.id !== data.question_id)
       throw new Error('待回答问题已更新')
-    if (clarification(record)) return record
     const answer = reply(record, record.pending_question.text)
     Object.assign(answer, { resolved_question_id: record.pending_question.id })
     record.messages.push(answer)
@@ -321,9 +351,7 @@ export async function previewRequest(
       .filter((image) => rawOptions.image_ids?.includes(image.id))
       .map((image) => ({ id: image.id, name: '症状照片', kind: 'image' as const }))
     const answer = reply(record, data.text)
-    if (answer.provider === 'clarification')
-      record.pending_question = { id: makeId(), text: data.text }
-    else delete record.pending_question
+    delete record.pending_question
     if (files.length)
       answer.text =
         '已记录附件名称。当前未连接资料解析服务，暂时无法读取文件正文。\n\n' + answer.text

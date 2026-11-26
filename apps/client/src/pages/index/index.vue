@@ -39,6 +39,8 @@ import UiDialog from '../../components/UiDialog.vue'
 import AuthDialog from '../../components/AuthDialog.vue'
 import SelectField from '../../components/SelectField.vue'
 import ChatComposer from '../../components/ChatComposer.vue'
+import ChatSuggestions from '../../components/ChatSuggestions.vue'
+import { contextSuggestionFor } from '../../lib/chatSuggestions'
 import {
   answerCopyText,
   answerShareText,
@@ -82,7 +84,7 @@ import { crops, stages, regions, dateLabel, statusLabel } from '../../lib/option
 import { auth, user, type AuthSuccess } from '../../lib/auth'
 import { clearGuestRecords } from '../../lib/preview'
 import { resolvedTheme, observeSystemTheme } from '../../lib/theme'
-import type { ChatModel, DocumentAttachment, FollowUp } from '../../lib/api'
+import type { ChatModel, DocumentAttachment, ContextSuggestion, ContextField } from '../../lib/api'
 
 let MarkdownMessage: Component
 // #ifdef H5
@@ -286,23 +288,6 @@ const pendingImagePreviews = computed(
       .filter((image) => pendingImages.value.includes(image.id))
       .map((image) => ({ id: image.id, url: imageUrl(current.value!, image.id) })) || [],
 )
-const contextNeeded = computed<FollowUp | null>(() => {
-  if (!current.value?.crop)
-    return {
-      field: 'crop',
-      prompt: '这次询问哪种作物？',
-      options: crops.map((item) => ({ value: item.id, label: item.name })),
-    }
-  if (!current.value.stage || current.value.stage === '不清楚')
-    return {
-      field: 'stage',
-      prompt: '目前处于哪个生育期？',
-      options: stages[current.value.crop]
-        .filter((value) => value !== '不清楚')
-        .map((value) => ({ value, label: value === '暂不确定' ? '暂不确定' : value })),
-    }
-  return null
-})
 const currentReceipt = computed(() => (current.value ? recognitionFor(current.value) : undefined))
 const title = computed(() =>
   chatMode.value && current.value
@@ -643,7 +628,7 @@ async function signedIn(result: AuthSuccess) {
       pendingCaseRecovery.value = recovery
       await loadContinuedCase(recovery)
     } else if (intent.action === 'history') {
-      if (intent.targetId) await openCase(intent.targetId, false)
+      if (intent.targetId) await openCase(intent.targetId)
       else navigate('history')
     } else {
       await startConsultation(intent.crop || null)
@@ -781,7 +766,7 @@ async function demo() {
     busy.value = false
   }
 }
-async function openCase(id: string, allowResume = true) {
+async function openCase(id: string) {
   if (!user.value) {
     requestConsultationLogin('history', null, id)
     return
@@ -799,13 +784,6 @@ async function openCase(id: string, allowResume = true) {
   } finally {
     busy.value = false
   }
-  if (
-    allowResume &&
-    current.value?.id === id &&
-    current.value.pending_question &&
-    !contextNeeded.value
-  )
-    await resumeQuestion()
 }
 async function retryRecognition() {
   if (!current.value || busy.value) return
@@ -889,7 +867,7 @@ async function startConsultation(selectedCrop: Crop | null = null) {
 }
 async function resumeQuestion() {
   const record = current.value
-  if (!record?.pending_question || contextNeeded.value || sending.value) return
+  if (!record?.pending_question || sending.value) return
   if (!user.value) {
     requestConsultationLogin('continue', null, undefined, current.value)
     return
@@ -915,7 +893,7 @@ async function resumeQuestion() {
     scrollChat()
   }
 }
-async function chooseContext(value: FollowUp, choice: { value: string; label: string }) {
+async function chooseContext(value: ContextSuggestion, choice: { value: string; label: string }) {
   if (!current.value || sending.value) return
   const origin = current.value.id
   sending.value = true
@@ -931,8 +909,22 @@ async function chooseContext(value: FollowUp, choice: { value: string; label: st
     sending.value = false
   }
   if (current.value?.id !== origin) return
-  if (current.value?.pending_question && !contextNeeded.value) await resumeQuestion()
-  else if (!current.value?.pending_question) showToast('种植信息已更新')
+  showToast('种植信息已更新，后续回答会参考这些信息')
+}
+async function skipContext(field: ContextField) {
+  if (!current.value || sending.value) return
+  const id = current.value.id
+  sending.value = true
+  try {
+    const updated = await request<CaseRecord>('/api/cases/' + id + '/context', 'POST', {
+      skip_context_fields: [field],
+    })
+    if (current.value?.id === id) current.value = updated
+  } catch (value) {
+    showError(value)
+  } finally {
+    sending.value = false
+  }
 }
 function chooseChatPhoto(source: 'album' | 'camera' = 'album') {
   if (!user.value) {
@@ -1286,10 +1278,6 @@ async function saveCase() {
     editOpen.value = false
     await refresh()
     showToast('种植情况已更新')
-    if (current.value?.pending_question && !contextNeeded.value) {
-      busy.value = false
-      await resumeQuestion()
-    }
   } catch (value) {
     showError(value)
   } finally {
@@ -1609,29 +1597,20 @@ function newFromDrawer() {
                           <image :src="imageUrl(current, file.id)" mode="aspectFill" /></button
                         ><text v-else class="message-file">▤ {{ file.name }}</text></template
                       ></view
-                    ><view
+                    ><ChatSuggestions
+                      v-if="index === current.messages.length - 1 && message.role === 'assistant'"
+                      :key="current.id + ':' + index"
+                      :context="contextSuggestionFor(current, message)"
+                      :photo="message.photo_suggestion"
+                      :disabled="sending || busy"
+                      @select="chooseContext"
+                      @skip="skipContext"
+                      @photo="openPhotoSources('chat')"
+                    />
+                    <button
                       v-if="
                         index === current.messages.length - 1 &&
                         message.provider === 'clarification' &&
-                        contextNeeded
-                      "
-                      class="context-choice"
-                      ><text class="context-prompt">{{ contextNeeded!.prompt }}</text
-                      ><view class="context-options"
-                        ><button
-                          v-for="choice in contextNeeded!.options"
-                          :key="choice.value"
-                          :disabled="sending"
-                          @click="chooseContext(contextNeeded!, choice)"
-                        >
-                          {{ choice.label }}
-                        </button></view
-                      ></view
-                    ><button
-                      v-if="
-                        index === current.messages.length - 1 &&
-                        message.provider === 'clarification' &&
-                        !contextNeeded &&
                         current.pending_question &&
                         !sending
                       "
@@ -1639,7 +1618,7 @@ function newFromDrawer() {
                       :disabled="sending"
                       @click="resumeQuestion"
                     >
-                      重试回答
+                      继续回答原问题
                     </button>
                     <view v-if="message.role === 'assistant'" class="message-tools">
                       <button
@@ -2786,36 +2765,6 @@ function newFromDrawer() {
     height: 90px;
   }
 }
-.context-choice {
-  margin: 17px 0 8px;
-  padding: 15px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-}
-.context-prompt {
-  font-size: 12px;
-  font-weight: 550;
-  display: block;
-  margin-bottom: 11px;
-}
-.context-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.context-options > button {
-  padding: 7px 11px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  color: var(--ink);
-  background: var(--subtle);
-  font-size: 12px;
-  min-height: 35px;
-}
-.context-options > button:hover {
-  border-color: var(--focus);
-}
 .message-attachments {
   display: flex;
   gap: 8px;
@@ -2868,16 +2817,6 @@ function newFromDrawer() {
   font-size: 9px;
 }
 @media (max-width: 760px) {
-  .context-choice {
-    padding: 12px;
-  }
-  .context-options {
-    gap: 7px;
-  }
-  .context-options > button {
-    font-size: 11px;
-    padding: 7px 9px;
-  }
   .experiment-badge {
     display: flex;
     margin: 9px 0 0;
@@ -2915,11 +2854,6 @@ function newFromDrawer() {
   background: #0008;
   color: #fff;
   text-align: center;
-}
-
-.context-options > button {
-  border-color: transparent;
-  background: var(--subtle);
 }
 .user .message-bubble {
   border-color: transparent;

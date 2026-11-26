@@ -178,9 +178,10 @@ async def test_chat_provider_failure_keeps_local_citations(tmp_path, monkeypatch
     async def failed(*args, **kwargs):
         raise httpx.ConnectError("unavailable")
     monkeypatch.setattr(httpx.AsyncClient, "post", failed)
-    response = await chat.answer({"crop":"wheat","location":"南阳","stage":"苗期","status":"needs_model","is_demo":False,"title":"待识别","note":"","disease_id":None}, "小麦条锈病需要补拍什么？", [])
+    response = await chat.answer({"crop":"wheat","location":"南阳","stage":"苗期","status":"needs_model","is_demo":False,"title":"待识别","note":"","disease_id":None}, "什么是小麦条锈病？", [])
     assert response["provider"] == "knowledge" and response["sources"]
-    assert "没有可靠的自动识别结论" in response["text"]
+    assert "小麦条锈病" in response["text"]
+    assert "自动识别结论" not in response["text"]
 
 
 @pytest.fixture
@@ -204,16 +205,18 @@ def test_explicit_new_crop_does_not_use_or_change_previous_image_context(client,
         json={"text": "黄瓜苗期这张图片是什么病害？"},
     )
     assert mismatch.status_code == 201
-    assert mismatch.json()["notice_code"] == "crop_mismatch"
+    assert mismatch.json()["provider"] == "knowledge"
+    assert "未使用原记录的照片" in mismatch.json()["notice"]
     assert "recognition" not in mismatch.json()
 
     original_question = client.post(
         path + "/messages",
         headers=headers,
-        json={"text": "请结合照片解释病害。"},
+        json={"text": "请结合原来的小麦照片解释病害。"},
     ).json()
-    assert original_question["provider"] == "clarification"
-    assert original_question["follow_up"]["field"] == "stage"
+    assert original_question["provider"] == "knowledge"
+    assert original_question["context_suggestion"]["field"] == "stage"
+    assert original_question["context_suggestion"]["optional"] is True
     assert original_question["recognition"]["image_received"]
     refreshed = client.get(path, headers=headers).json()
     assert refreshed["crop"] == "wheat" and refreshed["stage"] == "不清楚"

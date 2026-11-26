@@ -20,6 +20,17 @@ export interface FollowUp {
   prompt: string
   options: { value: string; label: string }[]
 }
+export type ContextField = 'crop' | 'stage' | 'location'
+export interface ContextSuggestion {
+  field: ContextField
+  prompt: string
+  options: { value: string; label: string }[]
+  optional: true
+}
+export interface PhotoSuggestion {
+  prompt: string
+  optional: true
+}
 export interface Source {
   title: string
   url: string
@@ -77,6 +88,8 @@ export interface Message {
   model?: ChatModel
   thinking?: boolean
   follow_up?: FollowUp
+  context_suggestion?: ContextSuggestion
+  photo_suggestion?: PhotoSuggestion
   recognition?: RecognitionReceipt
   web_search_used?: boolean
   attachments?: { id: string; name: string; kind: 'image' | 'document' }[]
@@ -92,6 +105,7 @@ export interface CaseRecord {
   persistence?: 'temporary' | 'account'
   conversation_title?: string
   pending_question?: PendingQuestion
+  skipped_context_fields?: ContextField[]
   id: string
   crop: Crop | null
   crop_name: string

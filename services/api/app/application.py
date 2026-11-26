@@ -15,11 +15,12 @@ from .auth import ACCOUNT_PROVIDER, AuthManager
 from .case_views import now, seed_photo_transcript, serialize_case
 from .chat import Chat
 from .config import Settings
-from .context import STAGES, fill_explicit_context, follow_up, is_general_question
+from .context import STAGES, fill_explicit_context, is_general_question
+from .conversation_policy import apply_context_choices, conversation_scope
 from .crop_recognition import CropRecognizer
 from .evidence import aggregate_images
 from .imaging import prepare_image
-from .intake import context_reply, pending_question
+from .intake import optional_context_response
 from .knowledge import CROP_NAMES, Knowledge, crop_scope_conflicts, query_crop_scope
 from .models import ModelRegistry
 from .recognition import recognition_state
@@ -396,7 +397,7 @@ def create_app(settings=None):
             fields = body.model_dump(exclude_none=True)
             if body.conversation_title is not None:
                 fields["conversation_title"] = " ".join(body.conversation_title.split())
-            case.update(fields)
+            apply_context_choices(case, fields)
             case["updated_at"] = now()
             store.save(x_client_id, case)
             return serialize(case)
@@ -600,15 +601,14 @@ def create_app(settings=None):
         if web_search and (model or settings.deepseek_model) != "deepseek-flash":
             raise HTTPException(422, "联网检索请选择 DeepSeek Flash")
 
-    def add_receipt(answer, case, text, image_ids):
-        if answer.get("notice_code") == "crop_mismatch":
+    def add_receipt(answer, case, text, image_ids, history):
+        scope = conversation_scope(text, history)
+        if scope is not None and scope != frozenset({case.get("crop")}):
             return
         if case.get("images") and (
             image_ids or re.search(r"识别|图片|照片|结果|病害", text)
         ):
             answer["recognition"] = recognition_state(case)
-        if follow_up(case) and answer.get("provider") == "clarification":
-            answer["follow_up"] = follow_up(case)
 
     @app.post("/api/cases/{case_id}/resume", dependencies=[Depends(require_account)])
     async def resume(
@@ -630,17 +630,6 @@ def create_app(settings=None):
             pending = case.get("pending_question")
             if not pending or pending["id"] != body.question_id:
                 raise HTTPException(409, "待回答问题已更新，请刷新当前对话")
-            if follow_up(case) and not crop_scope_conflicts(
-                case.get("crop"), query_crop_scope(pending["text"])
-            ):
-                return {
-                    "role": "assistant",
-                    "provider": "clarification",
-                    "text": "请继续补充种植信息，完成后会回答刚才的问题。",
-                    "follow_up": follow_up(case),
-                    "sources": [],
-                    "products": [],
-                }
             options = {
                 key: getattr(body, key)
                 if getattr(body, key) is not None
@@ -649,7 +638,7 @@ def create_app(settings=None):
             }
             validate_options(options["model"], options["web_search"])
             answer = await chat.answer(case, pending["text"], history, **options)
-            add_receipt(answer, case, pending["text"], pending.get("image_ids", []))
+            add_receipt(answer, case, pending["text"], pending.get("image_ids", []), history)
             assistant = {
                 "role": "assistant",
                 "created_at": now(),
@@ -689,21 +678,7 @@ def create_app(settings=None):
                 )
                 if existing:
                     return existing
-            previous_pending = case.get("pending_question")
             crop_changed = crop_scope_conflicts(case.get("crop"), query_crop_scope(text))
-            continuing = bool(
-                previous_pending
-                and not crop_changed
-                and context_reply(text)
-                and not body.image_ids
-                and not body.attachment_ids
-            )
-            if (
-                continuing
-                and re.search(r"暂不确定|不确定|不清楚|不知道", text)
-                and case.get("crop")
-            ):
-                case["stage"] = "暂不确定"
             if not crop_changed and not is_general_question(text):
                 fill_explicit_context(case, text)
             documents = [
@@ -731,24 +706,18 @@ def create_app(settings=None):
                     if case.get("stage") not in ("", "不清楚"):
                         break
             validate_options(body.model, body.web_search)
-            question = previous_pending if continuing else pending_question(text, body)
-            answer_text = question["text"]
-            answer = await chat.answer(
-                case,
-                answer_text,
-                history,
-                body.model,
-                body.thinking,
-                web_search=body.web_search,
+            # 资料更新只确认保存；新问题直接回答。旧待答问题仅由 /resume 主动接续。
+            context_answer = (
+                optional_context_response(case, text, history)
+                if not body.image_ids and not body.attachment_ids and not crop_changed
+                else None
             )
-            add_receipt(answer, case, answer_text, question.get("image_ids", []))
-            if answer.get("provider") == "clarification":
-                case["pending_question"] = question
-                answer["pending_question_id"] = question["id"]
-            elif answer.get("notice_code") != "crop_mismatch":
+            answer = context_answer or await chat.answer(
+                case, text, history, body.model, body.thinking, web_search=body.web_search
+            )
+            add_receipt(answer, case, text, body.image_ids, history)
+            if context_answer is None and answer.get("notice_code") != "crop_mismatch":
                 case.pop("pending_question", None)
-                if continuing:
-                    answer["resolved_question_id"] = question["id"]
             user_message = {
                 "role": "user",
                 "text": text,

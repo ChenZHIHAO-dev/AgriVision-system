@@ -237,18 +237,18 @@ def test_basic_context_choices_never_call_provider_until_user_asks_again(
         first = client.post(
             path + "/messages", headers=headers, json={"text": "叶片有斑点，怎么排查？"}
         ).json()
-        assert first["provider"] == "clarification" and not called
+        assert first["provider"] == "deepseek" and len(called) == 1
         client.post(path + "/context", headers=headers, json={"crop": "wheat"})
         second = client.post(
             path + "/messages", headers=headers, json={"text": "先说明排查方向"}
         ).json()
-        assert second["provider"] == "clarification" and not called
+        assert second["provider"] == "deepseek" and len(called) == 2
         client.post(path + "/context", headers=headers, json={"stage": "暂不确定"})
-        assert not called
+        assert len(called) == 2
         final = client.post(
             path + "/messages", headers=headers, json={"text": "请回答刚才的问题。"}
         ).json()
-        assert final["provider"] == "deepseek" and len(called) == 1
+        assert final["provider"] == "deepseek" and len(called) == 3
 
 
 def test_unsent_photo_can_be_removed_but_sent_evidence_is_retained(tmp_path, account_headers, admin_hash):
