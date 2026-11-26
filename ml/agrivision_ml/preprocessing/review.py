@@ -59,7 +59,7 @@ def filter_review_rows(rows, root, sources, classes, folders):
 
 def read_selection(review_path, labels, *, sources=(), classes=(), folders=()):
     review_root = review_path.resolve().parent
-    baseline_root = review_root.parent / "wheat-v2"
+    baseline_root = review_root.parent / "reference"
     baseline_images = (baseline_root / "images").resolve()
     baseline_manifest = baseline_root / "manifest.csv"
     # 国内基线清单按相对路径索引。若筛选表引用了国内工作图，可以从这里恢复原采集组和哈希。

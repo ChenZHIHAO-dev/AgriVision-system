@@ -4,7 +4,7 @@
 
 ## 人工筛选
 
-打开 `data/wheat-review/photos/` 查看按中文候选名归档的 Kaggle 图片。`标签冲突待核` 中同一张图片有多个原始类别，泛标签也保留待核。`data/wheat-review/review.csv` 汇总这些候选与国内基线的已有照片。国内照片通过 `../wheat-v2/images/` 路径引用。表中的 `path` 相对 `data/wheat-review/`。
+打开 `data/wheat/review/photos/` 查看按中文候选名归档的 Kaggle 图片。`标签冲突待核` 中同一张图片有多个原始类别，泛标签也保留待核。`data/wheat/review/review.csv` 汇总这些候选与国内基线的已有照片。国内照片通过 `../reference/images/` 路径引用。表中的 `path` 相对 `data/wheat/review/`。
 
 | 可填写字段 | 填法 |
 | --- | --- |
@@ -18,7 +18,7 @@
 
 ## 本轮叶片与麦穗
 
-当前筛选表是 `data/wheat-review/leaf-spike-review.csv`，首轮初筛保留 6,455 张。小麦赤霉病和颖枯病在麦穗取景，条锈、叶锈、白粉、黄矮和壳针孢叶枯按叶部样本归档。健康参考包含健康麦叶和麦穗。根部和虫体候选留在总表。 [北京市农业农村局的赤霉病说明](https://nyncj.beijing.gov.cn/nyj/zwgk/ztgk/zwbhxx/436453028/index.html) · [JIC 原始分类论文](https://doi.org/10.1111/ppa.13684)
+当前筛选表是 `data/wheat/review/leaf-spike-review.csv`，首轮初筛保留 6,455 张。小麦赤霉病和颖枯病在麦穗取景，条锈、叶锈、白粉、黄矮和壳针孢叶枯按叶部样本归档。健康参考包含健康麦叶和麦穗。根部和虫体候选留在总表。 [北京市农业农村局的赤霉病说明](https://nyncj.beijing.gov.cn/nyj/zwgk/ztgk/zwbhxx/436453028/index.html) · [JIC 原始分类论文](https://doi.org/10.1111/ppa.13684)
 
 | 这轮使用的来源 | 初筛保留张数 | 来源与许可记录 |
 | --- | ---: | --- |
@@ -34,13 +34,13 @@
 | 秆锈病 | WFD 列 591 张专家标注照片，部分照片有多个病类标签，原图需提交资料申请。PlantSeg 也含此类，归档为 CC BY-NC 4.0。本次网络传输仅拿到许可元数据和部分 ZIP 索引，原图尚待获取。 [WFD 发布页](https://wfd.sysbio.ru/index.html) · [PlantSeg 原包](https://zenodo.org/records/17719108) |
 | 散黑穗病 | PlantSeg 有明确类别，另有 Roboflow 发布页标 CC BY 4.0、90 张。原图质量与逐图来源仍待复核。Kaggle 的 `Smut` 目录保留较宽泛的原始病类。 [PlantSeg 论文](https://doi.org/10.1038/s41597-025-06513-4) · [散黑穗候选包](https://universe.roboflow.com/wheat-3grd0/wheat-loose-smut) |
 
-预处理结果在 `data/wheat-leaf-spike-03/`，共 6,455 张、8 类、1,290 个采集与近重复分组。按表中取景标记，叶片 3,886 张、麦穗 2,547 张，两种部位同框 22 张。训练 4,621 张、验证 981 张、测试 853 张。赤霉病有 1,605 张、82 组，黄矮病有 408 张、26 组。后续评估模型规模时同时看样本组数、逐类验证结果和部署端的 CPU 耗时。先查照片、类别、来源和分组，下一轮在同一划分上比较增强，只对训练图做随机处理。 [本机筛选命令](recognition-training-checklist.md#先看要处理几套数据)
+预处理结果在 `data/wheat/prepared/`，共 6,455 张、8 类、1,290 个采集与近重复分组。按表中取景标记，叶片 3,886 张、麦穗 2,547 张，两种部位同框 22 张。训练 4,621 张、验证 981 张、测试 853 张。赤霉病有 1,605 张、82 组，黄矮病有 408 张、26 组。后续评估模型规模时同时看样本组数、逐类验证结果和部署端的 CPU 耗时。先查照片、类别、来源和分组，下一轮在同一划分上比较增强，只对训练图做随机处理。 [本机筛选命令](recognition-training-checklist.md#先看要处理几套数据)
 
 ## 叶片筛选和文件名
 
-早期叶片专用筛选使用 `data/wheat-review/leaf-review.csv`，共 **8,435 张候选**。主体是条锈病、叶锈病、白粉病、黄矮病和健康麦叶。黄斑叶枯病也列出 712 张候选待确认，抽查发现其中夹有非小麦图。国内健康参考只选原 YOLO 标注为 `Wheat Leaf` 的 424 张，Kaggle 的 `Healthy` 还需按器官核对。该版本先筛叶片，麦蚜、蝇类、其他虫害和以穗、根、茎为主的类别留待后续。 [郑州市农业农村局的黄斑叶枯病资料](https://zzny.zhengzhou.gov.cn/nysc/6245185.jhtml)
+早期叶片专用筛选使用 `data/wheat/review/leaf-review.csv`，共 **8,435 张候选**。主体是条锈病、叶锈病、白粉病、黄矮病和健康麦叶。黄斑叶枯病也列出 712 张候选待确认，抽查发现其中夹有非小麦图。国内健康参考只选原 YOLO 标注为 `Wheat Leaf` 的 424 张，Kaggle 的 `Healthy` 还需按器官核对。该版本先筛叶片，麦蚜、蝇类、其他虫害和以穗、根、茎为主的类别留待后续。 [郑州市农业农村局的黄斑叶枯病资料](https://zzny.zhengzhou.gov.cn/nysc/6245185.jhtml)
 
-`data/wheat-review/photos/` 的 11,143 张均从 Kaggle v6 包整理，国内照片由筛选表引用 `data/wheat-v2/images/`。Kaggle 的长文件名是用原始文件内容算出的 SHA-256。筛选表的 `path` 指向图片，同行的 `label` 是类别 ID。要查 Kaggle 原始文件名和原标签，用文件名里的 SHA-256 在 `provenance.csv` 中查找。国内照片的原标注路径在 `data/wheat-v2/sources.csv`。
+`data/wheat/review/photos/` 的 11,143 张均从 Kaggle v6 包整理，国内照片由筛选表引用 `data/wheat/reference/images/`。Kaggle 的长文件名是用原始文件内容算出的 SHA-256。筛选表的 `path` 指向图片，同行的 `label` 是类别 ID。要查 Kaggle 原始文件名和原标签，用文件名里的 SHA-256 在 `provenance.csv` 中查找。国内照片的原标注路径在 `data/wheat/reference/sources.csv`。
 
 一张实拍图里有多片麦叶时，只要症状清楚就可以保留。不同视角拼在一张图里时，训练缩放后各子图中的病斑会更小，分隔线和文字也会成为模型可见的画面特征。遇到这类图可在表里将 `decision` 填 `drop`，用 `note` 记录原因。 [本机筛选命令](recognition-training-checklist.md#先看要处理几套数据)
 
@@ -65,7 +65,7 @@
 
 预处理后实际保留 **12,990 张、11 类**，其中河南 4,028 张、陕西 1,429 张、Kaggle 7,533 张。训练 9,107 张、验证 2,015 张、测试 1,868 张。另有 420 张疑似近重复且标签冲突、1 张工作图短边不足 64 像素、1 张内容完全重复，均列在报告的排除记录中。
 
-工作图在 `data/wheat-mixed-02/images/`，逐类来源、分辨率和排除记录在 `data/wheat-mixed-02/manifest.report.json`。可以按来源、类别或目录单独统计和重跑。 [筛选和预处理命令](recognition-training-checklist.md#先看要处理几套数据)
+工作图在 `data/wheat/archive/mixed/images/`，逐类来源、分辨率和排除记录在 `data/wheat/archive/mixed/manifest.report.json`。可以按来源、类别或目录单独统计和重跑。 [筛选和预处理命令](recognition-training-checklist.md#先看要处理几套数据)
 
 ## 数据数量对账
 
@@ -73,12 +73,12 @@
 
 | 本机已有数据 | 数量 | 路径与实际用途 |
 | --- | ---: | --- |
-| Kaggle Wheat Plant Diseases v6 完整包 | **14,154** | `data/sources/kaggle-wheat-v6.zip`。按 ZIP 成员实数，15 个原始类别，训练目录 13,104、验证目录 300、测试目录 750。发布说明写 14,155，表中用本地实数。按 SHA-256 合并重复文件后有 11,143 张，供人工筛选。 [Kaggle 发布页](https://www.kaggle.com/datasets/kushagra3204/wheat-plant-diseases) |
+| Kaggle Wheat Plant Diseases v6 完整包 | **14,154** | `data/wheat/sources/kaggle-wheat-v6.zip`。按 ZIP 成员实数，15 个原始类别，训练目录 13,104、验证目录 300、测试目录 750。发布说明写 14,155，表中用本地实数。按 SHA-256 合并重复文件后有 11,143 张，供人工筛选。 [Kaggle 发布页](https://www.kaggle.com/datasets/kushagra3204/wheat-plant-diseases) |
 | 小麦 V1 历史实验清单 | 6,315 | 由 Kaggle 原包筛选、去重后生成。复现时按模型卡重建。历史实验使用五个输出标签，把包括部分赤霉等多个原始目录归到 `wheat_other`。 [V1 数据说明](model-card-wheat-v1.md#数据) |
-| 河南原阳 GDFC-YOLO | 4,156 原始 → **4,029 入 V2** | `data/sources/china-wheat/henan-yuanyang-15621359/`，含原始照片及 YOLO 标注。 [原阳论文](https://www.mdpi.com/2077-0472/15/14/1526) |
-| 陕西 MSWDD2022 | 2,236 原始 → **1,537 入 V2** | `data/sources/china-wheat/mswdd2022/`，含原始照片及 LabelMe 标注。 [作者发布页](https://github.com/YcZhangSing/Dataset-of-DAE-Mask) |
-| 英国 JIC Small 公开包 | 999 | `data/sources/jic-7307816/`，英国 John Innes Centre 发布。与 Kaggle 全包有 760 张字节完全一致。V1 外测预处理曾因重复或近重复排除 771 张，余 228 张都是原标 `Septoria`。 [JIC 发布页](https://zenodo.org/records/7307816) · [V1 外部检查记录](model-card-wheat-v1.md#jic-重叠与有限外部检查) |
-| **国内 V2 基线清单** | **5,566** | `data/wheat-v2/manifest.csv`。训练 3,962、验证 772、测试 832，标签为六种病害和健康参考。 |
+| 河南原阳 GDFC-YOLO | 4,156 原始 → **4,029 入 V2** | `data/wheat/sources/china-wheat/henan-yuanyang-15621359/`，含原始照片及 YOLO 标注。 [原阳论文](https://www.mdpi.com/2077-0472/15/14/1526) |
+| 陕西 MSWDD2022 | 2,236 原始 → **1,537 入 V2** | `data/wheat/sources/china-wheat/mswdd2022/`，含原始照片及 LabelMe 标注。 [作者发布页](https://github.com/YcZhangSing/Dataset-of-DAE-Mask) |
+| 英国 JIC Small 公开包 | 999 | `data/wheat/sources/jic-7307816/`，英国 John Innes Centre 发布。与 Kaggle 全包有 760 张字节完全一致。V1 外测预处理曾因重复或近重复排除 771 张，余 228 张都是原标 `Septoria`。 [JIC 发布页](https://zenodo.org/records/7307816) · [V1 外部检查记录](model-card-wheat-v1.md#jic-重叠与有限外部检查) |
+| **国内 V2 基线清单** | **5,566** | `data/wheat/reference/manifest.csv`。训练 3,962、验证 772、测试 832，标签为六种病害和健康参考。 |
 
 国内两套原包合计 **6,392** 张。处理时先排出 **122** 张含不同标准标签的照片和 **82** 张图与内嵌标注预览不一致的照片，再去掉 **620** 张重复图与 **2** 张跨类冲突图，剩 **5,566** 张。可按 `sources.csv` 回查入库样本，按 `manifest.report.json` 查看排除原因。
 
@@ -129,11 +129,11 @@ Kaggle 完整包经 SHA-256 校验，有 11,143 组不同的文件内容，另�
 
 ## 目录怎么放
 
-- `data/sources/china-wheat/<来源名>/` 存放原始发布 ZIP 和 `source.json`。一来源一目录，原包内的图和标注保持原样。`source.json` 记录来源、版本、地区、许可和校验值。
-- `data/wheat-leaf-spike-03/` 是当前叶片与麦穗的质量优先工作集。
-- `data/wheat-mixed-02/` 是早期 11 类混合结果，留作对照和接口检查。
-- `data/wheat-review/` 是人工筛选入口。当前使用 `leaf-spike-review.csv`，Kaggle 去重候选按类别放在 `photos/`。
-- `data/wheat-v2/` 为筛选表提供河南、陕西图片及原分组。计划留作跨区外测的原图放独立目录。
+- `data/wheat/sources/china-wheat/<来源名>/` 存放原始发布 ZIP 和 `source.json`。一来源一目录，原包内的图和标注保持原样。`source.json` 记录来源、版本、地区、许可和校验值。
+- `data/wheat/prepared/` 是当前叶片与麦穗的质量优先工作集。
+- `data/wheat/archive/mixed/` 是早期 11 类混合结果，留作对照和接口检查。
+- `data/wheat/review/` 是人工筛选入口。当前使用 `leaf-spike-review.csv`，Kaggle 去重候选按类别放在 `photos/`。
+- `data/wheat/reference/` 为筛选表提供河南、陕西图片及原分组。计划留作跨区外测的原图放独立目录。
 
 先从河南原阳资料开始。保留每张图与同名标注的关系，按本页的类别表核原图。陕西资料单独复核并确认产品用途。主要缺口是茎基腐病、纹枯病、麦蚜、麦蜘蛛和跨产区的独立手机实拍。
 
@@ -184,8 +184,8 @@ Kaggle 完整包经 SHA-256 校验，有 11,143 组不同的文件内容，另�
 
 | 来源 | 拍摄地点和公开版内容 | 保存目录与使用范围 |
 | --- | --- | --- |
-| [GDFC-YOLO 原阳小麦](https://doi.org/10.5281/zenodo.15621359) | 河南新乡原阳，2023 年用小米手机和佳能相机拍摄。4,156 张 JPG 和 4,156 份 YOLO 标注。包内分割为 3,359 训练、377 验证、420 测试。 | `data/sources/china-wheat/henan-yuanyang-15621359/xiaomai.zip`。数据许可 CC BY 4.0，保留署名和来源。 [采集论文](https://www.mdpi.com/2077-0472/15/14/1526) · [发布元数据](https://zenodo.org/api/records/15621359) |
-| [MSWDD2022](https://github.com/YcZhangSing/Dataset-of-DAE-Mask) | 陕西咸阳一带三处试验点，2021–2022 年公开版 2,236 张田间照片和 2,236 份 JSON。条锈 572、白粉 542、赤霉 523、黄矮 599。 | `data/sources/china-wheat/mswdd2022/mswdd2022-32c56f23a1a9.zip`。作者公开供研究使用，产品使用需另行确认。 [采集论文](https://link.springer.com/article/10.1007/s11119-023-10093-x) · [地点与计数引用](https://www.nature.com/articles/s41598-025-33304-z) |
+| [GDFC-YOLO 原阳小麦](https://doi.org/10.5281/zenodo.15621359) | 河南新乡原阳，2023 年用小米手机和佳能相机拍摄。4,156 张 JPG 和 4,156 份 YOLO 标注。包内分割为 3,359 训练、377 验证、420 测试。 | `data/wheat/sources/china-wheat/henan-yuanyang-15621359/xiaomai.zip`。数据许可 CC BY 4.0，保留署名和来源。 [采集论文](https://www.mdpi.com/2077-0472/15/14/1526) · [发布元数据](https://zenodo.org/api/records/15621359) |
+| [MSWDD2022](https://github.com/YcZhangSing/Dataset-of-DAE-Mask) | 陕西咸阳一带三处试验点，2021–2022 年公开版 2,236 张田间照片和 2,236 份 JSON。条锈 572、白粉 542、赤霉 523、黄矮 599。 | `data/wheat/sources/china-wheat/mswdd2022/mswdd2022-32c56f23a1a9.zip`。作者公开供研究使用，产品使用需另行确认。 [采集论文](https://link.springer.com/article/10.1007/s11119-023-10093-x) · [地点与计数引用](https://www.nature.com/articles/s41598-025-33304-z) |
 
 原阳按 ZIP 内 YOLO 标注统计的**含该类的照片数**为白粉 426、赤霉 1,276、叶锈 662、条锈 443、颖枯 427、健康穗 606、健康叶 462。一张照片可含多个类别，所以这些数量可重叠。同一图片中的健康区域仅表示该标注对象。按图片或局部裁剪制作分类样本时，保留原图关联，按地块或来源划分后再裁剪。颖枯病与泛称 Leaf Blight 或其他 Septoria 标签保持各自来源映射。
 
@@ -213,7 +213,7 @@ Kaggle 完整包经 SHA-256 校验，有 11,143 组不同的文件内容，另�
 
 河南 YOLO 与陕西 LabelMe 原始包仍按原来源存放。合并集面向本机**整张近照单标签分类研究**，使用两套国内包的原有图片与标注。河南用 YOLO 类别 ID 统一标签，排除有多个不同病害/健康标签的照片；健康麦叶与健康麦穗归入同一健康参考。陕西核对图像与标注内嵌预览，并按来源目录的病种映射。全图保留长宽比，转为长边最多 1024 像素的 JPEG。原始标注继续随 ZIP 保存，后续需要定位病斑时可另做格式转换。
 
-| 路径（相对 `data/wheat-v2/`） | 内容 |
+| 路径（相对 `data/wheat/reference/`） | 内容 |
 | --- | --- |
 | `images/<标签ID>/<来源>/` | 统一的照片目录，按病类、来源两层查看 |
 | `labels.json` | 本轮六病加健康参考，共七类 |
@@ -226,10 +226,10 @@ Kaggle 完整包经 SHA-256 校验，有 11,143 组不同的文件内容，另�
 如需重建，用项目 PowerShell 在根目录运行下列命令。新输出目录独立，便于比较。
 
 ```powershell
-.\.venv\Scripts\python.exe -m ml.agrivision_ml.prepare_wheat_cn --output data/wheat-v2-recheck
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.prepare_wheat_cn --output data/wheat/reference-recheck
 ```
 
-逐类抽查这份国内清单即可复核基线数据。做国内基线对照时，可用[本机训练清单](recognition-training-checklist.md#2-开始训练)的同一条命令，将三个数据路径指向 `data/wheat-v2`，并设置独立实验目录。另保留各地块未参与训练的试用图、未知症状和实拍困难样本。
+逐类抽查这份国内清单即可复核基线数据。做国内基线对照时，可用[本机训练清单](recognition-training-checklist.md#2-开始训练)的同一条命令，将三个数据路径指向 `data/wheat/reference`，并设置独立实验目录。另保留各地块未参与训练的试用图、未知症状和实拍困难样本。
 
 ## 类别和样本量复核
 

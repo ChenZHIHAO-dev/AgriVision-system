@@ -17,7 +17,7 @@ def review_inputs(tmp_path):
     review = tmp_path / "wheat-review"
     photos = review / "photos"
     photos.mkdir(parents=True)
-    baseline = tmp_path / "wheat-v2"
+    baseline = tmp_path / "reference"
     (baseline / "images").mkdir(parents=True)
     rows, baseline_manifest = [], []
 
@@ -30,7 +30,7 @@ def review_inputs(tmp_path):
         image.save(path, exif=exif)
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         source = "domestic" if domestic else "kaggle-wheat-v6"
-        relative = f"../wheat-v2/images/{path.name}" if domestic else f"photos/{path.name}"
+        relative = f"../reference/images/{path.name}" if domestic else f"photos/{path.name}"
         rows.append({"decision": "keep", "label": label, "path": relative, "source": source, "sha256": digest})
         if domestic:
             baseline_manifest.append({"path": path.name, "group": "shared-field", "sha256": digest})

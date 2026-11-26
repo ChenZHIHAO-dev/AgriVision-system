@@ -42,8 +42,8 @@ App 内测可用 [HBuilderX 真机运行](https://uniapp.dcloud.net.cn/tutorial/
 
 | 文件或目录 | 用途 |
 | --- | --- |
-| `data/sources`、`data/wheat-review` | 原始来源、筛选表和照片对应关系 |
-| `data/wheat-leaf-spike-03` | 当前八类小麦工作集。`manifest.csv` 和 `labels.json` 给训练使用 |
+| `data/wheat/sources`、`data/wheat/review` | 原始来源、筛选表和照片对应关系 |
+| `data/wheat/prepared` | 当前八类小麦工作集。`manifest.csv` 和 `labels.json` 给训练使用 |
 | [wheat-review.json](../configs/labels/wheat-review.json) | 筛选时的候选病名全表，运行预处理后产生本次训练的实际标签 |
 | [wheat-v1.json](../configs/labels/wheat-v1.json) | 小麦 V1 复现实验的五类定义 |
 | [作物分类模板](../configs/labels/crop-identification-starter.json)、[玉米标签](../configs/labels/maize.json)、[花生标签](../configs/labels/peanut.json) | 对应后续任务的初始类别配置 |
@@ -66,3 +66,5 @@ App 内测可用 [HBuilderX 真机运行](https://uniapp.dcloud.net.cn/tutorial/
 真实服务检查可加 `--username admin` 测试登录承接。`--exercise-provider` 与 `--web` 会请求外部问答服务并消耗用量，日常回归用默认命令。 [真机和集成验收](validation.md)
 
 提交前运行 npm run test:frontend。其中的公开配置检查会扫描 Git 管理的文件，阻止具体格式的微信 AppID、常见提供商密钥、私钥和本机环境文件进入公开版本。真实设置保存在 .env、.env.wechat.local 或 secrets，示例配置只保留空字段和测试占位内容。
+
+数据目录现按作物分为 `data/wheat`、`data/maize`、`data/peanut`、`data/crop-identification`。各自维护 sources/review/prepared；小麦 reference 是筛选表依赖，archive 为已有历史输出。多次训练只增加 artifacts 下的实验结果，不复制工作图片。详见[训练清单第 9 节](recognition-training-checklist.md#9-多作物目录与分组交叉验证2026-11-27)。

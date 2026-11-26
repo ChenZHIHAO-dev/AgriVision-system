@@ -44,7 +44,7 @@ def main():
     with (ROOT/'data/wheat-v1/sources.csv').open(encoding='utf-8') as stream: source_rows=list(csv.DictReader(stream))
     known_pixels={row['pixel_sha256'] for row in source_rows}
     known_hashes=[int(row['dhash']) for row in source_rows]
-    for path in (ROOT/'data/sources/jic-7307816').iterdir():
+    for path in (ROOT/'data/wheat/sources/jic-7307816').iterdir():
         if path.suffix.lower() not in {'.jpg','.jpeg','.png'}:continue
         with Image.open(path) as image:
             image=ImageOps.exif_transpose(image).convert('RGB');known_hashes.append(phash(image))

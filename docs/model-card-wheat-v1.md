@@ -69,7 +69,7 @@
 
 ## 复现
 
-将合法取得的 Kaggle v6 压缩包保存为 `data/sources/kaggle-wheat-v6.zip`，并保留来源元数据。已有数据和模型不需重新训练。以下命令会生成相应输出，重新实验应使用新的输出目录：
+将合法取得的 Kaggle v6 压缩包保存为 `data/wheat/sources/kaggle-wheat-v6.zip`，并保留来源元数据。已有数据和模型不需重新训练。以下命令会生成相应输出，重新实验应使用新的输出目录：
 
 ```powershell
 .venv\Scripts\python.exe scripts/assemble_wheat.py

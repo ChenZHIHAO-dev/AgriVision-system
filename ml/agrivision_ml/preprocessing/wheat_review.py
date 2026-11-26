@@ -238,7 +238,7 @@ def print_report(report, labels, output):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="从人工筛选表整理小麦数据并打印各类数量与分辨率。")
-    parser.add_argument("--review", type=Path, default=Path("data/wheat-review/review.csv"), help="人工筛选表")
+    parser.add_argument("--review", type=Path, default=Path("data/wheat/review/review.csv"), help="人工筛选表")
     parser.add_argument("--labels", type=Path, default=Path("configs/labels/wheat-review.json"), help="已登记类别")
     parser.add_argument("--output", type=Path, default=Path("data/wheat-mixed"), help="新建的输出目录")
     parser.add_argument("--seed", type=int, default=42, help="划分随机种子")

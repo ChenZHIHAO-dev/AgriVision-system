@@ -22,7 +22,7 @@ def main():
     known_pixels={row['pixel_sha256'] for row in source_rows}
     known_hashes=[int(row['dhash']) for row in source_rows]
     output=dataset/'external-jic';rows=[];excluded=[];seen=set()
-    for path in sorted((ROOT/'data/sources/jic-7307816').iterdir()):
+    for path in sorted((ROOT/'data/wheat/sources/jic-7307816').iterdir()):
         if path.suffix.lower() not in {'.jpg','.jpeg','.png'}:continue
         label=next((value for prefix,value in MAPPING.items() if path.name.startswith(prefix)),None)
         if label is None:continue

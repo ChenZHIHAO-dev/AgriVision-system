@@ -22,7 +22,7 @@ def dhash(image):
 
 
 def main():
-    source = ROOT/'data/sources/kaggle-wheat-v6.zip'
+    source = ROOT/'data/wheat/sources/kaggle-wheat-v6.zip'
     output = ROOT/'data/wheat-v1'
     images = output/'images'
     rows, rejected, seen = [], [], set()

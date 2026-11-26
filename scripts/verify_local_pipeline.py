@@ -44,7 +44,7 @@ def run(base, exercise_provider=False, web=False, *, account=None):
         report["api_version"] = health.json()["version"]
 
         try:
-            dataset = ROOT / "data/wheat-leaf-spike-03"
+            dataset = ROOT / "data/wheat/prepared"
             with (dataset / "manifest.csv").open(encoding="utf-8-sig", newline="") as stream:
                 row = next(
                     row

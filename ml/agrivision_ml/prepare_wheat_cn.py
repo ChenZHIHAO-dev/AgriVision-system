@@ -202,8 +202,8 @@ def build(sources, output, seed):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--sources", type=Path, default=Path("data/sources/china-wheat"))
-    parser.add_argument("--output", type=Path, default=Path("data/wheat-v2"))
+    parser.add_argument("--sources", type=Path, default=Path("data/wheat/sources/china-wheat"))
+    parser.add_argument("--output", type=Path, default=Path("data/wheat/reference"))
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
     build(args.sources, args.output, args.seed)

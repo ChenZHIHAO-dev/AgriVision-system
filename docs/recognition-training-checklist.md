@@ -1,12 +1,12 @@
 # 小麦数据处理、训练与本地联调清单
 
-更新于 2026-11-26。本轮使用 Windows 本机现有的 `.venv`，固定数据目录为 `data/wheat-leaf-spike-03`。**预处理与七组实验已完成；本机 API 已接入 Swin-T。结果集中在 `artifacts/experiments/wheat-study`，第 7 节是唯一的本轮对比报告。**
+更新于 2026-11-27。本轮使用 Windows 本机现有的 `.venv`，固定数据目录为 `data/wheat/prepared`。**预处理与七组实验已完成；本机 API 已接入 Swin-T。结果集中在 `artifacts/experiments/wheat-study`，第 7 节是唯一的本轮对比报告。**
 
 ## 0. 先看运行顺序
 
 | 步骤 | 做什么 | 是否保存图片 |
 | --- | --- | --- |
-| 1. 筛选、预处理，已完成 | 核验照片、整理方向、等比缩图、查重、按采集组划分训练/验证/测试 | 工作图保存在 `data/wheat-leaf-spike-03/images` |
+| 1. 筛选、预处理，已完成 | 核验照片、整理方向、等比缩图、查重、按采集组划分训练/验证/测试 | 工作图保存在 `data/wheat/prepared/images` |
 | 2. 数据增强，在训练读取时执行 | 随机翻转、旋转、颜色变化；可比较轻微模糊、压缩和噪声 | 仅存在内存，直接交给这一批训练 |
 | 3. 模型训练 | 从 ImageNet 预训练权重开始，先适配分类头，再全网微调 | 保存权重、配置、逐轮指标和曲线 |
 | 4. 评估 | 按验证集选择模型；校准后报告留出测试集表现 | 保存逐图预测、混淆矩阵和指标 |
@@ -38,7 +38,7 @@ cd F:\college\AgriVision
 打开工作图，可以按类别查看：
 
 ```powershell
-explorer F:\college\AgriVision\data\wheat-leaf-spike-03\images
+explorer F:\college\AgriVision\data\wheat\prepared\images
 ```
 
 | 文件 | 怎么使用 |
@@ -54,16 +54,16 @@ explorer F:\college\AgriVision\data\wheat-leaf-spike-03\images
 如需继续筛图，打开这张表，修改后保存为 CSV UTF-8：
 
 ```powershell
-Invoke-Item F:\college\AgriVision\data\wheat-review\leaf-spike-review.csv
+Invoke-Item F:\college\AgriVision\data\wheat\review\leaf-spike-review.csv
 ```
 
 `decision=keep` 是保留候选，`drop` 是排除，空白是待复核。`label` 是类别 ID；`class_name`、`part`、`note` 辅助核对。照片编号本身不决定标签。下面只检查筛选表，不改变现有工作图：
 
 ```powershell
-.\.venv\Scripts\python.exe -m ml.agrivision_ml.preprocessing.wheat_review --review data/wheat-review/leaf-spike-review.csv --check
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.preprocessing.wheat_review --review data/wheat/review/leaf-spike-review.csv --check
 ```
 
-本轮七组实验均保持 `03` 不变。筛选表的修改不会自动改写已经生成的 `03`。后续确认数据修改后统一更新当前工作集和划分，再启动新一组对照；不要为每次训练复制一份数据。
+原来的 `wheat-leaf-spike-03` 已原地移动为 `data/wheat/prepared`，图片、类别、划分和 manifest SHA-256 均未变化。筛选表的修改不会自动改写工作集。后续确认数据修改后统一更新当前工作集和划分，再启动新一组对照；不要为每次训练复制一份数据。
 
 ## 2. 数据增强在哪里，参数什么意思
 
@@ -90,10 +90,10 @@ Invoke-Item F:\college\AgriVision\data\wheat-review\leaf-spike-review.csv
 $env:TORCH_HOME = 'F:\college\AgriVision\.cache\torch'
 ```
 
-下面是选中 Swin-T 的完整训练命令，**已有运行结果时用于阅读和复现，不要对正在运行或已保存的结果目录重复执行**。每次训练只有实验结果目录不同，数据目录仍固定为 `03`。
+下面是选中 Swin-T 的完整训练命令，**已有运行结果时用于阅读和复现，不要对正在运行或已保存的结果目录重复执行**。每次训练只有实验结果目录不同，数据目录固定为 `data/wheat/prepared`。
 
 ```powershell
-.\.venv\Scripts\python.exe -m ml.agrivision_ml.train --data-root data/wheat-leaf-spike-03/images --manifest data/wheat-leaf-spike-03/manifest.csv --labels data/wheat-leaf-spike-03/labels.json --output artifacts/experiments/wheat-study/06-swin-transformer/wheat --architecture swin_t --device cuda --input-size 224 --resize letterbox --augmentation light --batch-size 16 --lr 0.0001 --freeze-epochs 2 --precision bf16 --epochs 20 --patience 6 --workers 0
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.train --data-root data/wheat/prepared/images --manifest data/wheat/prepared/manifest.csv --labels data/wheat/prepared/labels.json --output artifacts/experiments/wheat-study/06-swin-transformer/wheat --architecture swin_t --device cuda --input-size 224 --resize letterbox --augmentation light --batch-size 16 --lr 0.0001 --freeze-epochs 2 --precision bf16 --epochs 20 --patience 6 --workers 0
 ```
 
 | 参数 | 作用，以及改哪里 |
@@ -144,13 +144,13 @@ explorer F:\college\AgriVision\artifacts\experiments\wheat-study
 训练完成后，先在验证集调温度和结果阈值。以下以选中模型目录说明；查看其他实验时只替换 `--bundle` 后的目录。温度校准不改变第一候选排序，用于调整分数和给出明确结果的覆盖率。
 
 ```powershell
-.\.venv\Scripts\python.exe -m ml.agrivision_ml.calibrate --bundle artifacts/experiments/wheat-study/06-swin-transformer/wheat --data-root data/wheat-leaf-spike-03/images --manifest data/wheat-leaf-spike-03/manifest.csv --device cuda
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.calibrate --bundle artifacts/experiments/wheat-study/06-swin-transformer/wheat --data-root data/wheat/prepared/images --manifest data/wheat/prepared/manifest.csv --device cuda
 ```
 
 生成 853 张留出测试照片的完整报告和混淆矩阵：
 
 ```powershell
-.\.venv\Scripts\python.exe -m ml.agrivision_ml.experiment_report --bundle artifacts/experiments/wheat-study/06-swin-transformer/wheat --data-root data/wheat-leaf-spike-03/images --manifest data/wheat-leaf-spike-03/manifest.csv --split test --device cuda
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.experiment_report --bundle artifacts/experiments/wheat-study/06-swin-transformer/wheat --data-root data/wheat/prepared/images --manifest data/wheat/prepared/manifest.csv --split test --device cuda
 ```
 
 把下面的照片路径换成自己的实际路径，运行一次单张推理。用 CPU 时将末尾 `cuda` 改成 `cpu`：
@@ -308,7 +308,7 @@ ConvNeXt 使用卷积与 LayerNorm，Swin 使用分层窗口自注意力；两�
 选中的包已标记为内部测试。重新部署时，可用下列命令检查原清单的留出结果，并单独保存启用报告：
 
 ```powershell
-.\.venv\Scripts\python.exe -m ml.agrivision_ml.evaluate --bundle artifacts/experiments/wheat-study/06-swin-transformer/wheat --data-root data/wheat-leaf-spike-03/images --manifest data/wheat-leaf-spike-03/manifest.csv --device cpu --activate-experimental --report-name activation
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.evaluate --bundle artifacts/experiments/wheat-study/06-swin-transformer/wheat --data-root data/wheat/prepared/images --manifest data/wheat/prepared/manifest.csv --device cpu --activate-experimental --report-name activation
 ```
 
 内部测试不代表完成独立田间验证。本机 `.env` 已设置为：
@@ -336,7 +336,7 @@ npm run build
 复测 CPU 性能（独立入口 [benchmark.py](../ml/agrivision_ml/benchmark.py)，输出模型目录下的 `benchmark-cpu.json`）：
 
 ```powershell
-.\.venv\Scripts\python.exe -m ml.agrivision_ml.benchmark --bundle artifacts/experiments/wheat-study/06-swin-transformer/wheat --data-root data/wheat-leaf-spike-03/images --manifest data/wheat-leaf-spike-03/manifest.csv --device cpu --threads 4 --repeats 80 --warmup 8
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.benchmark --bundle artifacts/experiments/wheat-study/06-swin-transformer/wheat --data-root data/wheat/prepared/images --manifest data/wheat/prepared/manifest.csv --device cpu --threads 4 --repeats 80 --warmup 8
 ```
 
 停止本机服务：
@@ -346,3 +346,49 @@ npm run build
 ```
 
 更详细的前后端开发方式见 [本地联调](development.md#本地联调)。先把本机识别与网页功能测通，再在云服务器测真实延迟、CPU、内存和并发。本机 CPU 线程测试不能直接保证某个云 vCPU 套餐的速度。需要降低成本时，再用选定大模型对比 ONNX、量化或蒸馏，并重新检查准确率、逐类召回和延迟。 [ONNX Runtime 量化](https://onnxruntime.ai/docs/performance/model-optimizations/quantization.html)
+
+
+## 9. 多作物目录与分组交叉验证（2026-11-27）
+
+数据按作物归档。`data/wheat/prepared` 是原 `wheat-leaf-spike-03`，只是移动，并未重新预处理或增加图片。清单哈希仍为 `a60c37cc8378d0916983e360689332006ef2a2e99cd0ad16b94fc7774c701383`。历史实验的 metadata 和 commands 保留当时路径；现在重跑命令使用本节路径。
+
+| 目录 | 用途 |
+| --- | --- |
+| `data/<作物>/sources/<来源>` | 原始发布文件、许可和采集信息，保留原图 |
+| `data/<作物>/review` | 筛选表、审计统计、待核对项目 |
+| `data/<作物>/prepared` | 唯一的当前工作集；训练和各折都引用它 |
+| `data/wheat/reference` | 国内原阳/陕西基线，现有筛选表仍引用其中照片，不可当无用文件删除 |
+| `data/wheat/archive` | 原有叶片版和混合版归档，不参与当前训练；没有新复制图片 |
+| `artifacts/experiments/<实验>` | 清单、权重、曲线、逐图预测等结果；编号只用于实验，不再编号复制数据 |
+
+交叉验证回答“换一批采集组以后，这种方法是否仍然好用”。**它主要用于评估和选择方案，不等于给一个模型额外训练五次。** 五折各自从 ImageNet 权重重新训练；选出方案后再训练一个部署模型。五个模型集成会额外占用推理内存，本次不默认集成。
+
+本轮先比较已有验证较好的 **Swin-T 224** 和 **ConvNeXt-Tiny 320**，比较的是完整方案，尺寸也不同。复用 sklearn 的 `StratifiedGroupKFold`，尽量平衡类别并保证采集/重复组完整。分组较大时每折张数不会完全相等，不能为凑数量拆散组。 [官方分组分层说明](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.StratifiedGroupKFold.html)
+
+流程是：原训练+验证 5,602 张 → 五个外层折；每次取四折作为训练池，再在这个池内划出约 20% 的组作早停/校准验证。余下一折只做这次的外层评估。原测试 853 张完全排除在交叉验证之外。同一张开发图恰好被外层评估一次。该机制是固定内层验证的分组交叉验证，并非完整嵌套超参数搜索。
+
+先运行下面这条，**只生成 CSV 清单并检查组隔离，不训练、不复制照片**：
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.cross_validation --data-root data/wheat/prepared/images --manifest data/wheat/prepared/manifest.csv --labels data/wheat/prepared/labels.json --group-links data/wheat/review/confirmed-group-links.csv --output artifacts/experiments/wheat-cv
+```
+
+确认 `folds.json` 的类别数量后，加 `--run` 才会实际串行运行两种方案、每种五折。每折最多 20 个完整 epoch，内层验证 Macro-F1 连续 6 轮不改善会早停：
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.cross_validation --data-root data/wheat/prepared/images --manifest data/wheat/prepared/manifest.csv --labels data/wheat/prepared/labels.json --group-links data/wheat/review/confirmed-group-links.csv --output artifacts/experiments/wheat-cv --run
+```
+
+该命令进入现有 `train.py`，增强仍在每批读图时进行，随后调用 `calibrate.py` 和 `experiment_report.py`。不是再写一套训练实现。训练日志在 `<架构>/fold-<折号>/run.log`，曲线、权重和混淆矩阵在其 `bundle` 中；`commands.json` 可看到实际调用的每条命令。`summary.json` 随已完成的折更新，报告完成折数、平均 Macro-F1、折间标准差和汇总混淆矩阵。未跑齐五折时不能当作五折结果。
+
+每折评估文件沿用 `evaluation-test.json` 的文件名，但这里的 test 指该折的外层留出部分，**并非原来的 853 张测试集，也不是独立田间实测**。这些包带 `development_only=true`，不会被后端误当成部署模型。训练完整退出后写入 training-complete.json。校准/报告中断可以复跑原命令接续；训练中途停止则提示核对，不把半成品当作训练已完成。方案、清单或源码改变后不能混用旧结果。
+
+运行前从 `requirements-ml.txt` 使用现有环境安装新增 sklearn 依赖即可，无须创建另一个环境：
+
+```powershell
+uv pip install --python .venv/Scripts/python.exe -r requirements-ml.txt
+```
+
+阅读源码从 [cross_validation.py](../ml/agrivision_ml/cross_validation.py) 的 `make_folds`、`prepare`、`run` 开始。需要修改最大轮数可加 `--epochs`；需要比较增强可用 `--augmentation field`，用另一个明确命名的**实验结果目录**，不要复制数据。保持相同折划分比较才有意义。
+
+本轮额外逐张复核了 3 对相似图候选：2 对是同一叶片的不同照片，写入 `data/wheat/review/confirmed-group-links.csv`，交叉验证前合组；另 1 对是病叶与健康麦穗，属于哈希误报，不合并。原工作清单和七组历史结果没有改写。已修复近重复索引的 4 段候选漏检问题，新预处理使用 7 段覆盖 6 位距离阈值；感知相似仍不等于标注正确。

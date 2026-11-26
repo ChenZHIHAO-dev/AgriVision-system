@@ -10,10 +10,10 @@ import httpx
 
 def main():
     root = Path(__file__).resolve().parents[1]
-    metadata = json.loads((root / 'data/sources/metadata/zenodo-7307816.json').read_text(encoding='utf-8-sig'))
+    metadata = json.loads((root / 'data/wheat/sources/metadata/zenodo-7307816.json').read_text(encoding='utf-8-sig'))
     if metadata['metadata']['license']['id'] != 'cc-by-4.0':
         raise ValueError('Unexpected source license')
-    output = root / 'data/sources/jic-7307816'
+    output = root / 'data/wheat/sources/jic-7307816'
     output.mkdir(parents=True, exist_ok=True)
     with httpx.Client(follow_redirects=True, timeout=90, limits=httpx.Limits(max_connections=4)) as client:
         def download(item):

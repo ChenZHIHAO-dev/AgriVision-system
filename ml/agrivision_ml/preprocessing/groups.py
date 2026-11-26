@@ -29,11 +29,14 @@ def group_duplicate_photos(rows):
         sets.union(index, exact.setdefault(digest, index))
         dhash = row["dhash"]
         candidates = set()
-        # 将 64 位感知哈希按 16 位分段。只比较共享过一段的历史照片，减少逐图两两比较。
-        for band in range(4):
-            key = (band, (dhash >> (16 * band)) & 0xFFFF)
+        # 阈值是 6 位，因此拆成 7 段（10 + 6×9 = 64）。距离不超过 6 的两图
+        # 至少有一段相同，才能保证候选不漏。旧的 4 段会漏掉差异分散在四段的近重复。
+        offset = 0
+        for band, width in enumerate((10, 9, 9, 9, 9, 9, 9)):
+            key = (band, (dhash >> offset) & ((1 << width) - 1))
             candidates.update(buckets[key])
             buckets[key].append(index)
+            offset += width
         # 异或后的 1 的位数就是两个 dHash 不同的位数。相差最多 6 位的候选合并。
         for other in candidates:
             if (rows[other]["dhash"] ^ dhash).bit_count() <= 6:
