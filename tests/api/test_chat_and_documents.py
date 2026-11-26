@@ -347,7 +347,10 @@ def test_new_recognition_without_knowledge_card_does_not_borrow_another_disease(
         "status": "identified", "disease_id": disease_id, "title": "疑似" + name,
         "images": [{"id": "photo"}], "candidates": [{"id": disease_id, "name": name}],
     }
-    result = asyncio.run(Chat(settings, Knowledge(ROOT)).answer(
+    knowledge = Knowledge(ROOT)
+    # Exercise a genuine coverage gap even after the bundled library gains this card.
+    knowledge.cards = [card for card in knowledge.cards if card["id"] != disease_id]
+    result = asyncio.run(Chat(settings, knowledge).answer(
         case, "叶片上像撒了一层白粉，需要怎样观察？", []
     ))
     assert result["notice_code"] == "not_configured"
@@ -386,7 +389,9 @@ def test_provider_receives_explicit_knowledge_gap_and_no_assumed_region(tmp_path
         "status": "identified", "disease_id": "wheat_glume_blotch", "title": "疑似小麦颖枯病",
         "images": [{"id": "photo"}], "candidates": [],
     }
-    result = asyncio.run(Chat(settings, Knowledge(ROOT)).answer(
+    knowledge = Knowledge(ROOT)
+    knowledge.cards = [card for card in knowledge.cards if card["id"] != "wheat_glume_blotch"]
+    result = asyncio.run(Chat(settings, knowledge).answer(
         case, "叶片上像撒了一层白粉，需要怎样观察？", []
     ))
     assert result["provider"] == "deepseek"
@@ -401,3 +406,36 @@ def test_provider_receives_explicit_knowledge_gap_and_no_assumed_region(tmp_path
     assert context["location"] == ""
     assert "服务河南南阳及周边" not in system
     assert result["sources"] == []
+
+
+@pytest.mark.parametrize("disease_id", [
+    "wheat_glume_blotch",
+    "wheat_barley_yellow_dwarf",
+    "wheat_septoria_leaf_blotch",
+])
+def test_new_wheat_recognition_sends_matched_evidence_to_provider(tmp_path, monkeypatch, disease_id):
+    seen = {}
+
+    async def respond(_self, url, **kwargs):
+        seen.update(kwargs["json"])
+        return httpx.Response(200, json={"choices": [{"message": {
+            "content": "这是本次识别的初步线索，请对照资料核对田间表现。"
+        }}]}, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", respond)
+    settings = Settings(root=ROOT, runtime=tmp_path, models=tmp_path, deepseek_key="fake-card-test")
+    knowledge = Knowledge(ROOT)
+    card = knowledge.get(disease_id)
+    case = {
+        "crop": "wheat", "stage": "暂不确定", "location": "", "note": "", "is_demo": False,
+        "status": "identified", "disease_id": disease_id, "title": "疑似" + card["title"],
+        "images": [{"id": "photo"}], "candidates": [{"id": disease_id, "name": card["title"]}],
+    }
+    result = asyncio.run(Chat(settings, knowledge).answer(case, "请说明本次识别结果", []))
+    assert result["provider"] == "deepseek"
+    context = json.loads(seen["messages"][0]["content"].rsplit("\n", 1)[-1])
+    assert context["knowledge_coverage"]["recognized_disease_card_available"] is True
+    assert context["knowledge"][0]["id"] == disease_id
+    assert context["knowledge"][0]["sources"] == card["sources"]
+    assert all(source in result["sources"] for source in card["sources"])
+    assert result["products"] == []

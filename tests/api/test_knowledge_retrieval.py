@@ -63,3 +63,23 @@ def test_crop_and_generic_field_language_do_not_supply_disease_evidence(knowledg
 ])
 def test_specific_symptoms_and_short_aliases_still_find_relevant_cards(knowledge, query, expected):
     assert knowledge.search(query, "wheat")[0]["id"] == expected
+
+
+@pytest.mark.parametrize(("query", "disease_id"), [
+    ("小麦颖枯病", "wheat_glume_blotch"),
+    ("Parastagonospora nodorum", "wheat_glume_blotch"),
+    ("小麦黄矮病毒病", "wheat_barley_yellow_dwarf"),
+    ("BYDV", "wheat_barley_yellow_dwarf"),
+    ("小麦壳针孢叶枯病", "wheat_septoria_leaf_blotch"),
+    ("Zymoseptoria tritici", "wheat_septoria_leaf_blotch"),
+])
+def test_wheat_disease_names_retrieve_their_own_source_backed_card(knowledge, query, disease_id):
+    # 颖枯病与壳针孢叶枯病不是同一病害，旧学名也必须对应正确资料。
+    card = knowledge.search(query, "wheat")[0]
+    assert card["id"] == disease_id
+    advice = knowledge.advice("wheat", disease_id)
+    assert advice["sources"] == card["sources"]
+    assert advice["sources"]
+    assert advice["products"] == []
+    assert "识别结果仅供参考" in advice["summary"]
+    assert all(source["url"].startswith("https://") for source in advice["sources"])
