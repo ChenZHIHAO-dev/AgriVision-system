@@ -6,18 +6,19 @@ from datetime import datetime, timezone
 import hashlib
 from itertools import islice
 import json
+import math
 from pathlib import Path
 import random
 import time
 
 import numpy as np
-from PIL import Image
 import torch
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from . import ARCHITECTURES, MOBILENET_V4
 from .model import build_model, classification_head, preprocessing
+from .preprocessing.images import decode_rgb
 from .inference import CROP_IDENTIFICATION_TASK, CROP_REJECTION_LABELS, select_device
 
 
@@ -88,10 +89,13 @@ class Images(Dataset):
         path = (self.root / row["path"]).resolve()
         if not path.is_relative_to(self.root):
             raise ValueError("Image path escapes dataset root")
-        if self.verify_each_read and hashlib.sha256(path.read_bytes()).hexdigest() != row["sha256"]:
+        # 一次读取同时用于哈希与解码。prepared 已校正方向，原始外域/手机照片则
+        # 可能带 EXIF 旋转或镜像；统一入口防止训练、评估和接口各用不同朝向。
+        content = path.read_bytes()
+        if self.verify_each_read and hashlib.sha256(content).hexdigest() != row["sha256"]:
             raise ValueError("Dataset image changed after manifest creation")
-        with Image.open(path) as image:
-            tensor = self.transform(image.convert("RGB"))
+        with decode_rgb(content) as image:
+            tensor = self.transform(image)
         # 分类层使用整数下标作为监督目标，所以推理时也要按相同的 labels 顺序解释输出。
         return tensor, self.labels.index(row["label"])
 
@@ -131,6 +135,30 @@ def evaluate_loader(model, loader, device, classes, *, class_weights=None, progr
     return report
 
 
+def make_optimizer(model, architecture, lr, head_lr_multiplier=1.0):
+    """仅在明确要求差分学习率时分组，旧默认保持同一个 AdamW 参数组。
+
+    分类头从随机权重开始，DINO 骨干已有稳定表征，因此可让 head 用较大的初始学习率。
+    根据参数对象身份排除头部，确保同一参数不会被两组重复更新。冻结/解冻仍由原循环控制。
+    """
+    if not math.isfinite(head_lr_multiplier) or head_lr_multiplier <= 0:
+        raise ValueError("head_lr_multiplier must be finite and positive")
+    if head_lr_multiplier == 1:
+        return torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=.01)
+    head = list(classification_head(model, architecture).parameters())
+    head_ids = {id(parameter) for parameter in head}
+    backbone = [parameter for parameter in model.parameters() if id(parameter) not in head_ids]
+    return torch.optim.AdamW([
+        {"params": backbone, "lr": lr, "name": "backbone"},
+        {"params": head, "lr": lr * head_lr_multiplier, "name": "head"},
+    ], lr=lr, weight_decay=.01)
+
+
+def optimizer_group_lrs(optimizer):
+    """记录本轮实际的各组学习率；兼容旧模型只有一个未命名参数组的情况。"""
+    return {group.get("name", "all"): group["lr"] for group in optimizer.param_groups}
+
+
 def train(args):
     from .training_curves import save_training_curves
 
@@ -162,8 +190,13 @@ def train(args):
     if any(len(loader.dataset) == 0 for loader in loaders.values()):
         raise ValueError("Both train and val splits require images")
     # 初始化网络和 AdamW。优化器先持有整个网络的参数，后续解冻骨干时可继续使用同一个优化器。
-    model = build_model(args.architecture, len(labels), not args.no_pretrained).to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=.01)
+    pretrained_weights = getattr(args, "pretrained_weights", None)
+    head_lr_multiplier = getattr(args, "head_lr_multiplier", 1.0)
+    model = build_model(
+        args.architecture, len(labels), not args.no_pretrained,
+        input_size=args.input_size, pretrained_weights=pretrained_weights,
+    ).to(device)
+    optimizer = make_optimizer(model, args.architecture, args.lr, head_lr_multiplier)
     # CUDA 可以使用 AMP 混合精度。自动模式下 MobileNetV4 用 FP32，其他 CUDA 架构用 AMP。
     precision = getattr(args, "precision", "auto")
     use_amp = device.type == "cuda" and (
@@ -184,7 +217,8 @@ def train(args):
     counts = np.array([sum(row['label']==label and row['split']=='train' for row in rows) for label in labels])
     if not counts.all(): raise ValueError('Every class needs training images')
     class_weights = torch.tensor((counts.sum()/(len(labels)*counts)) ** args.class_weight_power,dtype=torch.float32,device=device)
-    # 用余弦调度降低学习率，目标下限是初始学习率的 5%。后面只在当轮确有参数更新时推进调度。
+    # 沿用原余弦调度和绝对下限。差分学习率时两组都趋近 lr*5%，初始倍率不保持到末轮。
+    # 只有确有参数更新时才推进调度，避免 AMP 跳步或空轮次改变学习率进度。
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=args.epochs,eta_min=args.lr*.05)
     best, stale, history = -1., 0, []
     args.output.mkdir(parents=True, exist_ok=True)
@@ -192,6 +226,23 @@ def train(args):
     metadata = {"schema_version": 1, **task_metadata, "architecture": args.architecture, "labels": labels, "label_names": config["labels"], "input_size": args.input_size, "normalization": "imagenet", "resize": args.resize, "augmentation": args.augmentation, "version": datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S"), "threshold": .7, "margin": .12, "validated": False, "development_only": args.development_only or bool(args.max_batches), "manifest_sha256": hashlib.sha256(args.manifest.read_bytes()).hexdigest(), "seed": args.seed}
     metadata.update({'pretrained':not args.no_pretrained,'temperature':1.0,'release_stage':'training','training_config':{key:str(value) if isinstance(value,Path) else value for key,value in vars(args).items()},'train_counts':counts.tolist(),'torch':torch.__version__,'device':str(device)})
     metadata["precision"] = precision if use_amp else "fp32"
+    metadata["parameter_counts"] = {
+        "total": sum(parameter.numel() for parameter in model.parameters()),
+        "classification_head": sum(parameter.numel() for parameter in classification_head(model, args.architecture).parameters()),
+    }
+    metadata["optimizer"] = {
+        "name": "AdamW", "weight_decay": .01,
+        "initial_lr_by_group": optimizer_group_lrs(optimizer),
+        "head_lr_multiplier": head_lr_multiplier,
+        "scheduler": "CosineAnnealingLR", "absolute_eta_min": args.lr * .05,
+        "head_ratio_constant_during_schedule": head_lr_multiplier == 1,
+    }
+    if pretrained_weights is not None:
+        # 记录真正读入的文件身份。导出包推理只加载 weights.pt，不需要这个历史路径仍然存在。
+        checkpoint = Path(pretrained_weights).resolve()
+        metadata["pretrained_weights"] = {
+            "path": str(checkpoint), "sha256": hashlib.sha256(checkpoint.read_bytes()).hexdigest(),
+        }
     # 本轮实际参数和代码版本写进模型包，便于复现和回滚。
     import subprocess
     metadata["code_commit"] = subprocess.run(
@@ -214,6 +265,12 @@ def train(args):
             for module in model.modules():
                 if isinstance(module, torch.nn.modules.batchnorm._BatchNorm):
                     module.eval()
+        # LayerNorm 架构（Swin/ConvNeXt/DINO）支持单张尾批，应完整读取本轮照片。
+        # 只有正在更新 BatchNorm 统计的模型才保留单张尾批限制；冻结 BN/骨干时也无需丢图。
+        active_batchnorm = any(
+            isinstance(module, torch.nn.modules.batchnorm._BatchNorm) and module.training
+            for module in model.modules()
+        )
         # 为当前轮次单独累计加权损失、权重和 Top-1 正确数。
         loss_sum = torch.zeros((), device=device)
         weight_sum = torch.zeros_like(loss_sum)
@@ -226,8 +283,8 @@ def train(args):
             unit="batch", disable=None, leave=False, dynamic_ncols=True,
         ) as batches:
             for images, target in batches:
-                # 跳过只有一张图的尾批，避免训练态归一化层遇到单样本批次。
-                if len(images) < 2:
+                # 只在训练态 BN 需要跨样本统计时跳过单张尾批。
+                if len(images) < 2 and active_batchnorm:
                     continue
                 # 每批清掉上一批梯度。前向得到 logits，计算加权平均损失，再反向传播和更新参数。
                 optimizer.zero_grad(set_to_none=True)
@@ -259,6 +316,8 @@ def train(args):
             "train_accuracy": correct.item() / samples if samples else None,
             "seconds": round(time.perf_counter() - started, 2),
             "lr": optimizer.param_groups[0]["lr"],
+            "lr_by_group": optimizer_group_lrs(optimizer),
+            "trainable_parameters": sum(parameter.numel() for parameter in model.parameters() if parameter.requires_grad),
             "train_images_seen": samples,
             "max_gradient_norm": max_gradient_norm,
         })
@@ -309,6 +368,10 @@ def parser():
     result.add_argument("--batch-size", type=int, default=8)
     result.add_argument("--input-size", type=int, default=224)
     result.add_argument("--lr", type=float, default=3e-4)
+    result.add_argument("--head-lr-multiplier", type=float, default=1.0,
+                        help="Initial head/base LR ratio; default 1 preserves the original single optimizer group")
+    result.add_argument("--pretrained-weights", type=Path,
+                        help="Local public DINOv2 checkpoint for initialization; inference uses exported weights.pt")
     result.add_argument("--freeze-epochs", type=int, default=2)
     result.add_argument("--patience", type=int, default=5)
     result.add_argument("--seed", type=int, default=42)

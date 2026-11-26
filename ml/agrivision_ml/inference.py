@@ -2,10 +2,10 @@
 import argparse
 import json
 from pathlib import Path
-from PIL import Image
 import torch
 
 from .model import build_model, preprocessing
+from .preprocessing.images import decode_rgb
 
 
 # 作物种类识别和某作物的病害分类使用不同的标签表。other、unknown 和 wheat_other 是对应任务的拒识标签。
@@ -40,7 +40,10 @@ class Predictor:
         if len(self.labels) < 2:
             raise ValueError("At least two classes are required")
         # 按训练时的类别数重建网络。先在 CPU 读权重，再移到目标设备切换到评估模式。
-        self.model = build_model(self.metadata["architecture"], len(self.labels))
+        # ViT 的位置编码形状与输入尺寸相关；重载使用包内尺寸，只读取本项目 weights.pt。
+        self.model = build_model(
+            self.metadata["architecture"], len(self.labels), input_size=self.metadata["input_size"],
+        )
         self.model.load_state_dict(torch.load(bundle / "weights.pt", map_location="cpu", weights_only=True))
         self.model.to(self.device).eval()
         # 新包从 metadata 还原等比补边方式；历史包缺少 resize 时沿用原来的拉伸规则。
@@ -51,8 +54,10 @@ class Predictor:
     # 单张图变成 1×C×H×W 的批次张量，按校准温度计算类别分数，最后返回前 3 个候选。
     @torch.inference_mode()
     def predict(self, path):
-        with Image.open(path) as image:
-            tensor = self.transform(image.convert("RGB")).unsqueeze(0).to(self.device)
+        # 原始手机照片可能以 EXIF 标记旋转/镜像。与训练、离线评估共用同一解码入口，
+        # 不修改原文件；已经规范化的上传图不再发生几何变化。
+        with decode_rgb(Path(path).read_bytes()) as image:
+            tensor = self.transform(image).unsqueeze(0).to(self.device)
         scores = (self.model(tensor)/float(self.metadata.get('temperature',1.0))).softmax(1)[0].cpu().tolist()
         names = self.metadata["label_names"]
         return sorted([{"id": label, "name": names[label], "score": round(scores[i], 6)} for i, label in enumerate(self.labels)], key=lambda row: row["score"], reverse=True)[:3]

@@ -1,6 +1,8 @@
-# 小麦数据处理、训练与本地联调清单
+# 识别模型：数据处理、训练与验收清单
 
-更新于 2026-11-27。本轮使用 Windows 本机现有的 `.venv`，固定数据目录为 `data/wheat/prepared`。**预处理与七组实验已完成；本机 API 已接入 Swin-T。结果集中在 `artifacts/experiments/wheat-study`，第 7 节是唯一的本轮对比报告。**
+更新于 2026-11-27。所有命令使用 Windows 本机现有的 `.venv`。四项任务分别使用 `data/wheat/prepared`、`data/maize/prepared`、`data/peanut/prepared`、`data/crop-identification/prepared`；每项只维护一份工作图，增强在内存中进行。
+
+第 1–8 节以已经完成的小麦流程说明操作；第 9 节是小麦分组验证，第 10 节是玉米/花生训练及外域诊断，第 11 节是作物种类识别，第 12 节是玉米田间开发对照。各模型的真实结果统一更新在本清单，权重、曲线与逐图报告保存在对应 `artifacts/experiments` 目录。内部高分、田间诊断和云端已启用状态分别注明。
 
 ## 0. 先看运行顺序
 
@@ -137,7 +139,7 @@ explorer F:\college\AgriVision\artifacts\experiments\wheat-study
 | `confusion-val.png` / `confusion-test.png` | 左图是张数，右图是按真实类别归一化的召回 |
 | `evaluation-val.json` / `evaluation-test.json` | 总体、逐类、按来源和阈值筛选后的指标 |
 
-`train_images_seen=4621` 表示这一轮完整遍历了训练集。`max_gradient_norm` 是裁剪前最大梯度范数，结合 loss 与学习率判断更新是否异常。最佳轮次保存在 `metadata.json` 的 `validation.epoch`。
+`train_images_seen=4621` 表示这一轮完整遍历了训练集。2026-11-27 维护后，Swin/ConvNeXt/DINO 也会处理不足一整批的最后一张照片；旧代码统一跳过单张尾批，旧报告保留实际读取数，不事后改写。只有训练态 BatchNorm 仍需要跳过单张尾批，冻结骨干或固定 BN 时不跳过。`max_gradient_norm` 是裁剪前最大梯度范数，结合 loss 与学习率判断更新是否异常。最佳轮次保存在 `metadata.json` 的 `validation.epoch`。
 
 ## 5. 校准、测试和单图推理
 
@@ -496,7 +498,7 @@ PlantVillage 彩色玉米四类使用单独的作者数据入口；不下载灰�
 .\.venv\Scripts\python.exe -m ml.agrivision_ml.cross_validation --data-root data/peanut/prepared/images --manifest data/peanut/prepared/manifest.csv --labels data/peanut/prepared/labels.json --output artifacts/experiments/peanut-cv
 ```
 
-加 `--run` 才开始训练。小麦、玉米各十个开发折已结束，花生完整微调仍在既有队列中，作物种类随后执行，**不要同时另开训练**。以下是复现完整训练的命令，已完成的玉米实验不必重跑：
+加 `--run` 才开始训练。小麦十个开发折、玉米和花生合计二十个开发折均已结束；作物种类的完整微调使用独立队列，**不要同时另开训练**。以下是复现完整训练的命令，已完成的玉米实验不必重跑：
 
 ```powershell
 .\.venv\Scripts\python.exe -m ml.agrivision_ml.cross_validation --data-root data/maize/prepared/images --manifest data/maize/prepared/manifest.csv --labels data/maize/prepared/labels.json --output artifacts/experiments/maize-cv --run
@@ -521,6 +523,17 @@ PlantVillage 彩色玉米四类使用单独的作者数据入口；不下载灰�
 ConvNeXt 的折平均 Macro-F1 高约 0.35 个百分点。合并外层预测中，灰斑病召回从 Swin 的 404/425（95.06%）升到 ConvNeXt 的 411/425（96.71%），剩余 14 张灰斑仍混为大斑。ConvNeXt 的大斑、普通锈病、健康召回分别为 814/828、917/918、969/969。输入大小也不同，结果不能单独归因于架构。
 
 这是 PlantVillage 来源内部对照，没有据此启用玉米接口或把开发折当作部署包。下面的田间诊断仍是需要解决的问题；完整微调尚未完成独立田间验证。各折日志是 `maize-cv/<架构>/fold-*/run.log`；`bundle/training-curves.png`、`bundle/training.json`、`bundle/evaluation-test.json` 与 `bundle/confusion-test.png` 保存曲线、逐轮记录和外层评估，不增加图片目录。
+
+花生完整网络微调的十个开发折也已完成，来自 `artifacts/experiments/peanut-cv/summary.json`。两种架构覆盖相同 1,360 张开发照片，原最终 test 240 张没有进入五折：
+
+| 方案 | 完成折数 | 折平均准确率 | 折平均 Macro-F1 | F1 样本标准差 | 外层合并准确率 / Macro-F1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Swin-T，224 | 5/5 | 98.62% | 98.53% | 1.01 个百分点 | 98.60% / 98.49% |
+| ConvNeXt-Tiny，320 | 5/5 | 99.26% | 98.59% | 2.16 个百分点 | 99.26% / 98.92% |
+
+按事先规定的折平均 Macro-F1，ConvNeXt 作为后续开发对照代表；花生仅高约 **0.05 个百分点**，且折间波动更大，不能称为显著胜出。ConvNeXt 合并外层召回为叶斑 361/367、锈病 101/101、健康 512/512、链格孢 376/380。第 3 折只有 9 张锈病，虽然全部召回，其他类有 3 张误入锈病，导致该类 F1 为 85.71%；不能只看总体准确率。
+
+所有 20 个玉米/花生折的训练日志、权重、逐轮曲线、混淆图和结果均已检查完整、PNG 可读。它们仍是来源内部的开发比较；花生新增原图外域表现见 10.7。后续固定使用第 1 折作方法诊断，不根据外域表现挑最好的一折，也不把开发折直接发布。
 
 ### 10.4 已完成的冻结骨干对照
 
@@ -569,7 +582,7 @@ Pretoria 原图审计发现 380/1,090 张带有 EXIF 旋转指示；原 prepared
 
 修正后准确率 **41.47%**、Macro-F1 **34.39%**，原结果为 40.28% / 33.34%。40 张由错变对，27 张由对变错，100 张首选类别变化。普通锈病仍只有 6/107 正确，高分误判仍有 120 张。因此方向一致性需要修复，但不能把低外域表现都解释成 EXIF；目前仍不启用玉米服务。
 
-对照入口 `ml/agrivision_ml/exif_diagnostic.py` 保留原照片和原报告，结果放在 `artifacts/experiments/maize-linear-probe/grouped-cv/final-refit/external-pretoria-exif`。它没有重新训练、改标签或用外域结果调阈值。正在运行的训练核心不热改；队列结束后再统一训练与推理的解码入口并进行方向一致性回归。
+对照入口 `ml/agrivision_ml/exif_diagnostic.py` 保留原照片和原报告，结果放在 `artifacts/experiments/maize-linear-probe/grouped-cv/final-refit/external-pretoria-exif`。它没有重新训练、改标签或用外域结果调阈值。20 折队列全部结束后，已统一 `Images` 与 `Predictor` 调用同一 `decode_rgb`，支持八种 EXIF 旋转/镜像。无方向字段的图片保持像素不变；原报告和权重不改写。
 
 ### 10.7 花生独立原始照片诊断（已完成，不新增训练数据）
 
@@ -685,7 +698,31 @@ GBIF 和 iNaturalist 的来源标签不是逐图人工审核。补充的栽培�
 
 CPU 四线程、batch 4 的完整执行为 74.40 分钟，峰值进程工作集约 3.51 GiB（包含库、模型与临时特征，不是服务单图推理内存）。未校准 ECE（10 桶）为 0.0211。沿用预设 0.7 分数 / 0.12 分差时，820/900 张被接受、这部分准确率 97.20%；这只是一项覆盖统计，**不能替代全量 91.89%**，也没有据外层结果改阈值。
 
-当前仍未达到 95% 的整体门槛，保持 `release_eligible=false`，未接入后端。这里是单个开发折，不是五折均值、原最终测试或国内田间评测。先完成已排队的两架构完整微调，再据逐类错误规划 DINO 适配和统一的逐图适用性复核；不按外层误判删图抬分。
+当前仍未达到 95% 的整体门槛，保持 `release_eligible=false`，未接入后端。这里是单个开发折，不是五折均值、原最终测试或国内田间评测。后续完整微调增加 DINO 对照，入口见 11.6。统一的逐图适用性复核仍需按来源完成；不按外层误判删图抬分。
+
+### 11.6 完整网络微调：三种固定方法
+
+冻结 DINO 表征的结果支持进一步尝试任务适配。新增完整微调使用与前述三种冻结方法相同的第 1 折：训练 2,753 张、内层验证 734 张、外层开发留出 900 张；原最终 test 779 张不使用。训练在线轻增强，验证固定 224/320 等比例补边。这里只比较固定方法，不按外层错例删图或反复调参。
+
+| 架构 | 输入 | 批大小 | 骨干初始学习率 | 分类头初始学习率 |
+| --- | ---: | ---: | ---: | ---: |
+| Swin-T | 224 | 16 | 0.0001 | 0.0001 |
+| ConvNeXt-Tiny | 320 | 16 | 0.0001 | 0.0001 |
+| DINOv2 ViT-B/14 with registers | 224 | 8 | 0.00001 | 0.0001 |
+
+均为 seed 42、先冻结骨干 2 轮、最多 20 轮、验证 Macro-F1 连续 6 轮不提升早停、BF16、梯度裁剪 1、逆频率损失权重。DINO 复用已经下载的官方权重，不另建虚拟环境；85,737,998 个参数（含 14 类头）。本机 6 GiB 显存先用 batch 8，若实际显存不足再明确记录调整，不减少照片数。较低骨干学习率是本次预先设定的迁移学习起点，不承诺必然提升至 95%。
+
+读代码看 `model.py` 的 DINO 分支、`train.py` 的 `make_optimizer()`、`Images` 和逐轮循环。默认 `--head-lr-multiplier 1` 保持旧模型单参数组行为；DINO 显式设 10。余弦调度仍用原绝对下限，因此两组只是**初始**相差 10 倍，不是全程保持这个比例。`training.json` 的 `lr_by_group`、`trainable_parameters`、`train_images_seen` 记录实际执行状态。
+
+下面是 DINO 的直接训练命令（先读懂参数；已有队列执行时不要重复运行）：
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.train --data-root data/crop-identification/prepared/images --manifest artifacts/experiments/crop-identification-cv/folds/fold-1/manifest.csv --labels data/crop-identification/prepared/labels.json --output artifacts/experiments/crop-identification-finetune/dinov2_vitb14_reg4/fold-1/bundle --architecture dinov2_vitb14_reg4 --pretrained-weights .cache/torch/hub/checkpoints/dinov2_vitb14_reg4_pretrain.pth --input-size 224 --resize letterbox --augmentation light --class-weight-power 1 --batch-size 8 --lr 0.00001 --head-lr-multiplier 10 --freeze-epochs 2 --epochs 20 --patience 6 --seed 42 --device cuda --precision bf16 --workers 0 --development-only
+```
+
+新参数 `--pretrained-weights` 只指定初始化骨干的公开文件。正式训练输出仍是同一组 `weights.pt`、`metadata.json`、曲线和逐轮 JSON；导出包推理只需要本项目权重，不依赖本机预训练缓存。DINO 尺寸需为 patch 边长 14 的整数倍。已用真实官方权重完成 224 输入前向及导出/离线重载，逐值相同；这只是接线测试，不是准确率测试。
+
+维护之后统一 EXIF 解码，释放 CLS 特征视图对整批 patch token 内存的持有，并修正 LayerNorm 模型单张尾批。143 项 ML 回归与 290 项 API 回归已通过。新实验记录新代码身份，旧缓存和旧运行配方不改写；既有三种冻结方法的历史结果继续保留。
 
 ### 当前候选上线门槛
 
@@ -693,13 +730,13 @@ CPU 四线程、batch 4 的完整执行为 74.40 分钟，峰值进程工作集�
 
 增强只在训练读取时或冻结骨干的训练视图提取时执行，验证/测试只用固定预处理。`cached_probe_cv.py` 复用公开 ImageNet 预训练骨干特征节省重复计算，按每折训练索引取增强视图，内层验证选择线性头，外层仅评估；选型后按原 train/val 重新拟合，再做一次原 test 验收。每折仅保留分类头、统计和图表，不复制图片或整套骨干。
 
-### 12. 玉米田间开发清单（只生成引用，不复制图片）
+## 12. 玉米田间开发清单（只生成引用，不复制图片）
 
 新增入口 `ml/agrivision_ml/preprocessing/field_manifest.py` 保留原 PlantVillage 开发划分，检查跨来源重复，再按 Pretoria 完整拍摄日分组。已生成固定清单 `artifacts/experiments/maize-field-development/manifest.csv`：PV 原训练 2,587 张、验证 553 张；田间训练 719 张、验证 370 张，共 4,229 张。原 PV 测试 564 张不进入，另 1 张无日期照片暂缓。验证日为 `2019-03-13`。
 
 11 对跨来源感知哈希候选经逐对查看确认为不同照片，复核记录在 `data/maize/review/field-overlap-review.csv`，带两侧文件哈希和理由；只解除这些误报边，其余重复分组规则不变。不通过改模型预测或改病名来消除冲突。
 
-此来源已经用于排错，之后不能称为全新独立测试。日期分组也不等于作者提供了植株编号。清单 `recipe.json` 的 `training_enabled=false` 表示尚未开放共享训练核心的端到端微调：共享 EXIF 解码修复仍需等待全部现有训练队列结束，不能热改 worker。下面的独立 EXIF 诊断和 CPU 线性对照是明确的例外，它们自行复用已有 `decode_rgb`，不更改共享核心、不追加 GPU 任务。已有清单不重复覆盖。首次复现入口如下：
+此来源已经用于排错，之后不能称为全新独立测试。日期分组也不等于作者提供了植株编号。清单 `recipe.json` 的 `training_enabled=false` 表示尚未开放共享训练核心的端到端微调：当前田间清单尚未排入完整网络微调。EXIF 统一解码已在原二十折队列结束后修复；历史配方保留不改。下面的独立 EXIF 诊断和 CPU 线性对照已经完成，它们当时自行复用已有 `decode_rgb`，没有热改共享核心或追加 GPU 任务。已有清单不重复覆盖。首次复现入口如下：
 
 ```powershell
 .\.venv\Scripts\python.exe -B -m ml.agrivision_ml.preprocessing.field_manifest --root . --baseline data/maize/prepared/manifest.csv --external data/maize/evaluation/pretoria-field-single-supported.csv --overlap-review data/maize/review/field-overlap-review.csv --validation-dates 2019-03-13 --output artifacts/experiments/maize-field-development

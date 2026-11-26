@@ -84,7 +84,9 @@ def encode(model, root, rows, labels, size, *, training=False, augmentation='lig
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
     vectors, targets = [], []
     for images, truth in tqdm(loader, desc='增强特征' if training else '固定特征', unit='batch'):
-        vectors.append(model(images).cpu().numpy())
+        # ViT 的 CLS 输出可能只是全体 patch token 的视图。独立复制小型特征，
+        # 让这一批的大型 token 存储立即释放，不随 vectors 累积到整个数据集结束。
+        vectors.append(model(images).cpu().numpy().copy())
         targets.append(truth.numpy())
     return np.concatenate(vectors), np.concatenate(targets)
 

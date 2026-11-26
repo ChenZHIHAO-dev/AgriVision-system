@@ -193,3 +193,38 @@ def test_exported_bundle_loads_real_backbone_and_preserves_image_scores(tmp_path
     assert [item['id'] for item in actual] == [labels[i] for i in np.argsort(-expected)[:3]]
     for item in actual:
         assert item['score'] == pytest.approx(float(expected[labels.index(item['id'])]), abs=1e-6)
+
+
+def test_feature_batches_do_not_retain_full_patch_token_storage(tmp_path, monkeypatch):
+    """CLS 切片虽只有8维，也不能在拼接前一直持有整批100个patch的底层存储。"""
+    from ml.agrivision_ml import linear_probe
+    images = torch.zeros(4, 3, 8, 8)
+    targets = torch.tensor([0, 1, 0, 1])
+    monkeypatch.setattr(linear_probe, 'Images', lambda *args, **kwargs:
+                        torch.utils.data.TensorDataset(images, targets))
+
+    class PatchEncoder(torch.nn.Module):
+        def forward(self, batch):
+            tokens = torch.ones(len(batch), 100, 8)
+            return tokens[:, 0]  # 模拟 ViT 返回共享整张token存储的CLS视图。
+
+    concatenate = np.concatenate
+    retained_bytes = []
+
+    def inspect_storage(arrays, *args, **kwargs):
+        for array in arrays:
+            if array.dtype == np.float32:
+                base = array
+                while isinstance(base, np.ndarray) and base.base is not None:
+                    base = base.base
+                footprint = base.untyped_storage().nbytes() if isinstance(base, torch.Tensor) else array.nbytes
+                retained_bytes.append(footprint)
+                assert footprint <= array.nbytes
+        return concatenate(arrays, *args, **kwargs)
+
+    monkeypatch.setattr(linear_probe.np, 'concatenate', inspect_storage)
+    vectors, labels = linear_probe.encode(PatchEncoder(), tmp_path, [None] * 4, ['a', 'b'],
+                                           8, batch_size=2)
+    np.testing.assert_array_equal(vectors, np.ones((4, 8), dtype=np.float32))
+    np.testing.assert_array_equal(labels, targets.numpy())
+    assert retained_bytes == [2 * 8 * 4, 2 * 8 * 4]
