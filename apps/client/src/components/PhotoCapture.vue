@@ -34,50 +34,57 @@ const scope = computed(() => {
 })
 </script>
 <template>
-  <view class="photo-page">
-    <text class="photo-subtitle">选择作物，拍摄或上传症状照片。</text>
+  <view class="photo-page" :class="{ 'photo-desktop': desktopWeb }">
     <view class="photo-panel">
-      <view class="crop-choices" role="group" aria-label="选择照片中的作物"
-        ><button
+      <text class="photo-field-label">照片中的作物</text>
+      <view class="crop-choices" role="group" aria-label="选择照片中的作物">
+        <button
           v-for="[id, name] in choices"
           :key="id"
+          :disabled="busy"
           :class="{ selected: crop === id }"
           :aria-pressed="crop === id"
           @click="emit('crop', id)"
         >
-          <AppIcon :name="id" :size="27" /><text>{{ name }}</text>
-        </button></view
-      >
+          <AppIcon :name="id" :size="25" /><text>{{ name }}</text>
+        </button>
+      </view>
       <button class="crop-lookup-link" :disabled="busy" @click="emit('identify-crop')">
-        <AppIcon name="leaf" :size="17" />
-        <text>不确定作物？识别作物</text>
-        <AppIcon name="right" :size="15" />
+        <AppIcon name="leaf" :size="17" /><text>不确定作物？识别作物</text
+        ><AppIcon name="right" :size="15" />
       </button>
-      <view class="camera-stage"
-        ><view class="camera-halo"
-          ><button
-            class="button primary camera-shutter"
-            :aria-label="desktopWeb ? '从电脑上传作物照片' : '拍摄作物照片'"
+      <view class="camera-stage">
+        <view class="capture-guide-icon"
+          ><AppIcon :name="desktopWeb ? 'upload' : 'camera'" :size="30"
+        /></view>
+        <text class="camera-title">{{ desktopWeb ? '上传一张症状照片' : '拍清楚，再识别' }}</text>
+        <text class="camera-description">{{
+          desktopWeb ? '选择叶片或麦穗等异常部位的清晰近照' : '在自然光下对焦，尽量拍清异常部位'
+        }}</text>
+        <view class="capture-actions">
+          <button
+            class="button primary capture-main"
             :disabled="busy"
+            :aria-label="desktopWeb ? '从电脑上传作物照片' : '拍摄作物照片'"
             @click="emit('capture', desktopWeb ? 'album' : 'camera')"
           >
-            <AppIcon :name="desktopWeb ? 'upload' : 'camera'" white :size="39" /></button></view
-        ><text class="camera-title">{{ desktopWeb ? '从电脑上传作物照片' : '拍摄作物照片' }}</text
-        ><text class="camera-description">{{
-          desktopWeb ? '选择清晰的症状近照，单张不超过 8MB' : '对准有异常的叶片，保持画面清晰'
-        }}</text
-        ><button
-          v-if="!desktopWeb"
-          class="album-button"
-          :disabled="busy"
-          @click="emit('capture', 'album')"
-        >
-          <AppIcon name="upload" :size="17" /><text>从相册上传</text>
-        </button></view
-      >
-      <view class="recognition-scope"
-        ><view class="scope-dot" :class="{ ready }" /><text>{{ scope }}</text></view
-      >
+            <AppIcon :name="desktopWeb ? 'upload' : 'camera'" white :size="21" />
+            <text>{{ desktopWeb ? '选择照片' : '拍照识别' }}</text>
+          </button>
+          <button
+            v-if="!desktopWeb"
+            class="button secondary album-button"
+            :disabled="busy"
+            @click="emit('capture', 'album')"
+          >
+            <AppIcon name="image" :size="20" /><text>从相册选</text>
+          </button>
+        </view>
+        <text class="capture-format">JPG、PNG、WebP · 单张不超过 8MB</text>
+      </view>
+      <view class="recognition-scope" role="status">
+        <view class="scope-dot" :class="{ ready }" /><text>{{ scope }}</text>
+      </view>
     </view>
     <!-- #ifdef H5 -->
     <view v-if="pausedUpload" class="paused-upload">
@@ -100,39 +107,55 @@ const scope = computed(() => {
       aria-label="询问 AI"
       @click="emit('resume')"
     >
-      <view class="photo-consult-icon"><AppIcon name="chat" :size="23" /></view>
-      <view><text>不拍照，直接问</text><text>询问种植问题或了解药品作用</text></view>
+      <view class="photo-consult-icon"><AppIcon name="chat" :size="22" /></view>
+      <view><text>不拍照，直接问</text><text>描述种植问题，询问 AI</text></view>
       <AppIcon name="right" :size="18" />
     </button>
-    <text class="photo-tip">可在同一条记录中补充叶背和整株照片。单张不超过 8MB。</text>
+    <text class="photo-tip">识别后可继续补充叶背和整株照片，帮助了解实际情况。</text>
   </view>
 </template>
 <style scoped>
 .photo-page {
   max-width: 680px;
-  margin: 8px auto 20px;
-}
-.photo-subtitle {
-  display: block;
-  margin-bottom: 18px;
-  font-size: 13px;
-  color: var(--muted);
-  margin-top: 9px;
-  line-height: 1.8;
+  margin: 0 auto 20px;
 }
 .photo-panel {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 22px;
+  border-radius: 20px;
   overflow: hidden;
+}
+.photo-field-label {
+  display: block;
+  margin: 18px 18px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
 }
 .crop-choices {
   display: flex;
   gap: 6px;
   background: var(--subtle);
-  padding: 5px;
-  margin: 20px 22px 0;
-  border-radius: 13px;
+  padding: 4px;
+  margin: 0 16px;
+  border-radius: 14px;
+}
+.crop-choices > button {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  color: var(--muted);
+}
+.crop-choices > button.selected {
+  color: var(--ink);
+  background: var(--surface);
+  border-color: var(--line);
 }
 .crop-lookup-link {
   display: flex;
@@ -146,69 +169,71 @@ const scope = computed(() => {
   color: var(--accent);
   font-size: 13px;
 }
-.crop-lookup-link:hover,
 .crop-lookup-link:active {
-  background: var(--hover);
-}
-.crop-choices > button {
-  flex: 1;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  min-height: 43px;
-  border-radius: 10px;
-  color: var(--muted);
-  border: 1px solid transparent;
-}
-.crop-choices > button.selected {
-  background: var(--accent-soft);
-  color: var(--accent);
-  border-color: var(--line);
+  background: var(--pressed);
 }
 .camera-stage {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 30px 20px 27px;
+  padding: 20px 18px 22px;
 }
-.camera-halo {
-  padding: 18px;
-  background: var(--subtle);
-  border-radius: 50%;
-}
-.camera-shutter {
-  width: 92px;
-  height: 92px;
-  min-width: 92px;
-  border-radius: 50%;
-  padding: 0;
-  box-shadow: 0 6px 18px #00000012;
-}
-.camera-title {
-  font-size: 17px;
-  font-weight: 600;
-  margin-top: 21px;
-}
-.camera-description {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 8px;
-}
-.album-button {
+.capture-guide-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 9px;
-  font-size: 13px;
-  margin-top: 22px;
-  padding: 10px 19px;
-  min-height: 42px;
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  background: var(--elevated);
+  width: 60px;
+  height: 60px;
+  border-radius: 18px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.camera-title {
+  display: block;
+  font-size: 18px;
+  font-weight: 600;
   color: var(--ink);
+  margin-top: 16px;
+}
+.camera-description {
+  display: block;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.capture-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  max-width: 380px;
+  margin-top: 22px;
+}
+.capture-main,
+.album-button {
+  flex: 1;
+  min-height: 48px;
+  padding: 10px 12px;
+  border-radius: 13px;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.capture-main {
+  box-shadow: 0 2px 6px #0000000a;
+}
+.album-button {
+  background: var(--elevated);
+  border-color: var(--line);
+}
+.capture-format {
+  display: block;
+  text-align: center;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 .recognition-scope {
   display: flex;
@@ -216,9 +241,9 @@ const scope = computed(() => {
   justify-content: center;
   gap: 7px;
   border-top: 1px solid var(--line);
-  padding: 13px 18px;
-  font-size: 11px;
-  line-height: 1.8;
+  padding: 12px 16px;
+  font-size: 12px;
+  line-height: 1.6;
   color: var(--muted);
   background: var(--elevated);
 }
@@ -236,62 +261,24 @@ const scope = computed(() => {
 .photo-tip {
   display: block;
   text-align: center;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
-  line-height: 1.9;
-  margin: 17px 10px 0;
+  line-height: 1.7;
+  margin: 14px 8px 0;
 }
-@media (max-width: 760px) {
-  .photo-page {
-    margin: 5px auto 10px;
-  }
-  .photo-subtitle {
-    font-size: 11px;
-    line-height: 1.8;
-  }
-  .crop-choices {
-    margin: 15px 15px 0;
-  }
-  .camera-stage {
-    padding: 26px 15px;
-  }
-  .camera-halo {
-    padding: 15px;
-  }
-  .camera-shutter {
-    width: 85px;
-    height: 85px;
-    min-width: 85px;
-  }
-  .camera-title {
-    margin-top: 17px;
-    font-size: 16px;
-  }
-  .camera-description {
-    font-size: 11px;
-  }
-  .album-button {
-    margin-top: 18px;
-  }
-  .recognition-scope {
-    font-size: 10px;
-    padding: 11px 14px;
-  }
-  .photo-tip {
-    font-size: 10px;
-    margin-top: 15px;
-  }
-}
-.recent-result {
+.recent-result,
+.photo-consult-entry {
   display: flex;
   align-items: center;
-  gap: 13px;
+  gap: 12px;
+  width: 100%;
+  padding: 16px;
   text-align: left;
   background: var(--surface);
-  width: 100%;
-  border-radius: 15px;
-  padding: 13px 15px;
-  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  margin-top: 14px;
+  color: var(--ink);
 }
 .recent-result > image {
   width: 46px;
@@ -299,67 +286,58 @@ const scope = computed(() => {
   border-radius: 11px;
   flex-shrink: 0;
 }
-.recent-result > view {
+.recent-result > view,
+.photo-consult-entry > view:nth-child(2) {
   min-width: 0;
   flex: 1;
 }
-.recent-result > view > text:first-child {
+.recent-result > view > text:first-child,
+.photo-consult-entry > view:nth-child(2) > text:first-child {
   display: block;
-  font-size: 13px;
-  font-weight: 550;
+  font-size: 14px;
+  font-weight: 600;
+}
+.recent-result > view > text:last-child,
+.photo-consult-entry > view:nth-child(2) > text:last-child {
+  display: block;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin-top: 3px;
 }
 .recent-result > view > text:last-child {
-  display: block;
-  font-size: 11px;
-  color: var(--muted);
-  margin-top: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.photo-consult-entry {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  text-align: left;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  padding: 17px;
-  width: 100%;
-  border-radius: 16px;
-  margin-top: 17px;
-}
 .photo-consult-icon {
-  width: 43px;
-  height: 43px;
-  border-radius: 13px;
-  background: var(--subtle);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: var(--subtle);
 }
-.photo-consult-entry > view:nth-child(2) {
-  flex: 1;
-  min-width: 0;
+.photo-desktop .camera-stage {
+  padding: 32px 32px 28px;
 }
-.photo-consult-entry > view:nth-child(2) > text:first-child {
-  display: block;
-  font-size: 14px;
-  font-weight: 650;
+.photo-desktop .capture-guide-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
 }
-.photo-consult-entry > view:nth-child(2) > text:last-child {
-  display: block;
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 11px;
+.photo-desktop .camera-title {
+  font-size: 20px;
+  margin-top: 20px;
 }
-@media (max-width: 760px) {
-  .photo-subtitle {
-    margin-top: 0;
-  }
+.photo-desktop .capture-actions {
+  max-width: 280px;
 }
-/* #ifdef H5 */
+.photo-desktop .photo-field-label {
+  margin-top: 22px;
+}
 .paused-upload {
   display: flex;
   align-items: center;
@@ -373,10 +351,13 @@ const scope = computed(() => {
   color: var(--ink);
   font-size: 13px;
 }
-@media (max-width: 760px) {
+@media (max-width: 360px) {
+  .capture-actions {
+    gap: 8px;
+  }
+  .capture-main,
+  .album-button {
+    padding-inline: 8px;
+  }
 }
-.album-button {
-  min-height: 44px;
-}
-/* #endif */
 </style>

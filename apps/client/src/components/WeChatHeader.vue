@@ -4,6 +4,7 @@ import ChatTitle from './ChatTitle.vue'
 
 defineProps<{
   title: string
+  compact?: boolean
   backLabel: string
   chat: boolean
   showBack: boolean
@@ -25,8 +26,15 @@ function updateSearch(event: unknown) {
 
 <template>
   <view class="wechat-header" :style="{ paddingTop: frame.top + 'px' }">
-    <view class="wechat-header-row" :style="{ height: frame.row + 'px' }">
-      <view class="wechat-header-leading" :style="{ width: (search === undefined ? frame.side : 48) + 'px' }">
+    <view
+      class="wechat-header-row"
+      :class="{ 'compact-row': compact }"
+      :style="{ height: frame.row + 'px' }"
+    >
+      <view
+        class="wechat-header-leading"
+        :style="{ width: (search === undefined && !compact ? frame.side : 48) + 'px' }"
+      >
         <button
           v-if="showBack"
           class="wechat-header-button"
@@ -57,15 +65,36 @@ function updateSearch(event: unknown) {
             @input="updateSearch"
           />
         </view>
-        <ChatTitle v-else-if="chat" :title="title" :expanded="optionsOpen" @open="emit('options')" />
+        <ChatTitle
+          v-else-if="chat"
+          :title="title"
+          :expanded="optionsOpen"
+          @open="emit('options')"
+        />
+        <view v-else-if="compact" class="header-brand-mark" role="img" :aria-label="title"
+          ><AppIcon name="leaf" :size="23"
+        /></view>
         <text v-else-if="!nativeTitle" class="wechat-header-title">{{ title }}</text>
       </view>
-      <view aria-hidden="true" :style="{ width: frame.side + 'px' }" class="wechat-header-capsule" />
+      <view
+        aria-hidden="true"
+        :style="{ width: frame.side + 'px' }"
+        class="wechat-header-capsule"
+      />
     </view>
   </view>
 </template>
 
 <style scoped>
+.header-brand-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 11px;
+  background: var(--accent-soft);
+}
 .wechat-header {
   flex-shrink: 0;
   width: 100%;
@@ -75,6 +104,13 @@ function updateSearch(event: unknown) {
   display: flex;
   align-items: center;
   border-bottom: 1px solid var(--line);
+}
+.compact-row {
+  border-bottom: 0;
+}
+.compact-row .wechat-header-center {
+  justify-content: flex-start;
+  padding-left: 4px;
 }
 .wechat-header-leading,
 .wechat-header-capsule {

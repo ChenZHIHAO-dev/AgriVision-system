@@ -5,6 +5,7 @@ import ChatTitle from './ChatTitle.vue'
 defineProps<{
   title: string
   page: string
+  compact?: boolean
   chat: boolean
   backLabel: string
   safeTop: number
@@ -27,7 +28,10 @@ function updateSearch(event: unknown) {
 
 <template>
   <view class="mobile-header" :style="{ paddingTop: safeTop ? safeTop + 'px' : undefined }">
-    <view class="mobile-primary" :class="{ 'has-search': search !== undefined }">
+    <view
+      class="mobile-primary"
+      :class="{ 'has-search': search !== undefined, 'compact-primary': compact }"
+    >
       <view class="mobile-leading">
         <button
           v-if="chat || page === 'settings' || page === 'history'"
@@ -38,7 +42,7 @@ function updateSearch(event: unknown) {
           <AppIcon name="back" :size="21" />
         </button>
         <button
-          v-if="chat || page === 'identify'"
+          v-if="chat || compact"
           class="mobile-header-action"
           aria-label="打开历史记录"
           :aria-expanded="historyOpen"
@@ -69,14 +73,26 @@ function updateSearch(event: unknown) {
       </view>
       <view v-else class="mobile-center">
         <ChatTitle v-if="chat" :title="title" :expanded="chatOptionsOpen" @open="emit('options')" />
+        <view v-else-if="compact" class="header-brand-mark" role="img" :aria-label="title"
+          ><AppIcon name="leaf" :size="23"
+        /></view>
         <text v-else class="mobile-title" role="heading" aria-level="1">{{ title }}</text>
       </view>
-      <view v-if="search === undefined" class="mobile-trailing" aria-hidden="true" />
+      <view v-if="search === undefined && !compact" class="mobile-trailing" aria-hidden="true" />
     </view>
   </view>
 </template>
 
 <style scoped>
+.header-brand-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 11px;
+  background: var(--accent-soft);
+}
 .mobile-header {
   display: block;
   flex: 0 0 auto;
@@ -91,6 +107,20 @@ function updateSearch(event: unknown) {
   min-height: 54px;
   padding: 0 8px;
   border-bottom: 1px solid var(--line);
+}
+.compact-primary {
+  min-height: 48px;
+  border-bottom: 0;
+}
+.compact-primary .mobile-leading {
+  flex-basis: 44px;
+}
+.compact-primary .mobile-center {
+  justify-content: flex-start;
+  padding-left: 4px;
+}
+.compact-primary .mobile-title {
+  font-size: 16px;
 }
 .mobile-leading,
 .mobile-trailing {

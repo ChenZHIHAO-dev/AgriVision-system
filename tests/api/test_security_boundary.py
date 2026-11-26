@@ -176,7 +176,7 @@ def test_build_commit_is_available_in_public_bootstrap(tmp_path):
         for path in ("/api/health", "/api/meta"):
             result = client.get(path).json()
             assert result["build_commit"] == "123abc456"
-            assert result["version"] == "1.5.0-beta.1"
+            assert result["version"] == client.app.version
 
 
 def test_recognition_limit_covers_crop_upload_and_retry(tmp_path, admin_hash, account_headers):

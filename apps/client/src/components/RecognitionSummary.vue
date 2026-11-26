@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import AppIcon from './AppIcon.vue'
+import ContentReference from './ContentReference.vue'
 import type { RecognitionReceipt } from '../lib/api'
 defineProps<{ result: RecognitionReceipt; compact?: boolean }>()
 const expanded = ref(false)
@@ -26,6 +27,7 @@ function state(status: string) {
       ><text class="receipt-count">{{ result.image_count }} 张照片</text></view
     >
     <text class="receipt-summary">{{ result.summary }}</text>
+    <ContentReference kind="recognition" />
     <view v-if="result.image_results?.length" class="receipt-images"
       ><view v-for="image in result.image_results" :key="image.image_id" class="receipt-image-row"
         ><text class="receipt-number">图 {{ image.image_index }}</text

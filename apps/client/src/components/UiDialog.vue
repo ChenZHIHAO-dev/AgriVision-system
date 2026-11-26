@@ -11,6 +11,7 @@ import {
 } from 'vue'
 import AppIcon from './AppIcon.vue'
 import { syncModalInert } from '../lib/modal'
+import { revealDialogInput } from '../lib/dialogFocus'
 const props = withDefaults(
   defineProps<{
     title: string
@@ -23,6 +24,7 @@ const props = withDefaults(
 )
 const emit = defineEmits<{ close: [] }>()
 const id = 'dialog-' + Math.random().toString(36).slice(2, 9)
+let bodyObserver: ResizeObserver | undefined
 let previous: HTMLElement | null = null,
   revealing = false
 
@@ -85,11 +87,9 @@ function revealFocus() {
   revealing = true
   nextTick(() => {
     const root = document.querySelector<HTMLElement>('[data-modal-id="' + id + '"]')
-    const target = props.focusTarget
-      ? document.getElementById(props.focusTarget)
-      : document.activeElement
-    if (target && root?.contains(target))
-      (target as HTMLElement).scrollIntoView({ block: 'nearest', behavior: 'auto' })
+    // 浏览器负责原生焦点避让；这里只补足弹窗正文内部的滚动。
+    // 收键盘后不再按旧 focusTarget 把已经失焦的输入框滚回屏内。
+    revealDialogInput(root, document.activeElement)
     revealing = false
   })
   // #endif
@@ -149,7 +149,14 @@ onMounted(async () => {
   window.visualViewport?.addEventListener('resize', revealFocus)
   await nextTick()
   syncModalInert()
-  document.querySelector<HTMLElement>('[data-modal-id="' + id + '"] .dialog-close')?.focus()
+  const body = document.querySelector<HTMLElement>('[data-modal-id="' + id + '"] .dialog-body')
+  if (body && window.ResizeObserver) {
+    bodyObserver = new window.ResizeObserver(revealFocus)
+    bodyObserver.observe(body)
+  }
+  document
+    .querySelector<HTMLElement>('[data-modal-id="' + id + '"] .dialog-close')
+    ?.focus({ preventScroll: true })
   // #endif
   // #ifndef H5
   nativeResize()
@@ -159,11 +166,12 @@ onMounted(async () => {
 })
 onUnmounted(() => {
   // #ifdef H5
+  bodyObserver?.disconnect()
   document.removeEventListener('keydown', keyboard)
   window.visualViewport?.removeEventListener('resize', revealFocus)
   nextTick(() => {
     syncModalInert()
-    if (previous?.isConnected) previous.focus()
+    if (previous?.isConnected) previous.focus({ preventScroll: true })
   })
   // #endif
   // #ifndef H5

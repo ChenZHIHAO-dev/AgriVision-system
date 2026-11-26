@@ -234,3 +234,61 @@ def test_latest_context_and_known_stage_override_stale_clarification(
     assert latest["image_results"][0]["stage"] == "苗期"
     assert "STALE_CLARIFICATION" not in json.dumps(seen)
     assert "观察叶片两面" in answer["text"] and "请补充" not in answer["text"]
+
+
+@pytest.mark.parametrize("attach_in_chat", [False, True])
+def test_photo_followup_reaches_provider_with_latest_result_and_matching_knowledge(
+    tmp_path, monkeypatch, account_headers, admin_hash, attach_in_chat,
+):
+    # 两条实际产品路径：先拍照再继续对话；先建文字对话再附图发送。
+    payloads = []
+
+    async def respond(_self, url, **kwargs):
+        payloads.append(kwargs["json"])
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": "当前识别提示疑似小麦叶锈病，可先结合田间发生范围核对，再参考对应资料处理。"}}]},
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", respond)
+    settings = Settings(root=ROOT, runtime=tmp_path / "runtime", models=tmp_path / "models",
+                        admin_password_hash=admin_hash, deepseek_key="fake-test-value")
+    app = create_app(settings)
+    result = {"status": "identified", "title": "疑似小麦叶锈病", "disease_id": "wheat_leaf_rust",
+              "model_version": "test-handoff", "experimental": True,
+              "candidates": [{"id": "wheat_leaf_rust", "name": "小麦叶锈病", "score": .98}]}
+    monkeypatch.setattr(app.state.registry, "predict", lambda *args: result)
+    pixels = np.random.default_rng(4).integers(0, 256, (200, 240, 3), dtype=np.uint8)
+    photo = BytesIO(); Image.fromarray(pixels).save(photo, "JPEG")
+    with TestClient(app) as client:
+        headers = account_headers(client)
+        if attach_in_chat:
+            record = client.post("/api/consultations", headers=headers, json={}).json()
+            response = client.post(f"/api/cases/{record['id']}/images", headers=headers,
+                                   data={"crop": "wheat"}, files={"file": ("leaf.jpg", photo.getvalue(), "image/jpeg")})
+        else:
+            response = client.post("/api/cases", headers=headers, data={"crop": "wheat"},
+                                   files={"file": ("leaf.jpg", photo.getvalue(), "image/jpeg")})
+        assert response.status_code in (200, 201), response.text
+        record = response.json()
+        assert not payloads, "只识别照片不调用付费对话"
+        # 模拟旧版误拦截产生的历史，修复后不继续把该错误提示喂给模型。
+        app.state.store.add_message(record['id'], {"role": "assistant", "text": "旧的业务范围提示",
+                                                  "notice_code": "out_of_scope", "provider": "rules"})
+        questions = ["这是什么病 这怎么处理", "遇到这个症状有什么建议", "我已经给照片发给你了，后续有什么解决方案？", "我已经拍照给你了，怎么处理这个症状？"]
+        for index, question in enumerate(questions):
+            body = {"text": question, "model": "deepseek-flash"}
+            if attach_in_chat and index == 0:
+                body['image_ids'] = [record['images'][0]['id']]
+            response = client.post(f"/api/cases/{record['id']}/messages", headers=headers, json=body)
+            assert response.status_code == 201, response.text
+            answer = response.json()
+            assert answer['provider'] == 'deepseek' and not answer.get('pending_question_id')
+            assert not answer.get('photo_suggestion')
+            context = json.loads(payloads[-1]['messages'][0]['content'].split("\n", 1)[1])
+            assert context['recognition']['image_received'] is True
+            assert context['recognition']['disease_id'] == 'wheat_leaf_rust'
+            assert context['response_policy']['field_question'] is True
+            assert context['knowledge'][0]['id'] == 'wheat_leaf_rust'
+            assert '旧的业务范围提示' not in json.dumps(payloads[-1], ensure_ascii=False)
+        assert len(payloads) == 4

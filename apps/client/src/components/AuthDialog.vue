@@ -10,6 +10,23 @@ const props = withDefaults(defineProps<{ reason?: string; continueCaseId?: strin
 const emit = defineEmits<{ close: []; success: [result: AuthSuccess] }>()
 const preview = dataMode() === 'preview'
 const focusTarget = ref('')
+// H5 的焦点由浏览器管理，不把 @focus 再回绑成一次程序化聚焦。
+let nativeAutoFocus = true
+// #ifdef H5
+nativeAutoFocus = false
+// #endif
+function blurField(field: string) {
+  if (focusTarget.value === field) focusTarget.value = ''
+}
+function focusPassword() {
+  focusTarget.value = 'auth-password'
+  // #ifdef H5
+  const field = document.getElementById('auth-password')
+  const input =
+    field instanceof HTMLInputElement ? field : field?.querySelector<HTMLInputElement>('input')
+  input?.focus({ preventScroll: true })
+  // #endif
+}
 const username = ref('')
 const password = ref('')
 const showPassword = ref(false)
@@ -73,6 +90,7 @@ async function usePreview() {
   </UiDialog>
   <UiDialog
     v-else
+    class="auth-dialog"
     :focus-target="focusTarget"
     title="管理员登录"
     :subtitle="reason || '当前测试版本仅开放管理员账号。'"
@@ -86,15 +104,16 @@ async function usePreview() {
           v-model="username"
           id="auth-username"
           aria-label="账号"
-          :focus="focusTarget === 'auth-username'"
+          :focus="nativeAutoFocus && focusTarget === 'auth-username'"
           @focus="focusTarget = 'auth-username'"
+          @blur="blurField('auth-username')"
           :adjust-position="false"
           :cursor-spacing="20"
           placeholder="请输入账号"
           :maxlength="24"
           autocomplete="username"
           confirm-type="next"
-          @confirm="focusTarget = 'auth-password'"
+          @confirm="focusPassword"
       /></view>
       <view class="form-field"
         ><text class="field-label">密码</text
@@ -103,8 +122,9 @@ async function usePreview() {
             v-model="password"
             id="auth-password"
             aria-label="密码"
-            :focus="focusTarget === 'auth-password'"
+            :focus="nativeAutoFocus && focusTarget === 'auth-password'"
             @focus="focusTarget = 'auth-password'"
+            @blur="blurField('auth-password')"
             :adjust-position="false"
             :cursor-spacing="20"
             :password="!showPassword"
@@ -145,6 +165,23 @@ async function usePreview() {
 </template>
 
 <style scoped>
+/* #ifdef H5 */
+@media (max-width: 760px) {
+  /* 登录布局始终紧凑，不在 focus/blur 时切换高度，给小屏键盘留出输入区。 */
+  .auth-dialog :deep(.dialog-heading) {
+    padding: 12px 20px 8px;
+  }
+  .auth-dialog :deep(.dialog-title) {
+    font-size: 20px;
+  }
+  .auth-dialog :deep(.dialog-body-inner) {
+    padding: 0 20px 16px;
+  }
+  .auth-dialog :deep(.dialog-footer) {
+    padding: 10px 20px;
+  }
+}
+/* #endif */
 .preview-account-note {
   line-height: 1.65;
 }

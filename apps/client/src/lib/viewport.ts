@@ -1,7 +1,7 @@
 import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import {
   createKeyboardHeightTracker,
-  viewportFrame,
+  createBrowserViewportTracker,
   type NativeKeyboardEvent,
 } from './mobileChrome'
 
@@ -25,23 +25,17 @@ export function useWorkspaceViewport() {
   const receiveNativeKeyboard = (event: NativeKeyboardEvent) => keyboard.receive(event)
 
   // #ifdef H5
-  let baseline = 0
+  const browserFrame = createBrowserViewportTracker()
+  let browserFrameRequest = 0
   function syncBrowserViewport() {
+    browserFrameRequest = 0
     const visual = window.visualViewport
-    const visible = visual?.height ?? window.innerHeight
-    const top = visual?.offsetTop ?? 0
-    const extent = visible + top
-    const editing = !!document.activeElement?.matches('input,textarea')
-    if (width.value !== window.innerWidth || (!editing && !keyboardHeight.value)) {
-      baseline = extent
-    }
     width.value = window.innerWidth
-    baseline = Math.max(baseline, extent)
-    const frame = viewportFrame(
-      baseline,
-      visible,
-      top,
-      editing || keyboardHeight.value > 0,
+    const frame = browserFrame(
+      width.value,
+      visual?.height ?? window.innerHeight,
+      visual?.offsetTop ?? 0,
+      !!document.activeElement?.matches('input,textarea'),
       isMobile.value,
     )
     keyboardHeight.value = frame.inset
@@ -50,6 +44,11 @@ export function useWorkspaceViewport() {
     style.setProperty('--visual-height', frame.visual + 'px')
     style.setProperty('--keyboard-inset', frame.inset + 'px')
     style.setProperty('--visual-top', frame.top + 'px')
+  }
+  // 同一帧内的 blur/focus/resize 只计算一次，避免切换输入框时短暂回退布局。
+  function queueBrowserViewport() {
+    if (!browserFrameRequest)
+      browserFrameRequest = window.requestAnimationFrame(syncBrowserViewport)
   }
   // #endif
 
@@ -65,11 +64,11 @@ export function useWorkspaceViewport() {
 
   onMounted(() => {
     // #ifdef H5
-    window.addEventListener('resize', syncBrowserViewport)
-    window.addEventListener('focusin', syncBrowserViewport)
-    window.addEventListener('focusout', syncBrowserViewport)
-    window.visualViewport?.addEventListener('resize', syncBrowserViewport)
-    window.visualViewport?.addEventListener('scroll', syncBrowserViewport)
+    window.addEventListener('resize', queueBrowserViewport)
+    window.addEventListener('focusin', queueBrowserViewport)
+    window.addEventListener('focusout', queueBrowserViewport)
+    window.visualViewport?.addEventListener('resize', queueBrowserViewport)
+    window.visualViewport?.addEventListener('scroll', queueBrowserViewport)
     syncBrowserViewport()
     // #endif
     // #ifndef H5
@@ -82,11 +81,12 @@ export function useWorkspaceViewport() {
   onUnmounted(() => {
     keyboard.dispose()
     // #ifdef H5
-    window.removeEventListener('resize', syncBrowserViewport)
-    window.removeEventListener('focusin', syncBrowserViewport)
-    window.removeEventListener('focusout', syncBrowserViewport)
-    window.visualViewport?.removeEventListener('resize', syncBrowserViewport)
-    window.visualViewport?.removeEventListener('scroll', syncBrowserViewport)
+    window.cancelAnimationFrame(browserFrameRequest)
+    window.removeEventListener('resize', queueBrowserViewport)
+    window.removeEventListener('focusin', queueBrowserViewport)
+    window.removeEventListener('focusout', queueBrowserViewport)
+    window.visualViewport?.removeEventListener('resize', queueBrowserViewport)
+    window.visualViewport?.removeEventListener('scroll', queueBrowserViewport)
     // #endif
     // #ifndef H5
     uni.offWindowResize?.(syncNativeViewport)

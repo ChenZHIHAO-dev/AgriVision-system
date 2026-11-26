@@ -31,10 +31,31 @@ export function viewportFrame(
   const inset = Math.max(0, base - visible - top)
   const keyboard = mobile && editing && inset > 110
   return {
-    height: keyboard ? base : visible + top,
+    height: mobile && editing ? base : visible + top,
     inset: keyboard ? inset : 0,
     visual: visible,
     top,
+  }
+}
+
+/** 跟踪一次浏览器键盘会话：账号切到密码、blur 以及收键盘尾段都保留原画布。 */
+export function createBrowserViewportTracker() {
+  let baseline = 0
+  let previousWidth = 0
+  let keyboardSession = false
+  return (width: number, visible: number, top: number, editing: boolean, mobile: boolean) => {
+    const extent = visible + top
+    if (width !== previousWidth) {
+      baseline = extent
+      keyboardSession = false
+    } else if (!editing && !keyboardSession) {
+      baseline = extent
+    }
+    previousWidth = width
+    baseline = Math.max(baseline, extent)
+    if (mobile && editing && baseline - extent > 110) keyboardSession = true
+    if (!mobile || extent >= baseline - 1) keyboardSession = false
+    return viewportFrame(baseline, visible, top, editing || keyboardSession, mobile)
   }
 }
 

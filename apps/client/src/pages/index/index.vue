@@ -16,10 +16,14 @@ import MobileHeader from '../../components/MobileHeader.vue'
 // #endif
 // #ifdef MP-WEIXIN
 import WeChatHeader from '../../components/WeChatHeader.vue'
-import { wechatHeaderFrame } from '../../lib/mobileChrome'
+
 // #endif
 import { conversationTitle } from '../../lib/conversationTitle'
 import { useWorkspaceViewport } from '../../lib/viewport'
+import { usePlatformChrome } from '../../lib/platformChrome'
+import { chatPhotoContext } from '../../lib/chatPhoto'
+import ChatPhotoDialog from '../../components/ChatPhotoDialog.vue'
+import ContentReference from '../../components/ContentReference.vue'
 // #ifdef H5
 import GlobalNavigation from '../../components/GlobalNavigation.vue'
 import HistorySidebar from '../../components/HistorySidebar.vue'
@@ -207,31 +211,6 @@ const editStage = ref('不清楚'),
   editLocation = ref(''),
   editNote = ref('')
 const homeSection = ref<'recent' | 'resources' | 'news'>('recent')
-const mobileSafeTop = computed(() => {
-  // #ifdef APP-PLUS
-  return nativeWindow.value.statusBarHeight || 0
-  // #endif
-  return 0
-})
-const nativeBottomInset = computed(() => {
-  const system = nativeWindow.value
-  if (system.platform === 'windows') return 0
-  return Math.max(
-    0,
-    system.safeAreaInsets?.bottom ??
-      (system.safeArea ? system.screenHeight - system.safeArea.bottom : 0),
-  )
-})
-// #ifdef MP-WEIXIN
-// Windows WeChat supplies its own window title bar even in custom mode.
-const nativeWeChatTitle = computed(() => nativeWindow.value.platform === 'windows')
-const wechatFrame = computed(() => {
-  const { windowWidth, statusBarHeight } = nativeWindow.value
-  return nativeWeChatTitle.value
-    ? wechatHeaderFrame(windowWidth, 0)
-    : wechatHeaderFrame(windowWidth, statusBarHeight || 0, uni.getMenuButtonBoundingClientRect?.())
-})
-// #endif
 const leavingChat = ref(false)
 let backTimer: ReturnType<typeof setTimeout> | undefined
 function mobileBack() {
@@ -258,7 +237,7 @@ const pendingDocuments = ref<DocumentAttachment[]>([]),
   pendingImages = ref<string[]>([])
 const photoDialogOpen = ref(false),
   chatPhoto = ref(''),
-  photoCrop = ref<Crop>('wheat'),
+  photoCrop = ref<Crop | null>(null),
   photoStage = ref('不清楚'),
   photoVariety = ref('')
 watch(chatModel, (value) => uni.setStorageSync('agrivision.chat.model', value))
@@ -271,6 +250,17 @@ const provinces = Object.keys(regions)
 const cities = computed(() => Object.keys(regions[province.value] || {}))
 const districts = computed(() => regions[province.value]?.[city.value] || ['暂不填写区县'])
 const chatMode = computed(() => !!current.value && viewPath.value.layers.includes('chat'))
+const {
+  mobileSafeTop,
+  nativeBottomInset,
+  nativeWeChatTitle,
+  wechatFrame,
+  wechatCapsuleInset,
+  profilePageStyle,
+  drawerSafeTop,
+  desktopCapture,
+  compactHeader,
+} = usePlatformChrome(nativeWindow, isMobile, tab, chatMode)
 const resultOpen = computed(() =>
   ['result', 'inspector'].includes(viewPath.value.layers[viewPath.value.layers.length - 1] || ''),
 )
@@ -325,41 +315,6 @@ const wechatBackLabel = computed(() =>
   chatMode.value ? backLabel.value : tab.value === 'settings' ? '返回我的' : '返回首页',
 )
 // #endif
-const wechatCapsuleInset = computed(() => {
-  // #ifdef MP-WEIXIN
-  return nativeWeChatTitle.value ? 0 : Math.max(0, wechatFrame.value.side - 16)
-  // #endif
-  // #ifndef MP-WEIXIN
-  return 0
-  // #endif
-})
-const profilePageStyle = computed(() => {
-  // #ifdef MP-WEIXIN
-  if (wechatProfile.value) return { paddingTop: wechatFrame.value.top + 4 + 'px' }
-  // #endif
-  // #ifndef MP-WEIXIN
-  if (isMobile.value && tab.value === 'profile') {
-    return { paddingTop: 'calc(16px + var(--mobile-safe-top, 0px))' }
-  }
-  // #endif
-  return undefined
-})
-const drawerSafeTop = computed(() => {
-  // #ifdef MP-WEIXIN
-  return nativeWeChatTitle.value ? 0 : wechatFrame.value.top + wechatFrame.value.row
-  // #endif
-  // #ifndef MP-WEIXIN
-  return mobileSafeTop.value
-  // #endif
-})
-const desktopCapture = computed(() => {
-  // #ifdef H5
-  return !isMobile.value
-  // #endif
-  // #ifndef H5
-  return false
-  // #endif
-})
 const emptyChat = computed(
   () => !current.value?.messages.length && !currentReceipt.value?.image_received && !sending.value,
 )
@@ -1026,9 +981,10 @@ function chooseChatPhoto(source: 'album' | 'camera' = 'album') {
         return
       }
       chatPhoto.value = result.tempFilePaths[0]
-      photoCrop.value = current.value?.crop || crop.value
-      photoStage.value = current.value?.stage || '不清楚'
-      photoVariety.value = current.value?.variety || ''
+      const context = chatPhotoContext(current.value)
+      photoCrop.value = context.crop
+      photoStage.value = context.stage
+      photoVariety.value = context.variety
       if (current.value?.crop) {
         confirmChatPhoto()
       } else {
@@ -1040,13 +996,14 @@ function chooseChatPhoto(source: 'album' | 'camera' = 'album') {
     },
   })
 }
-async function confirmChatPhoto() {
+async function confirmChatPhoto(selectedCrop: Crop | null = photoCrop.value) {
   if (!user.value) {
     requestConsultationLogin('continue', null, undefined, current.value)
     return
   }
-  if (!chatPhoto.value || busy.value) return
-  if (!current.value || current.value.is_demo) await startConsultation(photoCrop.value)
+  if (!chatPhoto.value || busy.value || !selectedCrop) return
+  photoCrop.value = selectedCrop
+  if (!current.value || current.value.is_demo) await startConsultation(selectedCrop)
   if (!current.value) return
   scanPhoto.value = chatPhoto.value
   busy.value = true
@@ -1054,7 +1011,7 @@ async function confirmChatPhoto() {
   error.value = ''
   try {
     current.value = await upload(`/api/cases/${current.value.id}/images`, chatPhoto.value, {
-      crop: photoCrop.value,
+      crop: selectedCrop,
       stage: photoStage.value,
       variety: photoVariety.value,
     })
@@ -1532,6 +1489,7 @@ function newFromDrawer() {
         v-if="isMobile && (chatMode || tab !== 'profile')"
         :title="!chatMode && tab === 'home' ? '宛田观叶' : title"
         :page="tab"
+        :compact="compactHeader"
         :chat="chatMode"
         :back-label="backLabel"
         :history-open="historyDrawerOpen"
@@ -1562,12 +1520,13 @@ function newFromDrawer() {
       <WeChatHeader
         v-if="!wechatProfile"
         :frame="wechatFrame"
+        :compact="compactHeader"
         :title="wechatTitle"
         :native-title="nativeWeChatTitle"
         :chat="chatMode"
         :show-back="wechatBack"
         :back-label="wechatBackLabel"
-        :show-history="chatMode || tab === 'identify'"
+        :show-history="chatMode || compactHeader"
         :search="wechatSearch"
         @search="query = $event"
         :history-open="historyDrawerOpen"
@@ -1660,18 +1619,16 @@ function newFromDrawer() {
                     /><text v-else class="message-bubble" :selectable="true">{{
                       message.text
                     }}</text
-                    ><text
-                      v-if="
-                        message.role === 'assistant' &&
-                        ['deepseek', 'knowledge', 'preview'].includes(message.provider)
-                      "
-                      class="answer-reference-note"
-                      >{{
+                    ><ContentReference
+                      v-if="message.role === 'assistant'"
+                      :kind="
                         message.provider === 'deepseek'
-                          ? 'AI 生成内容仅供参考。'
-                          : '资料回答仅供参考。'
-                      }}</text
-                    ><view v-if="message.attachments?.length" class="message-attachments"
+                          ? 'ai'
+                          : message.provider === 'recognition'
+                            ? 'recognition'
+                            : 'reference'
+                      "
+                    /><view v-if="message.attachments?.length" class="message-attachments"
                       ><template v-for="file in message.attachments" :key="file.id"
                         ><button
                           v-if="file.kind === 'image'"
@@ -2007,28 +1964,13 @@ function newFromDrawer() {
       @success="signedIn"
     />
 
-    <UiDialog
+    <ChatPhotoDialog
       v-if="photoDialogOpen"
-      title="照片中的作物是什么？"
-      subtitle="选择作物后立即识别，生育期和地区可在对话中补充。"
+      :photo="chatPhoto"
+      :busy="busy"
       @close="photoDialogOpen = false"
-      ><image :src="chatPhoto" mode="aspectFit" class="chat-photo-preview" /><view
-        class="photo-crop-choices"
-        ><button
-          v-for="option in crops"
-          :key="option.id"
-          :class="{ active: photoCrop === option.id }"
-          @click="photoCrop = option.id"
-        >
-          {{ option.name }}
-        </button></view
-      ><text class="fine-print">请添加同种作物、同次田间观察的照片。原图不发送给对话模型。</text
-      ><template #footer
-        ><button class="button primary full-width" :disabled="busy" @click="confirmChatPhoto">
-          识别并继续对话
-        </button></template
-      ></UiDialog
-    >
+      @confirm="confirmChatPhoto"
+    />
     <UiDialog
       v-if="selectedCard"
       :title="selectedCard.title"
@@ -2516,13 +2458,6 @@ function newFromDrawer() {
   display: block;
   margin: 3px 0 10px;
 }
-.answer-reference-note {
-  display: block;
-  margin: 8px 0 0;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.6;
-}
 .message-author > text {
   font-weight: 400;
   font-size: 10px;
@@ -2875,32 +2810,6 @@ function newFromDrawer() {
   border-radius: 9px;
   background: var(--subtle);
   overflow-wrap: anywhere;
-}
-.chat-photo-preview {
-  width: 100%;
-  height: 180px;
-  border-radius: 13px;
-  background: var(--subtle);
-  margin: 0 0 20px;
-}
-.photo-crop-choices {
-  display: flex;
-  gap: 9px;
-  margin-bottom: 22px;
-}
-.photo-crop-choices > button {
-  flex: 1;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 10px;
-  text-align: center;
-  font-size: 13px;
-  background: var(--subtle);
-}
-.photo-crop-choices > button.active {
-  border-color: var(--focus);
-  background: var(--accent-soft);
-  color: var(--ink);
 }
 .experiment-badge {
   margin-left: 8px;

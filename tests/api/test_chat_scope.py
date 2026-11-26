@@ -193,3 +193,19 @@ def test_explicit_multi_crop_question_does_not_match_case_specific_products(text
     result = asyncio.run(Chat(settings, knowledge).answer(record, text, []))
     assert result["provider"] == "rules"
     assert result["products"] == []
+
+
+@pytest.mark.parametrize("text", [
+    "遇到这个症状有什么建议",
+    "我已经给照片发给你了，就是上面那个照片遇到这个症状有什么建议",
+    "这是什么病 这怎么处理",
+    "后续有什么解决方案？",
+    "那接下来该怎么处理呢？",
+])
+def test_natural_photo_followups_do_not_require_repeating_the_crop(text):
+    # 用户截图中的真实问法：知道本条记录有照片后，不再要求句句重写小麦/条锈病。
+    assert within_agricultural_scope(case(crop="wheat", images=[{"id": "saved-photo"}]), text, [])
+    assert not within_agricultural_scope(case(), text, [])
+    assert not within_agricultural_scope(
+        case(crop="wheat", images=[{"id": "saved-photo"}]), text + "，再帮我写个爬虫", []
+    )

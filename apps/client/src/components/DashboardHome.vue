@@ -383,9 +383,25 @@ watch(arranging, measureSection)
 .dashboard-mobile-scroll .dashboard {
   box-sizing: border-box;
   width: 100%;
-  padding: 8px 14px 14px;
+  padding: 4px 16px 16px;
   max-width: 620px;
   margin: 0 auto;
+}
+.dashboard-mobile-scroll .dashboard-heading {
+  margin-bottom: 8px;
+}
+.dashboard-mobile-scroll .dashboard-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.dashboard-mobile-scroll .dashboard-arrange {
+  min-height: 44px;
+  font-size: 12px;
+  background: transparent;
+}
+.dashboard-mobile-scroll .dashboard-action {
+  border-radius: 16px;
 }
 .dashboard-heading {
   display: flex;

@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import AppIcon from './AppIcon.vue'
 import RecognitionSummary from './RecognitionSummary.vue'
+import ContentReference from './ContentReference.vue'
 import type { CaseRecord, RecognitionReceipt, Source } from '../lib/api'
 import { imageUrl } from '../lib/api'
 import { dateLabel, statusLabel } from '../lib/options'
@@ -57,6 +58,7 @@ const retryable = computed(
           ></view
         >
         <text class="diagnosis-summary">{{ record.advice.summary }}</text>
+        <ContentReference kind="recognition" />
         <text v-if="score !== null" class="score-explanation"
           >分数用于比较候选类别，不代表确诊概率。</text
         >
@@ -67,7 +69,6 @@ const retryable = computed(
             ><text>{{ action }}</text></view
           ></view
         >
-        <text class="result-note">照片识别结果和建议仅供参考，请以实际情况为准。</text>
         <view v-if="record.advice.products.length" class="matched-products"
           ><view v-for="product in record.advice.products" :key="product.id"
             ><text>{{ product.name }}</text
@@ -282,13 +283,6 @@ const retryable = computed(
   color: var(--accent);
   font-size: 11px;
 }
-.result-note {
-  display: block;
-  font-size: 11px;
-  color: var(--muted);
-  line-height: 1.8;
-  padding: 10px 0 16px;
-}
 .result-retry {
   margin-bottom: 12px;
 }
@@ -382,9 +376,6 @@ const retryable = computed(
   }
   .score-explanation {
     font-size: 9px;
-  }
-  .result-note {
-    font-size: 10px;
   }
   .brief-sources > button {
     font-size: 10px;
