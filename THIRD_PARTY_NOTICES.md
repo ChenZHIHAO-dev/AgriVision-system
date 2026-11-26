@@ -23,3 +23,7 @@
 本地数据来源、版本和署名记录在 `data/<作物>/sources/<来源>/source.json`，公开来源说明见 [docs/data-sources.md](docs/data-sources.md)。包括 CC BY、CC BY-SA、仅研究用途或待确认等不同条件，不能统一覆盖为“禁止商用”。尤其 PlantVillage 的发布方使用 CC BY-SA 3.0 并在原论文中提出训练模型的许可要求，应在发布由它训练的权重前专门核对，不能直接套用根目录的非商业许可。
 
 数据集、下载照片、个人记录及模型权重继续留在本地忽略目录，GitHub 只发布已检查的项目代码、文档和实验统计。
+
+## DINOv2 实验权重
+
+作物种类识别对照使用 Meta 发布的 DINOv2 ViT-B/14 with registers，通过 timm 加载。代码和官方模型权重为 Apache License 2.0；参见[官方模型卡](https://github.com/facebookresearch/dinov2/blob/main/MODEL_CARD.md)及[完整许可证](https://github.com/facebookresearch/dinov2/blob/main/LICENSE)。该权重保存在本地忽略缓存，不随本仓库或网页分发，项目自己的非商业条款不替换其原许可。实验配置记录下载 URL、SHA256 和实现版本。

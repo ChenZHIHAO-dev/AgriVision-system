@@ -611,8 +611,24 @@ GBIF 和 iNaturalist 的来源标签不是逐图人工审核。补充的栽培�
 
 下一步用相同开发折进行两架构完整微调，判断是否主要受冻结表征限制；仍不达标时再按照预先写明的逐图主体规则重新审核数据。命令和冻结配置在同目录 `planned-finetune.json`，GPU 按队列串行执行。既有数据集仍使用同一固定目录。
 
+### 11.5 自监督预训练表征对照：DINOv2
+
+为判断作物分类是否受现有冻结特征限制，新增 **DINOv2 ViT-B/14（4 个 register token）+ 线性头** 对照。复用 timm 和已有分组、增强、特征缓存、线性头选择模块，不重写 Transformer。模型来自 Meta 的[官方模型卡](https://github.com/facebookresearch/dinov2/blob/main/MODEL_CARD.md)和 [DINOv2 论文](https://arxiv.org/abs/2304.07193)；公开权重为 Apache-2.0。论文展示通用视觉特征能力，不代表在本项目作物上已达到 95%。
+
+代码入口是 `ml/agrivision_ml/self_supervised_probe.py`。原图及两次轻增强只用于训练折，内层验证选正则强度 C，外层仅评估。保持与 11.4 相同的第 1 折和 14 类，原最终 test 779 张不参与。输入为 224×224（14 的整数倍），使用 768 维 CLS 特征；约 85.74M 参数，包括 14 类线性头。没有将 register token 当成作物类别。
+
+官方权重已缓存到 `.cache/torch/hub/checkpoints/dinov2_vitb14_reg4_pretrain.pth`，SHA256 为 `73182a088cf94833c94b1666d1c99e02fe87e2007bff57b564fb6206e25dba71`。本轮 CPU 四线程运行以下命令；**已经有运行中的作业时不要再开一份**：
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.self_supervised_probe --data-root data/crop-identification/prepared/images --manifest data/crop-identification/prepared/manifest.csv --cv-root artifacts/experiments/crop-identification-cv --fold 1 --labels data/crop-identification/prepared/labels.json --weights .cache/torch/hub/checkpoints/dinov2_vitb14_reg4_pretrain.pth --output artifacts/experiments/crop-identification-linear-probe/dinov2_vitb14_reg4/fold-1 --threads 4 --batch-size 4
+```
+
+运行顺序为：核对划分和权重 → 提取训练/验证/外层特征（有进度条）→ 在内层选 C → 保存逐类结果和混淆矩阵。增强照片不会落盘；只缓存特征、分类头和编码器身份。输出同目录的 `probe-recipe.json` 记录来源、哈希与参数，`probe-search.json` 记录 C 对照，`probe-result.json`、`predictions-test.csv`、`confusion-test.png` 记录开发折结果。这里文件名的 test 指外层开发折，**不是原始最终 test**。
+
+这是冻结特征实验，没有训练 epoch/loss 曲线，也不自动生成服务端可用包。完整微调仍由 `train.py` 执行并保存曲线。本轮完成后将实测指标更新在本节，不能拿初始化测速或未完成训练当识别结果。
+
 ### 当前候选上线门槛
 
 按最新要求，内部独立验证/留出准确率和 Macro-F1 均至少 95%，并逐类检查召回率及混淆。达到此门槛仍需目标 CPU 和实际接口测试；外域表现单独报告，不能拿同源数据成绩替代手机田间表现。没有通过的模型保持不可用，不把阈值调高后的少数接受样本准确率冒充整体准确率。
 
-增强只在训练读取时或冻结骨干的训练视图提取时执行，验证/测试只用固定预处理。`cached_probe_cv.py` 复用无监督 ImageNet 骨干特征节省重复计算，按每折训练索引取增强视图，内层验证选择线性头，外层仅评估；选型后按原 train/val 重新拟合，再做一次原 test 验收。每折仅保留分类头、统计和图表，不复制图片或整套骨干。
+增强只在训练读取时或冻结骨干的训练视图提取时执行，验证/测试只用固定预处理。`cached_probe_cv.py` 复用公开 ImageNet 预训练骨干特征节省重复计算，按每折训练索引取增强视图，内层验证选择线性头，外层仅评估；选型后按原 train/val 重新拟合，再做一次原 test 验收。每折仅保留分类头、统计和图表，不复制图片或整套骨干。
