@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 import csv
 import hashlib
 from io import BytesIO
@@ -15,7 +16,7 @@ from pathlib import Path
 import time
 from datetime import datetime, timezone
 from urllib.error import URLError
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen
 
 from PIL import Image
@@ -24,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 API = 'https://api.gbif.org/v1/'
 FIELDS = ['id', 'label', 'name', 'scientific_name', 'source_scientific_name', 'path', 'group', 'country', 'region',
           'organ', 'width', 'height', 'review', 'reason', 'license', 'author', 'rights_holder',
-          'photo_url', 'photo_page', 'gbif_occurrence', 'dataset_key', 'observation_id']
+          'photo_url', 'download_url', 'download_variant', 'photo_page', 'gbif_occurrence', 'dataset_key', 'observation_id']
 
 
 def read_url(url: str, limit: int = 32 * 1024 * 1024) -> bytes:
@@ -113,15 +114,32 @@ def select_photos(target: dict, records: list[dict]):
                        dataset_key=record.get('datasetKey') or '', observation_id=str(observation))
 
 
-def download_photo(row: dict, folder: Path) -> dict:
+def photo_download_url(url: str, size: str) -> str:
+    """iNaturalist 官方支持 original/large 尺寸变体；只改已核实开放图源的尺寸段。
+
+    large 最长边 1024，足够保留当前 224/320 分类输入的细节，并减少传输和存储。
+    原始链接仍保留为 photo_url，实际请求另记 download_url；其他图源原样下载。
+    依据：https://github.com/inaturalist/inaturalist-open-data
+    """
+    parsed = urlparse(url)
+    filename = Path(parsed.path).name
+    if (size == 'large' and parsed.hostname == 'inaturalist-open-data.s3.amazonaws.com'
+            and filename.split('.')[0] in {'original', 'square', 'small', 'medium', 'large'}):
+        return urlunparse(parsed._replace(path=parsed.path[:-len(filename)] + 'large.' + filename.split('.', 1)[1]))
+    return url
+
+
+def download_photo(row: dict, folder: Path, size: str = 'large') -> dict:
     """解码检查后保留原图，不去水印、不裁剪，也不复制成多个数据集版本。"""
     destination = folder / 'images' / row['label'] / (row['id'] + '.jpg')
     destination = next((destination.with_suffix(s) for s in ['.jpg', '.png', '.webp']
                         if destination.with_suffix(s).exists()), destination)
-    if destination.exists():
+    existed = destination.exists()
+    requested_url = photo_download_url(row['photo_url'], size)
+    if existed:
         content = destination.read_bytes()
     else:
-        content = read_url(row['photo_url'])
+        content = read_url(requested_url)
     with Image.open(BytesIO(content)) as image:
         image.verify()
     with Image.open(BytesIO(content)) as image:
@@ -134,7 +152,37 @@ def download_photo(row: dict, folder: Path) -> dict:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if not destination.exists():
         destination.write_bytes(content)
-    return {**row, 'path': destination.relative_to(ROOT).as_posix(), 'width': width, 'height': height}
+    return {**row, 'path': destination.relative_to(ROOT).as_posix(), 'width': width, 'height': height,
+            'download_url': '' if existed else requested_url,
+            'download_variant': 'existing-file' if existed else ('large' if requested_url != row['photo_url'] else 'original')}
+
+
+def collect_photos(candidates, folder, limit, workers=4, photo_size='large'):
+    """少量并发下载以减少网络等待；结果按来源顺序收集，失败不冒充已下载。
+
+    每批只提交还需要的数量，避免超过调用方的上限。原图仍按 URL 哈希保存到
+    同一路径，已下载图会解码复用，重跑不会再复制一套。
+    """
+    def attempt(row):
+        try:
+            return download_photo(row, folder, photo_size), None
+        except (OSError, URLError, ValueError) as error:
+            return None, {'url': row['photo_url'], 'error': str(error)}
+
+    downloaded, failures = [], []
+    offset = 0
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        while len(downloaded) < limit and offset < len(candidates):
+            size = min(workers * 2, limit - len(downloaded))
+            batch = candidates[offset:offset + size]
+            offset += len(batch)
+            for photo, error in pool.map(attempt, batch):
+                if error:
+                    failures.append(error)
+                else:
+                    downloaded.append(photo)
+            print(f'  已取得 {len(downloaded)}/{limit} 张，失败 {len(failures)} 张', flush=True)
+    return downloaded, failures
 
 
 def write_review(path: Path, previous: dict, downloaded: list):
@@ -144,6 +192,9 @@ def write_review(path: Path, previous: dict, downloaded: list):
         for key in ['review', 'reason', 'organ', 'label', 'name', 'scientific_name']:
             if key in old:
                 row[key] = old[key]
+        if row.get('download_variant') == 'existing-file' and old.get('download_url'):
+            row['download_url'] = old['download_url']
+            row['download_variant'] = old.get('download_variant', 'existing-file')
         previous[row['id']] = row
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open('w', encoding='utf-8-sig', newline='') as stream:
@@ -158,6 +209,8 @@ def main():
     parser.add_argument('--country', default='CN', help='国家代码；ALL 表示全球，默认 CN')
     parser.add_argument('--max-records', type=int, default=300, help='每类最多读取记录数（非图片数）')
     parser.add_argument('--max-images', type=int, default=40, help='每类本轮最多下载照片数')
+    parser.add_argument('--photo-size', choices=['large', 'original'], default='large', help='iNaturalist公开照片尺寸，large最长边1024；其他图源不变')
+    parser.add_argument('--workers', type=int, default=4, choices=range(1, 9), help='同时下载数量，默认4；不并发请求GBIF元数据')
     parser.add_argument('--refresh', action='store_true', help='刷新 GBIF 元数据，已下载照片和审核结果仍保留')
     args = parser.parse_args()
     if not 1 <= args.max_records <= 10000 or args.max_images < 1:
@@ -188,16 +241,7 @@ def main():
             else:
                 data = json.loads(metadata.read_text(encoding='utf-8'))
             candidates = list(select_photos(target, data['records']))
-            downloaded, failures = [], []
-            for row in candidates:
-                if len(downloaded) >= args.max_images:
-                    break
-                try:
-                    downloaded.append(download_photo(row, source))
-                    if len(downloaded) % 10 == 0:
-                        print(f'  {label}: 已取得 {len(downloaded)} 张候选照片', flush=True)
-                except (OSError, URLError, ValueError) as error:
-                    failures.append({'url': row['photo_url'], 'error': str(error)})
+            downloaded, failures = collect_photos(candidates, source, args.max_images, args.workers, args.photo_size)
             write_review(review, previous, downloaded)
             report['classes'][label] = {
                 'name': target['name'], 'scientific_name': target['scientific_name'],

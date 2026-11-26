@@ -51,3 +51,42 @@ def test_wild_soybean_subspecies_is_not_collected_as_cultivated_soybean():
               'media': [{'type': 'StillImage', 'identifier': 'https://example.org/soybean.jpg',
                          'license': 'https://creativecommons.org/licenses/by/4.0/'}]}
     assert list(collector.select_photos(target, [record])) == []
+
+
+def test_parallel_collection_keeps_limit_order_and_records_failures(tmp_path, monkeypatch):
+    rows = [{'id': str(i), 'photo_url': f'https://example.org/{i}.jpg'} for i in range(9)]
+    calls = []
+    def download(row, folder, size):
+        calls.append(row['id'])
+        if row['id'] == '1':
+            raise ValueError('broken image')
+        return row
+    monkeypatch.setattr(collector, 'download_photo', download)
+    photos, errors = collector.collect_photos(rows, tmp_path, 3, workers=2)
+    assert [row['id'] for row in photos] == ['0', '2', '3']
+    assert len(calls) == 4
+    assert len(errors) == 1 and errors[0]['url'].endswith('/1.jpg')
+
+
+def test_size_variant_changes_only_official_open_photo_url():
+    url = 'https://inaturalist-open-data.s3.amazonaws.com/photos/123/original.jpeg'
+    assert collector.photo_download_url(url, 'large').endswith('/large.jpeg')
+    assert collector.photo_download_url(url, 'original') == url
+    other = 'https://example.org/photos/123/original.jpeg'
+    assert collector.photo_download_url(other, 'large') == other
+
+
+def test_cultivated_api_uses_large_variant_and_preserves_photo_license():
+    from scripts.collect_cultivated_observations import candidates
+    target = {'id':'peanut','name':'花生','scientific_name':'Arachis hypogaea'}
+    url = 'https://inaturalist-open-data.s3.amazonaws.com/photos/123/square.jpg'
+    assert collector.photo_download_url(url, 'large').endswith('/large.jpg')
+    record = {'id':7, 'taxon':{'name':'Arachis hypogaea'}, 'quality_grade':'casual', 'captive':True,
+              'photos':[{'id':123,'url':url,'license_code':'cc-by','attribution':'Photo author'},
+                        {'id':124,'url':url.replace('123','124'),'license_code':'cc-by-nc'}]}
+    rows = list(candidates(target, {'records':[record]}, {'123':{'id':'existing', 'path':'data/old.jpg', 'width':'500','height':'500'}}))
+    assert len(rows) == 1 and rows[0]['id'] == 'existing'
+    assert rows[0]['path'] == 'data/old.jpg'
+    assert rows[0]['quality_grade'] == 'casual' and rows[0]['captive'] == 'true'
+    assert rows[0]['author'] == 'Photo author'
+    assert rows[0]['review'] == 'review'

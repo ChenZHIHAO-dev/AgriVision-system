@@ -393,6 +393,18 @@ uv pip install --python .venv/Scripts/python.exe -r requirements-ml.txt
 
 本轮额外逐张复核了 3 对相似图候选：2 对是同一叶片的不同照片，写入 `data/wheat/review/confirmed-group-links.csv`，交叉验证前合组；另 1 对是病叶与健康麦穗，属于哈希误报，不合并。原工作清单和七组历史结果没有改写。已修复近重复索引的 4 段候选漏检问题，新预处理使用 7 段覆盖 6 位距离阈值；感知相似仍不等于标注正确。
 
+### 9.1 已完成的交叉验证结果
+
+本表只写完整结束的方案，执行中的折不拼成最终成绩。外层合计 5,602 张开发图，每张恰好评估一次；原 853 张测试图未参与这些折。
+
+| 方案 | 完成折数 | 折平均准确率 | 折平均 Macro-F1 | Macro-F1 折间标准差 | 汇总逐图准确率 / Macro-F1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Swin-T，224，轻增强，20 epoch 上限 | 5/5 | 97.49% | 96.87% | 1.36 个百分点 | 97.50% / 97.00% |
+
+ConvNeXt-Tiny 320 正在用同一组折运行。它与 Swin 的比较包含输入尺寸差异，不能单独归因为网络架构。
+
+汇总错例中仍有健康麦穗与颖枯病、叶片锈病与斑点病混淆。已将前四折 36 张高置信度错例整理为本机 `.cache/vision-review/wheat-cv-errors.jpg`，原图位置在同名 JSON；它是复核入口，不是改标签依据。内部成绩不等于新地区手机照片的实际准确率。
+
 ## 10. 玉米与花生：从来源到训练（2026-11-27）
 
 仍在项目根目录 `F:\college\AgriVision` 的 PowerShell 中运行，使用同一个 `.venv`。本节所有输出都是固定路径；当前已经完成的下载和预处理不需要重复运行。
@@ -477,3 +489,52 @@ PlantVillage 彩色玉米四类使用单独的作者数据入口；不下载灰�
 默认比较 Swin-T 224 与 ConvNeXt-Tiny 320，每方案五折、每折最多 20 epoch。`augmentation.py` 在 `train.py` 每批读取时随机变换，增强图只在内存中使用，不另存一批照片。验证、校准和外层评估不做随机增强。少数类当前用损失权重调整，不声称通过生成图片增加了独立样本数量。
 
 玉米/花生这些折只保证已知近重复组隔离，是**来源内部的模型对照**；没有真实植株 ID，不能称为跨植株、跨田块或国内田间验证。部署前还需看独立来源、混淆类别和手机真图结果。最终指标继续汇总在本文件，不另建多个实验 Markdown。
+
+
+## 11. 作物种类识别：先整理来源，再训练
+
+这项回答“是什么作物”，与小麦、玉米、花生的“是什么病害”分别训练。首批目标是 14 种作物/蔬果；最终标签以真正有足够独立观察组的工作集为准。默认不增加没有真实图片的 other 类。
+
+### 11.1 原图与筛图
+
+当前 GBIF 来源下载，以及花生/水稻/大豆的栽培观察补充仍在进行。原图放 `data/crop-identification/sources`；运行中的采集表不要手工编辑。人工决定统一写在 `data/crop-identification/review/species-review.csv`。
+
+采集完先执行这条，只同步统一筛选表、打印数量，不复制图、不增强、不训练：
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.preprocessing.species_review --check
+```
+
+用 Excel 保存为 CSV UTF-8，`decision` 填 `keep` / `drop`，留空表示待筛。保留 `note` 说明水印、拼图、主体遮挡等原因。代码会把 iNaturalist 同一照片的不同尺寸 URL 合并，把同一次观察的照片归到同组；后续同步保留人工决定。
+
+GBIF 和 iNaturalist 的来源标签不是逐图人工审核。补充的栽培观察含 casual/needs_id，筛选表保留 `quality_grade` 和 `captive`。原始地区未知时保留 unknown，不能把这些照片称为国内田间数据。
+
+### 11.2 预处理
+
+完成筛选后，生成唯一工作集。入口复用现有解码、RGB 转换、等比例缩放、去重和按组划分模块：
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.preprocessing.species_review --prepare
+```
+
+只做内部基线、明确接受来源标签而未逐图审核时，在同一条命令最后加 `--accept-source-labels`。已有人工 drop、物种冲突和禁止来源不会被这个开关恢复。输出固定为 `data/crop-identification/prepared`；已有工作集会停止，不新建 01/02 副本。这里仍没有随机增强。
+
+### 11.3 两种训练方法的区别
+
+`train.py` 是端到端微调：每个 epoch 读取训练图片、在线随机增强、更新神经网络参数，保留 loss / accuracy 曲线。
+
+`linear_probe.py` 是较便宜的冻结骨干对照：用公开 ImageNet 骨干提取原图及两次轻增强的特征，在 CPU 上拟合线性分类头；验证集选择正则强度 C，最后评估留出数据。只缓存特征，不保存增强图片；它不是完整网络微调，也没有可以冒充为 epoch 的 loss 曲线。产物包括 `probe-search.json`、`probe-result.json`、混淆矩阵及模型包。候选包默认不对线上服务开放。
+
+准备好工作集后，先生成分组开发折（不复制图片、不训练）：
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.cross_validation --data-root data/crop-identification/prepared/images --manifest data/crop-identification/prepared/manifest.csv --labels data/crop-identification/prepared/labels.json --output artifacts/experiments/crop-identification-cv
+```
+
+再在第一折做 CPU 基线：
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.linear_probe --data-root data/crop-identification/prepared/images --manifest artifacts/experiments/crop-identification-cv/folds/fold-1/manifest.csv --labels data/crop-identification/prepared/labels.json --architecture swin_t --input-size 224 --output artifacts/experiments/crop-identification-linear-probe/swin_t/fold-1 --threads 2
+```
+
+实际选型优先使用开发集分组折，保留原测试集做最后一次独立于选型的验收。玉米/花生线性对照当前使用各自 `*-cv/folds/fold-1/manifest.csv`，并与后续完整微调的同一外层折比较；不同划分的分数不放在一起排名。最终部署仍需校准、CPU 测速与接口验收。
