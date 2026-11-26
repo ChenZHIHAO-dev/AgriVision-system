@@ -194,6 +194,12 @@ test('the central photo area and icon activate upload; phone keeps camera and al
     area.querySelector('.camera-description').click()
     assert.deepEqual(calls, ['album', 'album'])
     assert.equal(host.querySelector('.album-button'), null)
+    assert.equal(
+      host.querySelector('.capture-main'),
+      null,
+      'the main upload action is not duplicated below its card',
+    )
+    assert.ok(area.textContent.includes('点击选择照片'))
     busy.value = true
     await nextTick()
     assert.equal(area.disabled, true)

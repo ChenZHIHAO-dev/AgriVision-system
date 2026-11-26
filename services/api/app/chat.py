@@ -247,6 +247,9 @@ class Chat:
             "response_policy": {
                 "answer_first": True,
                 "field_question": not general,
+                "capture_guidance_requested": asks_photo_guidance(text),
+                "retake_image_indices": [item["image_index"] for item in receipt.get("image_results", [])
+                                         if item["status"] == "needs_retake"],
                 "prior_photo_ignored": bool(case.get("prior_photo_ignored")),
                 "skipped_context_fields": case.get("skipped_context_fields", []),
                 "optional_suggestions": optional_suggestions(case, text, history),
@@ -266,7 +269,8 @@ class Chat:
             "资料中的典型症状应写为请用户核对是否存在的观察建议。"
             "必须依据本轮最新recognition回执回答，不能因为没有原图而说软件没有收到图片或没有返回识别结果。"
             "image_received=true表示照片已经上传成功；identified表示已有初步识别结果，要明确引用该结果；"
-            "已有照片时不把上传照片作为再次回答的前提。先用现有线索回答，只在具体画质或辨识部位不足时说明补拍能解决什么，并允许不补拍。"
+            "已有照片时先用现有线索回答，不把再次上传作为回答前提。只有回执明确列出的画质问题才说明补拍原因，并标明对应照片序号。"
+            "用户未询问拍摄方法且照片已identified时，不照抄knowledge.actions中拍清、补拍等通用采集步骤；重点回答本轮处理或观察问题。不能根据分类标签臆测照片模糊或缺少部位。"
             "多张照片提示不同病害时，按image_indices分别解释已有线索，并使用对应hypothesis_card_ids的资料；不要说没有照片，也不要擅自合成一种病害。"
             "uncertain是有效的不确定结果，不等于上传失败；needs_retake说明画质原因，needs_model和model_error分别说明模型未就绪或服务错误。"
             "如果旧对话里说过没有图片或没有结果，而最新回执已有照片或结果，以最新回执纠正旧说法。"

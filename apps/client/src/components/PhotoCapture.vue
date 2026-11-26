@@ -61,27 +61,21 @@ const scope = computed(() => {
           @click="emit('capture', desktopWeb ? 'album' : 'camera')"
         >
           <view class="capture-guide-icon"
-            ><AppIcon :name="desktopWeb ? 'upload' : 'camera'" :size="30"
+            ><AppIcon :name="desktopWeb ? 'upload' : 'camera'" white :size="30"
           /></view>
-          <text class="camera-title">{{ desktopWeb ? '上传电脑照片' : '拍清楚，再识别' }}</text>
+          <text class="camera-title">{{ desktopWeb ? '上传电脑照片' : '拍照识别' }}</text>
           <text class="camera-description">{{
             desktopWeb
               ? '选择叶片或麦穗等异常部位的清晰近照，尽量使用原图'
               : '建议在光线充足时，清晰拍摄异常部位'
           }}</text>
+          <view class="capture-prompt" aria-hidden="true">
+            <text>{{ desktopWeb ? '点击选择照片' : '点击打开相机' }}</text>
+            <AppIcon name="right" :size="16" />
+          </view>
         </button>
-        <view class="capture-actions">
+        <view v-if="!desktopWeb" class="capture-actions">
           <button
-            class="button primary capture-main"
-            :disabled="busy"
-            :aria-label="desktopWeb ? '从电脑上传作物照片' : '拍摄作物照片'"
-            @click="emit('capture', desktopWeb ? 'album' : 'camera')"
-          >
-            <AppIcon :name="desktopWeb ? 'upload' : 'camera'" white :size="21" />
-            <text>{{ desktopWeb ? '选择照片' : '拍照识别' }}</text>
-          </button>
-          <button
-            v-if="!desktopWeb"
             class="button secondary album-button"
             :disabled="busy"
             @click="emit('capture', 'album')"
@@ -185,19 +179,23 @@ const scope = computed(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 20px 18px 22px;
+  padding: 10px 18px 20px;
 }
 .capture-upload-area {
   display: flex;
   flex-direction: column;
   align-items: center;
   width: 100%;
-  min-height: 140px;
-  padding: 12px;
-  border: 1px dashed var(--line);
+  min-height: 216px;
+  padding: 24px 18px 20px;
+  border: 1px solid var(--control-line);
   border-radius: 16px;
-  background: var(--elevated);
+  background: var(--accent-soft);
+  color: var(--ink);
   cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease;
 }
 .capture-upload-area:hover {
   background: var(--hover);
@@ -212,8 +210,18 @@ const scope = computed(() => {
   width: 60px;
   height: 60px;
   border-radius: 18px;
-  background: var(--accent-soft);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.capture-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 18px;
   color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
 }
 .camera-title {
   display: block;
@@ -234,10 +242,8 @@ const scope = computed(() => {
   display: flex;
   gap: 10px;
   width: 100%;
-  max-width: 380px;
-  margin-top: 22px;
+  margin-top: 12px;
 }
-.capture-main,
 .album-button {
   flex: 1;
   min-height: 48px;
@@ -247,11 +253,8 @@ const scope = computed(() => {
   font-size: 14px;
   font-weight: 600;
 }
-.capture-main {
-  box-shadow: 0 2px 6px #0000000a;
-}
 .album-button {
-  background: var(--elevated);
+  background: var(--surface);
   border-color: var(--line);
 }
 .capture-format {
@@ -348,7 +351,7 @@ const scope = computed(() => {
   background: var(--subtle);
 }
 .photo-desktop .camera-stage {
-  padding: 32px 32px 28px;
+  padding: 16px 32px 26px;
 }
 .photo-desktop .capture-guide-icon {
   width: 72px;
@@ -359,8 +362,9 @@ const scope = computed(() => {
   font-size: 20px;
   margin-top: 20px;
 }
-.photo-desktop .capture-actions {
-  max-width: 280px;
+.photo-desktop .capture-upload-area {
+  min-height: 254px;
+  padding: 30px 24px 26px;
 }
 .photo-desktop .photo-field-label {
   margin-top: 22px;
@@ -378,11 +382,15 @@ const scope = computed(() => {
   color: var(--ink);
   font-size: 13px;
 }
+@media (prefers-reduced-motion: reduce) {
+  .capture-upload-area {
+    transition: none;
+  }
+}
 @media (max-width: 360px) {
   .capture-actions {
     gap: 8px;
   }
-  .capture-main,
   .album-button {
     padding-inline: 8px;
   }

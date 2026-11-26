@@ -1485,6 +1485,7 @@ function newFromDrawer() {
         :title="!chatMode && tab === 'home' ? '宛田观叶' : title"
         :page="tab"
         :compact="compactHeader"
+        :show-appearance="!chatMode && tab === 'home'"
         :chat="chatMode"
         :back-label="backLabel"
         :history-open="historyDrawerOpen"
@@ -1501,6 +1502,7 @@ function newFromDrawer() {
       <!-- #ifdef H5 -->
       <WebWorkspaceHeader
         v-if="!isMobile"
+        :show-appearance="!chatMode && tab === 'home'"
         :title="title"
         :chat="chatMode"
         :back-label="backLabel"
@@ -1517,6 +1519,7 @@ function newFromDrawer() {
         v-if="!wechatProfile"
         :frame="wechatFrame"
         :compact="compactHeader"
+        :show-appearance="!chatMode && tab === 'home'"
         :title="wechatTitle"
         :native-title="nativeWeChatTitle"
         :chat="chatMode"

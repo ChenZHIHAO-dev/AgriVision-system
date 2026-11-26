@@ -211,3 +211,15 @@ def test_natural_photo_followups_do_not_require_repeating_the_crop(text):
     assert not within_agricultural_scope(
         case(crop="wheat", images=[{"id": "saved-photo"}]), text + "，再帮我写个爬虫", []
     )
+
+
+@pytest.mark.parametrize("text", [
+    "我已经拍照给你了", "刚才上传过了", "治疗措施呢", "影响产量吗",
+    "会传染给旁边的吗", "现在还能救吗", "这张是哪种", "该怎么防止扩散",
+    "这个情况严重不", "能给个具体点的办法吗", "我不太明白，换个简单说法",
+    "这个病和刚才那个有什么区别",
+])
+def test_natural_photo_followups_use_existing_context(text):
+    # 同一句短追问需要已有照片/作物上下文，不能凭模型自述“收到了”来伪造。
+    assert within_agricultural_scope(case(crop="wheat", images=[{"id": "saved-photo"}]), text, [])
+    assert not within_agricultural_scope(case(), text, [])

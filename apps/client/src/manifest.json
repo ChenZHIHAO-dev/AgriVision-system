@@ -3,7 +3,7 @@
   "appid": "__UNI__AGRIVISION",
   "description": "拍摄或上传小麦叶片照片，查看常见叶片病害的初步识别结果，了解症状特征和田间观察方法。",
   "versionName": "1.5.0",
-  "versionCode": 154,
+  "versionCode": 155,
   "transformPx": false,
   "vueVersion": "3",
   "uniStatistics": {

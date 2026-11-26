@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import AppIcon from './AppIcon.vue'
+import AppearanceSwitch from './AppearanceSwitch.vue'
 import ChatTitle from './ChatTitle.vue'
 
 defineProps<{
+  showAppearance?: boolean
   title: string
   page: string
   compact?: boolean
@@ -84,6 +86,7 @@ function updateSearch(event: unknown) {
         </button>
         <text v-else class="mobile-title" role="heading" aria-level="1">{{ title }}</text>
       </view>
+      <AppearanceSwitch v-if="showAppearance" />
       <view v-if="search === undefined && !compact" class="mobile-trailing" aria-hidden="true" />
     </view>
   </view>

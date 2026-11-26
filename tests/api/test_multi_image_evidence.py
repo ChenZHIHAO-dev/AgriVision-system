@@ -140,6 +140,8 @@ def test_followup_carries_each_photo_disease_card_to_provider(tmp_path, monkeypa
     assert context["knowledge_coverage"]["uncovered_hypothesis_ids"] == []
     assert {card["id"] for card in context["knowledge"]} >= {"wheat_leaf_rust", "wheat_powdery_mildew"}
     assert not answer.get("photo_suggestion")
+    assert context["response_policy"]["retake_image_indices"] == []
+    assert context["response_policy"]["capture_guidance_requested"] is False
 
 
 def test_different_clear_photos_do_not_request_the_same_upload_again():

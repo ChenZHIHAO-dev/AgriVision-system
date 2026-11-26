@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import AppIcon from './AppIcon.vue'
+import AppearanceSwitch from './AppearanceSwitch.vue'
 import ChatTitle from './ChatTitle.vue'
 
 defineProps<{
+  showAppearance?: boolean
   title: string
   compact?: boolean
   backLabel: string
@@ -87,6 +89,7 @@ function updateSearch(event: unknown) {
         </button>
         <text v-else-if="!nativeTitle" class="wechat-header-title">{{ title }}</text>
       </view>
+      <AppearanceSwitch v-if="showAppearance" />
       <view
         aria-hidden="true"
         :style="{ width: frame.side + 'px' }"
