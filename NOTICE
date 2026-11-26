@@ -1,0 +1,20 @@
+Required Notice: Copyright (c) 2026 AgriVision contributors.
+Required Notice: Project source: https://github.com/ChenZHIHAO-dev/AgriVision-system
+
+AgriVision first-party software is offered under the PolyForm Noncommercial
+License 1.0.0 in LICENSE. First-party documentation follows the same terms
+unless a file states otherwise. The license permits its defined noncommercial
+purposes, including the expressly permitted organizational uses.
+
+Commercial uses outside those permissions require a separate written license
+from the relevant rights holders. Contact the repository maintainer through
+the project repository to discuss authorization; opening an issue does not
+itself grant permission.
+
+This grant covers only rights held by AgriVision contributors. Third-party
+software, icons, datasets, photographs, publications, and pretrained or derived
+model weights are not relicensed by this notice. Their own license terms and
+attribution requirements continue to apply. See THIRD_PARTY_NOTICES.md and
+source-specific records. Model weights are not distributed by this repository;
+a source-code license is not a blanket license to any downloaded or trained
+model. No rights to third-party names or trademarks are granted.
