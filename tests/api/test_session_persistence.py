@@ -172,7 +172,7 @@ def test_application_restart_preserves_remembered_identity_photos_and_history(se
         assert restarted.get(image["url"]).status_code == 200
         assert restarted.get(image["url"].replace(image["id"], "different")).status_code == 401
         grant = image["url"].split("access_token=")[1]
-        assert restarted.get("/api/knowledge?access_token=" + grant).status_code == 401
+        assert restarted.get("/api/cases?access_token=" + grant).status_code == 401
         assert restarted.delete(image["url"]).status_code == 401
         assert restarted.get("/api/admin/status", headers=remembered).json()["session_storage"] == "sqlite-remember"
         assert restarted.post("/api/auth/logout", headers=remembered).status_code == 204

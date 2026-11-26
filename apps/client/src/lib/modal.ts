@@ -16,5 +16,7 @@ export function syncModalInert() {
   )) {
     element.inert = !!top && element !== top
   }
+  document.documentElement.classList.toggle('dialog-viewport-locked', !!top)
+  window.dispatchEvent(new window.Event('agrivision:modal-change'))
   // #endif
 }

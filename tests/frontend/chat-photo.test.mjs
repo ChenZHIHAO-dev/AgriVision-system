@@ -11,7 +11,7 @@ const root = process.cwd()
 const compiled = await build({
   stdin: {
     contents:
-      "export { default as Dialog } from './apps/client/src/components/ChatPhotoDialog.vue'; export { chatPhotoContext } from './apps/client/src/lib/chatPhoto.ts'; export { compactPageHeader } from './apps/client/src/lib/platformChrome.ts'; export { createApp, h, ref, nextTick } from 'vue'",
+      "export { default as Dialog } from './apps/client/src/components/ChatPhotoDialog.vue'; export { chatPhotoContext } from './apps/client/src/lib/chatPhoto.ts'; export { default as PhotoCapture } from './apps/client/src/components/PhotoCapture.vue'; export { compactPageHeader, desktopPhotoUpload } from './apps/client/src/lib/platformChrome.ts'; export { createApp, h, ref, nextTick } from 'vue'",
     resolveDir: root,
   },
   bundle: true,
@@ -23,6 +23,10 @@ const compiled = await build({
     {
       name: 'photo-context-components',
       setup(builder) {
+        builder.onLoad({ filter: /[\\/]lib[\\/]api\.ts$/ }, () => ({
+          contents: 'export const imageUrl=()=>""',
+          loader: 'js',
+        }))
         builder.onLoad({ filter: /\.vue$/ }, async ({ path: filename }) => {
           if (filename.endsWith('AppIcon.vue'))
             return { contents: 'export default { render: () => null }', loader: 'js' }
@@ -144,5 +148,66 @@ test('unknown crop dialog requires an explicit choice and offers a text-only exi
       if (original) Object.defineProperty(globalThis, name, original)
       else delete globalThis[name]
     }
+  }
+})
+
+test('computer photo upload stays a file picker even when its window becomes narrow', () => {
+  const { desktopPhotoUpload } = load()
+  for (const platform of ['windows', 'mac', 'linux'])
+    assert.equal(desktopPhotoUpload(platform), true)
+  for (const platform of ['ios', 'android']) assert.equal(desktopPhotoUpload(platform), false)
+})
+
+test('the central photo area and icon activate upload; phone keeps camera and album choices', async () => {
+  const window = new Window(),
+    originals = new Map()
+  for (const name of ['window', 'document', 'Element', 'SVGElement', 'HTMLElement', 'Node']) {
+    originals.set(name, Object.getOwnPropertyDescriptor(globalThis, name))
+    Object.defineProperty(globalThis, name, {
+      configurable: true,
+      value: name === 'window' ? window : window[name],
+    })
+  }
+  const { createApp, h, ref, nextTick, PhotoCapture } = load()
+  const desktop = ref(true),
+    busy = ref(false),
+    calls = []
+  const host = document.createElement('div')
+  document.body.append(host)
+  const app = createApp({
+    render: () =>
+      h(PhotoCapture, {
+        crop: 'wheat',
+        models: [],
+        busy: busy.value,
+        loading: false,
+        desktopWeb: desktop.value,
+        onCapture: (x) => calls.push(x),
+      }),
+  })
+  try {
+    app.mount(host)
+    const area = host.querySelector('.capture-upload-area')
+    assert.equal(area.tagName, 'BUTTON')
+    assert.ok(area.getAttribute('aria-label').includes('电脑'))
+    area.querySelector('.capture-guide-icon').click()
+    area.querySelector('.camera-description').click()
+    assert.deepEqual(calls, ['album', 'album'])
+    assert.equal(host.querySelector('.album-button'), null)
+    busy.value = true
+    await nextTick()
+    assert.equal(area.disabled, true)
+    busy.value = false
+    desktop.value = false
+    await nextTick()
+    area.click()
+    host.querySelector('.album-button').click()
+    assert.deepEqual(calls, ['album', 'album', 'camera', 'album'])
+    assert.equal(area.querySelector('button'), null)
+  } finally {
+    app.unmount()
+    await window.happyDOM.close()
+    for (const [name, value] of originals)
+      value ? Object.defineProperty(globalThis, name, value) : delete globalThis[name]
   }
 })

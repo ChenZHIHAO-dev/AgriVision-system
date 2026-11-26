@@ -2,6 +2,12 @@
 import AppIcon from './AppIcon.vue'
 import type { User } from '../lib/auth'
 import { appVersion } from '../lib/appInfo'
+import { themeChoice, setTheme } from '../lib/theme'
+const themes = [
+  { id: 'light' as const, label: '浅色', icon: 'sun' },
+  { id: 'dark' as const, label: '深色', icon: 'moon' },
+  { id: 'system' as const, label: '跟随系统', icon: 'system' },
+]
 withDefaults(defineProps<{ user: User | null; admin: boolean; capsuleInset?: number }>(), {
   capsuleInset: 0,
 })
@@ -26,7 +32,7 @@ const emit = defineEmits<{
             ? '离线演示账号：记录只在当前页面保留，不连接真实账户或云端。'
             : user
               ? '新的识别和对话会保存到此账户。'
-              : '登录后使用在线识别、AI 对话、资料和历史记录。'
+              : '资料可直接查阅，登录后使用识别、AI 对话和历史记录。'
         }}</text>
       </view>
       <view v-if="!user" class="profile-actions">
@@ -58,10 +64,24 @@ const emit = defineEmits<{
       </button>
     </view>
     <!-- #endif -->
+    <view class="panel profile-appearance">
+      <text class="appearance-label">外观</text>
+      <view class="appearance-options" role="group" aria-label="选择外观">
+        <button
+          v-for="theme in themes"
+          :key="theme.id"
+          :aria-pressed="themeChoice === theme.id"
+          :class="{ selected: themeChoice === theme.id }"
+          @click="setTheme(theme.id)"
+        >
+          <AppIcon :name="theme.icon" :size="18" /><text>{{ theme.label }}</text>
+        </button>
+      </view>
+    </view>
     <view class="panel profile-menu">
       <button @click="emit('settings')">
         <AppIcon name="settings" :size="22" />
-        <view><text>设置</text><text>外观、记录与隐私、关于</text></view>
+        <view><text>设置</text><text>记录与隐私、关于</text></view>
         <AppIcon name="right" :size="17" />
       </button>
       <button v-if="admin" @click="emit('admin')">
@@ -82,6 +102,37 @@ const emit = defineEmits<{
   </view>
 </template>
 <style scoped>
+.profile-appearance {
+  margin-top: 18px;
+  padding: 16px;
+}
+.appearance-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.appearance-options {
+  display: flex;
+  gap: 6px;
+}
+.appearance-options > button {
+  display: flex;
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  font-size: 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--subtle);
+}
+.appearance-options > button.selected {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--line);
+}
 .user-center {
   max-width: 760px;
   margin: 5px auto 30px;
@@ -235,6 +286,37 @@ const emit = defineEmits<{
   min-height: 46px;
 }
 /* #ifdef MP-WEIXIN */
+.profile-appearance {
+  margin-top: 18px;
+  padding: 16px;
+}
+.appearance-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.appearance-options {
+  display: flex;
+  gap: 6px;
+}
+.appearance-options > button {
+  display: flex;
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  font-size: 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--subtle);
+}
+.appearance-options > button.selected {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--line);
+}
 .user-center {
   width: 100%;
   min-width: 0;

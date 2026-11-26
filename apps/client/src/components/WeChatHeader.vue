@@ -16,7 +16,13 @@ defineProps<{
   frame: { top: number; row: number; side: number }
 }>()
 
-const emit = defineEmits<{ back: []; history: []; options: []; search: [value: string] }>()
+const emit = defineEmits<{
+  home: []
+  back: []
+  history: []
+  options: []
+  search: [value: string]
+}>()
 
 function updateSearch(event: unknown) {
   const { detail } = event as { detail?: { value?: string } }
@@ -71,9 +77,14 @@ function updateSearch(event: unknown) {
           :expanded="optionsOpen"
           @open="emit('options')"
         />
-        <view v-else-if="compact" class="header-brand-mark" role="img" :aria-label="title"
-          ><AppIcon name="leaf" :size="23"
-        /></view>
+        <button
+          v-else-if="compact"
+          class="header-brand-mark"
+          aria-label="宛田观叶，返回首页"
+          @click="emit('home')"
+        >
+          <AppIcon name="leaf" :size="23" />
+        </button>
         <text v-else-if="!nativeTitle" class="wechat-header-title">{{ title }}</text>
       </view>
       <view
@@ -90,8 +101,8 @@ function updateSearch(event: unknown) {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border-radius: 11px;
   background: var(--accent-soft);
 }

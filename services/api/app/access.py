@@ -15,9 +15,9 @@ from .config import Settings
 from .security import RequestLimits, business_category
 
 
-# 默认所有 /api/ 业务都需要身份；只显式放行启动信息和登录/禁用注册入口。
+# 默认业务需要身份；启动信息、登录及公开资料读取单独放行。
 PUBLIC_ENDPOINTS = frozenset({
-    ("GET", "/api/health"), ("GET", "/api/meta"),
+    ("GET", "/api/health"), ("GET", "/api/meta"), ("GET", "/api/knowledge"),
     ("POST", "/api/auth/login"), ("POST", "/api/auth/register"),
 })
 
@@ -40,7 +40,10 @@ class AccountScopeMiddleware(BaseHTTPMiddleware):
             response.headers["Cache-Control"] = "private, no-store"
             return response
 
-        public = (method, path) in PUBLIC_ENDPOINTS
+        # 只开放单张公开资料卡的 GET，不能用此前缀绕过业务/写接口鉴权。
+        public = (method, path) in PUBLIC_ENDPOINTS or (
+            method == "GET" and re.fullmatch(r"/api/knowledge/[^/]+", path) is not None
+        )
         bearer = request.headers.get("authorization", "")
         token = bearer[7:] if bearer.startswith("Bearer ") else ""
         viewer = self.auth.verify(token) if token else None

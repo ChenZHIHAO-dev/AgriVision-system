@@ -40,7 +40,7 @@ def run(base, exercise_provider=False, web=False, *, account=None):
         health = client.get("/api/health")
         health.raise_for_status()
         report["api_version"] = health.json()["version"]
-        anonymous = [("GET", "/api/cases"), ("GET", "/api/knowledge"),
+        anonymous = [("GET", "/api/cases"),
                      ("POST", "/api/cases"), ("POST", "/api/crop-recognition"),
                      ("POST", "/api/consultations")]
         for method, endpoint in anonymous:
@@ -50,6 +50,10 @@ def run(base, exercise_provider=False, web=False, *, account=None):
         assert client.post("/api/auth/register", json={}).status_code == 403
         report["anonymous_business_blocked"] = True
         report["self_registration_disabled"] = True
+        reference = client.get("/api/knowledge")
+        reference.raise_for_status()
+        assert reference.json()["items"]
+        report["public_references_available"] = True
         if account is None:
             report["passed"] = True
             report["authenticated_checks"] = "not requested; rerun with --username admin"

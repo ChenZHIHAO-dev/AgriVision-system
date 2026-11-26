@@ -25,7 +25,7 @@ def app(tmp_path, admin_hash):
 
 @pytest.mark.parametrize("method,path", [
     ("GET", "/api/cases"), ("GET", "/api/cases/unknown"),
-    ("GET", "/api/knowledge"), ("GET", "/api/knowledge/wheat_stripe_rust"),
+    ("POST", "/api/knowledge"), ("DELETE", "/api/knowledge/wheat_stripe_rust"),
     ("GET", "/api/admin/status"), ("GET", "/api/cases/id/images/photo"),
     ("POST", "/api/cases"), ("POST", "/api/cases/demo"),
     ("POST", "/api/crop-recognition"), ("POST", "/api/consultations"),
@@ -49,7 +49,7 @@ def test_bootstrap_and_cors_work_without_login(app):
         for path in ("/api/health", "/api/meta"):
             assert client.get(path, headers={"Authorization": "Bearer expired"}).status_code == 200
         assert client.post("/api/auth/register", json={}).status_code == 403
-        response = client.get("/api/knowledge", headers={"Origin": "http://localhost:5173"})
+        response = client.get("/api/cases", headers={"Origin": "http://localhost:5173"})
         assert response.status_code == 401
         assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
         preflight = client.options("/api/cases", headers={
@@ -73,7 +73,7 @@ def test_image_grant_is_single_image_and_bound_to_session(app, account_headers):
         assert image_response.headers["cache-control"] == "private, no-store"
         assert client.get(image["url"].split("?")[0], headers=session).status_code == 200
         grant = image["url"].split("access_token=")[1]
-        assert client.get("/api/knowledge?access_token=" + grant).status_code == 401
+        assert client.get("/api/cases?access_token=" + grant).status_code == 401
         assert client.delete(image["url"]).status_code == 401
         assert client.get(image["url"].replace(image["id"], "other")).status_code == 401
         assert client.get("/api/cases/" + record["id"],
@@ -215,3 +215,16 @@ def test_request_limits_are_isolated_between_application_instances(tmp_path, adm
             path = "/api/cases/" + record["id"] + "/messages"
             assert client.post(path, headers=headers, json={"text": "怎样拍清楚叶片？"}).status_code == 201
             assert client.post(path, headers=headers, json={"text": "怎样拍清楚叶片？"}).status_code == 429
+
+
+def test_public_reference_cards_do_not_require_identity(app):
+    with TestClient(app) as client:
+        for headers in ({}, {"Authorization": "Bearer expired"}):
+            listing = client.get("/api/knowledge", params={"q": "锈病"}, headers=headers)
+            assert listing.status_code == 200 and listing.json()["items"]
+            detail = client.get("/api/knowledge/wheat_leaf_rust", headers=headers)
+            assert detail.status_code == 200 and detail.json()["id"] == "wheat_leaf_rust"
+            assert client.get("/api/knowledge/not-a-card", headers=headers).status_code == 404
+        # 公共资料不包含用户记录，图片签名也不能取得个人历史。
+        assert client.get("/api/knowledge/wheat_leaf_rust/private").status_code == 401
+        assert client.get("/api/cases").status_code == 401

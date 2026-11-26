@@ -26,7 +26,7 @@ function browserSource(source) {
 const compiled = await build({
   stdin: {
     contents:
-      "export {default as AuthDialog} from './apps/client/src/components/AuthDialog.vue'; export {default as ContentReference} from './apps/client/src/components/ContentReference.vue'; export {createBrowserViewportTracker} from './apps/client/src/lib/mobileChrome.ts'; export {createApp,h,nextTick} from 'vue'",
+      "export {default as AuthDialog} from './apps/client/src/components/AuthDialog.vue'; export {default as ContentReference} from './apps/client/src/components/ContentReference.vue'; export {useWorkspaceViewport} from './apps/client/src/lib/viewport.ts'; export {createBrowserViewportTracker,createDialogViewportTracker} from './apps/client/src/lib/mobileChrome.ts'; export {createApp,h,nextTick} from 'vue'",
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -38,6 +38,10 @@ const compiled = await build({
     {
       name: 'browser-dialog',
       setup(builder) {
+        builder.onLoad({ filter: /[\\/]lib[\\/]viewport\.ts$/ }, async ({ path }) => ({
+          contents: browserSource(await readFile(path, 'utf8')),
+          loader: 'ts',
+        }))
         builder.onLoad({ filter: /[\\/]lib[\\/]auth\.ts$/ }, () => ({
           contents: 'export const auth={login:async()=>{throw new Error("test must not submit")}}',
           loader: 'js',
@@ -129,24 +133,39 @@ async function mounted(run) {
     'HTMLInputElement',
     'SVGElement',
     'Node',
+    'uni',
   ]) {
     originals.set(name, Object.getOwnPropertyDescriptor(globalThis, name))
     Object.defineProperty(globalThis, name, {
-      value: name === 'window' ? window : window[name],
+      value:
+        name === 'uni'
+          ? { getSystemInfoSync: () => ({ windowWidth: 375, windowHeight: 812 }) }
+          : name === 'window'
+            ? window
+            : window[name],
       configurable: true,
     })
   }
+  window.innerWidth = 375
+  window.innerHeight = 812
   const visual = new window.EventTarget()
+  Object.assign(visual, { height: 812, offsetTop: 0 })
   Object.defineProperty(window, 'visualViewport', { value: visual, configurable: true })
   const api = load()
   const host = document.createElement('div')
   host.className = 'av-app'
   document.body.append(host)
-  const app = api.createApp({ render: () => api.h(api.AuthDialog) })
+  let viewport
+  const app = api.createApp({
+    setup() {
+      viewport = api.useWorkspaceViewport()
+      return () => api.h(api.AuthDialog)
+    },
+  })
   try {
     app.mount(host)
     await api.nextTick()
-    await run({ ...api, window, host, visual })
+    await run({ ...api, window, host, visual, viewport })
   } finally {
     app.unmount()
     await api.nextTick()
@@ -235,4 +254,59 @@ test('answer notices identify AI, recognition and offline reference content hone
       app.unmount()
     }
   })
+})
+
+test('modal keyboard and native pan leave the workspace canvas and keyboard state unchanged', async () => {
+  await mounted(async ({ window, visual, viewport }) => {
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 30))
+    await settle()
+    const style = document.documentElement.style
+    assert.equal(style.getPropertyValue('--app-height'), '812px')
+    assert.ok(document.documentElement.classList.contains('dialog-viewport-locked'))
+    for (const [height, top] of [
+      [700, 0],
+      [500, 0],
+      [440, 60],
+      [430, 72],
+      [600, 20],
+      [812, 0],
+    ]) {
+      visual.height = height
+      visual.offsetTop = top
+      visual.dispatchEvent(new window.Event('resize'))
+      visual.dispatchEvent(new window.Event('scroll'))
+      await settle()
+      assert.equal(style.getPropertyValue('--app-height'), '812px')
+      assert.equal(style.getPropertyValue('--visual-height'), height + 'px')
+      assert.equal(style.getPropertyValue('--viewport-top'), top + 'px')
+      assert.equal(style.getPropertyValue('--keyboard-inset'), '0px')
+      assert.equal(viewport.keyboardHeight.value, 0)
+    }
+  })
+})
+
+test('modal background isolation holds through close animation and supports orientation changes', () => {
+  const { createDialogViewportTracker } = load()
+  for (const [width, height] of [
+    [320, 568],
+    [375, 812],
+  ]) {
+    const isolate = createDialogViewportTracker()
+    const frame = (visible, top = 0) => ({
+      height,
+      visual: visible,
+      top,
+      inset: height - visible - top,
+    })
+    isolate(frame(height), width, false, true)
+    isolate(frame(height), width, true, true)
+    const panned = isolate(frame(300, 50), width, true, true)
+    assert.equal(panned.height, height)
+    assert.equal(panned.backgroundTop, 50)
+    assert.equal(panned.inset, 0)
+    assert.equal(isolate(frame(height - 40), width, false, true).height, height)
+    assert.equal(isolate(frame(height), width, false, true).backgroundTop, 0)
+    const rotated = isolate({ height: 375, visual: 375, top: 0, inset: 0 }, 812, true, false)
+    assert.equal(rotated.height, 375)
+  }
 })

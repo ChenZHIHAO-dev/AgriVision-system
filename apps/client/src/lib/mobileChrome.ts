@@ -124,3 +124,32 @@ export function createKeyboardHeightTracker(update: (height: number, durationMs:
     },
   }
 }
+
+/** 弹窗只缩放自身。背景沿用打开前的画布，补偿 iOS 原生视口平移而不缩放内容。 */
+export function createDialogViewportTracker() {
+  let lockedHeight = 0
+  let lockedWidth = 0
+  let lastHeight = 0
+  let active = false
+  return (
+    frame: ReturnType<typeof viewportFrame>,
+    width: number,
+    modal: boolean,
+    mobile: boolean,
+  ) => {
+    if (mobile && modal && (!active || width !== lockedWidth)) {
+      lockedHeight = width === lockedWidth && lastHeight ? lastHeight : frame.height
+      lockedWidth = width
+      active = true
+    }
+    // 关闭弹窗时，键盘动画可能尚未结束；到视口恢复后才释放背景。
+    if (active && (!mobile || (!modal && frame.visual + frame.top >= lockedHeight - 1)))
+      active = false
+    const value = active
+      ? { ...frame, height: lockedHeight, inset: 0, backgroundTop: frame.top }
+      : { ...frame, backgroundTop: 0 }
+    lastHeight = value.height
+    lockedWidth = width
+    return value
+  }
+}

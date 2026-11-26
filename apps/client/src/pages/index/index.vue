@@ -422,7 +422,6 @@ function showError(value: unknown) {
     const path = { ...viewPath.value, layers: [...viewPath.value.layers] }
     auth.expire()
     records.value = []
-    cards.value = []
     current.value = null
     retainedCase.value = null
     lastPhotoCase.value = null
@@ -463,10 +462,6 @@ async function refresh() {
   }
 }
 function navigate(value: Tab) {
-  if (value === 'knowledge' && businessLoginRequired(mode.value, !!user.value)) {
-    requestBusinessLogin('library')
-    return
-  }
   if (value === 'history' && !user.value) {
     requestConsultationLogin('history')
     return
@@ -1498,6 +1493,7 @@ function newFromDrawer() {
         :chat-options-open="!!chatOptions"
         @search="query = $event"
         @options="chatOptions = 'actions'"
+        @home="navigate('home')"
         @back="mobileBack"
         @history="openHistoryDrawer"
       />
@@ -1531,6 +1527,7 @@ function newFromDrawer() {
         @search="query = $event"
         :history-open="historyDrawerOpen"
         :options-open="!!chatOptions"
+        @home="navigate('home')"
         @back="mobileBack"
         @history="openHistoryDrawer"
         @options="chatOptions = 'actions'"
@@ -1761,17 +1758,12 @@ function newFromDrawer() {
           :records="records"
           :cards="cards"
           :logged-in="!!user"
-          :requires-login="businessLoginRequired(mode, !!user)"
           @card="selectedCard = $event"
           @source="openSource"
           @capture="navigate('identify')"
           @open="openConversation"
           @history="navigate('history')"
-          @login="
-            homeSection === 'recent'
-              ? requestConsultationLogin('history')
-              : requestBusinessLogin('library')
-          "
+          @login="requestConsultationLogin('history')"
         />
         <scroll-view v-if="tab !== 'home'" v-show="!chatMode" scroll-y class="page-scroll">
           <view :key="tab" class="page-content" :style="profilePageStyle">
@@ -1870,7 +1862,7 @@ function newFromDrawer() {
                 @logout="signOut"
             /></template>
             <template v-else-if="tab === 'settings'"
-              ><UserSettings @back="navigate('profile')"
+              ><UserSettings :show-back="!isMobile" @back="navigate('profile')"
             /></template>
             <template v-else
               ><KnowledgeLibrary :cards="cards" @open="selectedCard = $event" @source="openSource"

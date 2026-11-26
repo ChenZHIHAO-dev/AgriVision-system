@@ -54,13 +54,22 @@ const scope = computed(() => {
         ><AppIcon name="right" :size="15" />
       </button>
       <view class="camera-stage">
-        <view class="capture-guide-icon"
-          ><AppIcon :name="desktopWeb ? 'upload' : 'camera'" :size="30"
-        /></view>
-        <text class="camera-title">{{ desktopWeb ? '上传一张症状照片' : '拍清楚，再识别' }}</text>
-        <text class="camera-description">{{
-          desktopWeb ? '选择叶片或麦穗等异常部位的清晰近照，尽量使用原图' : '自然光下拍清异常部位，避免翻拍屏幕'
-        }}</text>
+        <button
+          class="capture-upload-area"
+          :disabled="busy"
+          :aria-label="desktopWeb ? '从电脑上传作物照片' : '拍摄作物照片'"
+          @click="emit('capture', desktopWeb ? 'album' : 'camera')"
+        >
+          <view class="capture-guide-icon"
+            ><AppIcon :name="desktopWeb ? 'upload' : 'camera'" :size="30"
+          /></view>
+          <text class="camera-title">{{ desktopWeb ? '上传电脑照片' : '拍清楚，再识别' }}</text>
+          <text class="camera-description">{{
+            desktopWeb
+              ? '选择叶片或麦穗等异常部位的清晰近照，尽量使用原图'
+              : '建议在光线充足时，清晰拍摄异常部位'
+          }}</text>
+        </button>
         <view class="capture-actions">
           <button
             class="button primary capture-main"
@@ -177,6 +186,24 @@ const scope = computed(() => {
   flex-direction: column;
   align-items: center;
   padding: 20px 18px 22px;
+}
+.capture-upload-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  min-height: 140px;
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: 16px;
+  background: var(--elevated);
+  cursor: pointer;
+}
+.capture-upload-area:hover {
+  background: var(--hover);
+}
+.capture-upload-area:active {
+  background: var(--pressed);
 }
 .capture-guide-icon {
   display: flex;

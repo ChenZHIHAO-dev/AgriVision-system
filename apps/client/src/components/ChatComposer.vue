@@ -182,7 +182,7 @@ function input(event: unknown) {
         :disabled="disabled"
         @click="attachOpen = !attachOpen"
       >
-        <AppIcon name="plus" :size="22" />
+        <AppIcon name="plus" :size="18" />
       </button>
       <view class="composer-model"
         ><ModelPicker
@@ -344,9 +344,10 @@ function input(event: unknown) {
   min-width: 0;
 }
 .add-attachment {
-  width: 33px;
-  min-width: 33px;
-  height: 34px;
+  width: 30px;
+  min-width: 30px;
+  height: 32px;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -355,11 +356,28 @@ function input(event: unknown) {
   border-radius: 9px;
   color: var(--ink);
 }
+.add-attachment::before {
+  content: '';
+  position: absolute;
+  inset: -6px -4px;
+}
+.composer-model :deep(.compact .choice-trigger) {
+  position: relative;
+  height: 32px;
+  min-height: 32px;
+  padding: 4px 7px;
+  font-size: 11px;
+}
+.composer-model :deep(.choice-trigger::before) {
+  content: '';
+  position: absolute;
+  inset: -6px 0;
+}
 .add-attachment:hover {
   background: var(--subtle);
 }
 .composer-model {
-  width: 170px;
+  width: 148px;
   max-width: 42%;
   min-width: 0;
 }
@@ -529,7 +547,7 @@ function input(event: unknown) {
   }
   .composer-model {
     max-width: 43%;
-    width: 156px;
+    width: 136px;
   }
   .thinking-toggle {
     font-size: 11px;

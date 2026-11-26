@@ -9,7 +9,6 @@ type DashboardSection = 'recent' | 'resources' | 'news'
 const props = defineProps<{
   records: CaseRecord[]
   loggedIn: boolean
-  requiresLogin?: boolean
   cards: KnowledgeCard[]
   section: DashboardSection
   mobile?: boolean
@@ -333,15 +332,8 @@ watch(arranging, measureSection)
           <button v-if="!loggedIn" class="button secondary" @click="emit('login')">登录</button>
         </view>
       </view>
-      <view v-if="section !== 'recent' && requiresLogin" class="dashboard-empty">
-        <view class="dashboard-empty-copy">
-          <text class="dashboard-empty-title">登录后查看资料</text>
-          <text class="dashboard-empty-description">在线资料与识别使用同一个账户。</text>
-        </view>
-        <button class="button secondary" @click="emit('login')">登录</button>
-      </view>
       <KnowledgeLibrary
-        v-show="section !== 'recent' && !requiresLogin"
+        v-show="section !== 'recent'"
         embedded
         :reading="mobile"
         :section="section === 'news' ? 'news' : 'library'"

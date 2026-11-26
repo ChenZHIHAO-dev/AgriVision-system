@@ -275,7 +275,7 @@ def test_photo_followup_reaches_provider_with_latest_result_and_matching_knowled
         # 模拟旧版误拦截产生的历史，修复后不继续把该错误提示喂给模型。
         app.state.store.add_message(record['id'], {"role": "assistant", "text": "旧的业务范围提示",
                                                   "notice_code": "out_of_scope", "provider": "rules"})
-        questions = ["这是什么病 这怎么处理", "遇到这个症状有什么建议", "我已经给照片发给你了，后续有什么解决方案？", "我已经拍照给你了，怎么处理这个症状？"]
+        questions = ["这是什么问题", "这是什么病 这怎么处理", "遇到这个症状有什么建议", "我已经给照片发给你了，后续有什么解决方案？", "我已经拍照给你了，怎么处理这个症状？"]
         for index, question in enumerate(questions):
             body = {"text": question, "model": "deepseek-flash"}
             if attach_in_chat and index == 0:
@@ -291,4 +291,4 @@ def test_photo_followup_reaches_provider_with_latest_result_and_matching_knowled
             assert context['response_policy']['field_question'] is True
             assert context['knowledge'][0]['id'] == 'wheat_leaf_rust'
             assert '旧的业务范围提示' not in json.dumps(payloads[-1], ensure_ascii=False)
-        assert len(payloads) == 4
+        assert len(payloads) == len(questions)

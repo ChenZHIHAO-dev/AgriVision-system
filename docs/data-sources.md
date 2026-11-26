@@ -165,4 +165,15 @@ Excel 编辑保存 CSV UTF-8。`decision=keep` 表示入选、`drop` 表示排�
 
 病害 ID 连接图像输出与知识卡。资料卡可逐步补，缺资料时明确覆盖不足，不拿其他病种的卡片作依据。知识条目保留规范名、别名、部位、混淆项、适用条件、出处和更新时间；具体建议随用户提供的信息和可核验资料变化。
 
+
+### 本轮知识卡核验（2026-11-27）
+
+本轮补齐 `maize_gray_leaf_spot`、`peanut_alternaria_leaf_spot`，并充实 `wheat_leaf_rust` 的管理正文。每张卡保留来源标题、原URL、发布/报告日期、核验日期和地区；未知发布日期留空，TNAU月报标注月精度。新增 `management_evidence` 将动作索引连到来源及适用范围，`evidence_limits` 记录尚不能支持的推断；现有检索/API字段保持兼容。只保存短摘要，第三方内容仍按原方条款使用，`products` 仍不生成未经标签核验的推荐。
+
+| 知识卡 | 已核验依据与范围 | 保留缺口 |
+| --- | --- | --- |
+| 玉米灰斑病 | [中国农科院作科所等2015年原研究](https://www.chinaagrisci.com/EN/10.3864/j.issn.0578-1752.2015.18.005)支持中国历史发生记录；[UNL Extension原页](https://cropwatch.unl.edu/plant-disease/corn/gray-leaf-spot/)支持成熟病斑受叶脉限制、抗性品种、轮作及残体管理方向 | 2004—2014年调查不是当前预报；美国推广措施须核对本地条件，未核验国内具体产品标签 |
+| 花生链格孢叶斑病 | [TNAU花生Alternaria原页](https://agritech.tnau.ac.in/crop_protection/groundnut_diseases/groundnut_d6.html)支持症状；[2023年11月官方月报第3页](https://agritech.tnau.ac.in/ta/crop_protection/pdf/2023/CPPS-PSR-November%202023.pdf)记录印度Pudukottai发生，并与Tikka叶斑分列 | 本轮未取得中国发生分布与专属登记资料；不等同褐斑/黑斑，不移植印度浓度、间隔或配方，不推断国内不存在 |
+| 小麦叶锈病 | [AHDB小麦部分](https://ahdb.org.uk/knowledge-library/brown-rust-in-cereals)支持及时巡查、发病且气象有利时防控、抗性品种与控氮；[全国农技中心2026春防方案](https://ny.zibo.gov.cn/art/2026/3/22/art_980_2992638.html)提供分区分期锈病管理方向 | 不把“范围小”当作延后用药依据，不推荐无出处的摘在田病叶或固定正反面喷法；自生麦苗管理与摘病叶不同，综合锈病指标不等于全国叶锈病统一阈值 |
+
 所有第三方数据许可独立于本项目代码的非商业许可。原图、权重和个人凭据不推送公开仓库；来源元数据、下载/审计代码和汇总结果可追溯。公开或商业使用训练产物前仍需核对各来源条款，尤其 MSWDD 的用途许可与 PlantVillage 的署名/相同方式共享说明。

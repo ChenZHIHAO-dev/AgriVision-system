@@ -110,3 +110,33 @@ def test_later_context_fills_unknown_stage_without_overwriting_known_capture_sta
     result = aggregate_images(case)
     assert result["evidence"]["image_results"][0]["stage"] == "抽穗扬花期"
     assert result["evidence"]["image_results"][1]["stage"] == "苗期"
+
+
+def test_followup_carries_each_photo_disease_card_to_provider(tmp_path, monkeypatch):
+    import asyncio
+    import json
+    from pathlib import Path
+    import httpx
+    from app.chat import Chat
+    from app.config import Settings
+    from app.knowledge import Knowledge
+
+    captured = {}
+    async def respond(self, url, **kwargs):
+        captured.update(kwargs["json"])
+        return httpx.Response(200, json={"choices": [{"message": {"content": "两张照片分别有不同的初步线索，按对应资料核对。"}}]},
+                              request=httpx.Request("POST", url))
+    monkeypatch.setattr(httpx.AsyncClient, "post", respond)
+    root = Path(__file__).resolve().parents[2]
+    settings = Settings(root=root, runtime=tmp_path, models=tmp_path, deepseek_key="test-only-key")
+    case = {**record(["wheat_leaf_rust", "wheat_powdery_mildew"]), "location": "", "stage": "不清楚", "note": "", "is_demo": False}
+    answer = asyncio.run(Chat(settings, Knowledge(root)).answer(case, "这是什么问题", []))
+    assert answer["provider"] == "deepseek"
+    context = json.loads(captured["messages"][0]["content"].split("\n", 1)[1])
+    assert context["recognition"]["image_count"] == 2
+    assert context["recognition"]["disease_id"] is None
+    assert context["recognition"]["outcome"] == "different_hypotheses"
+    assert context["knowledge_coverage"]["hypothesis_card_ids"] == ["wheat_leaf_rust", "wheat_powdery_mildew"]
+    assert context["knowledge_coverage"]["uncovered_hypothesis_ids"] == []
+    assert {card["id"] for card in context["knowledge"]} >= {"wheat_leaf_rust", "wheat_powdery_mildew"}
+    assert not answer.get("photo_suggestion")

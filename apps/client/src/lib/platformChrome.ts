@@ -3,6 +3,10 @@ import { computed, type Ref } from 'vue'
 import type { MainPage } from './navigation'
 import { wechatHeaderFrame } from './mobileChrome'
 
+export function desktopPhotoUpload(platform: string) {
+  return !['ios', 'android'].includes(platform.toLowerCase())
+}
+
 export function compactPageHeader(page: MainPage, chat: boolean) {
   return !chat && (page === 'home' || page === 'identify')
 }
@@ -71,7 +75,7 @@ export function usePlatformChrome(
   })
   const desktopCapture = computed(() => {
     // #ifdef H5
-    return !isMobile.value
+    return desktopPhotoUpload(nativeWindow.value.platform)
     // #endif
     return false
   })

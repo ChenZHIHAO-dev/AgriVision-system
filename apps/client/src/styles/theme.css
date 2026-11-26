@@ -574,6 +574,14 @@ body {
   flex: 0 1 auto;
 }
 /* #ifdef H5 */
+html.dialog-viewport-locked,
+html.dialog-viewport-locked body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+.dialog-backdrop {
+  overscroll-behavior: none;
+}
 .dialog-body {
   overflow: auto;
   overscroll-behavior: contain;

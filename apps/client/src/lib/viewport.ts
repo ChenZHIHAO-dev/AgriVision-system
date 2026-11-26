@@ -2,6 +2,7 @@ import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import {
   createKeyboardHeightTracker,
   createBrowserViewportTracker,
+  createDialogViewportTracker,
   type NativeKeyboardEvent,
 } from './mobileChrome'
 
@@ -26,21 +27,27 @@ export function useWorkspaceViewport() {
 
   // #ifdef H5
   const browserFrame = createBrowserViewportTracker()
+  const dialogFrame = createDialogViewportTracker()
   let browserFrameRequest = 0
   function syncBrowserViewport() {
     browserFrameRequest = 0
     const visual = window.visualViewport
     width.value = window.innerWidth
-    const frame = browserFrame(
+    const browser = browserFrame(
       width.value,
       visual?.height ?? window.innerHeight,
       visual?.offsetTop ?? 0,
       !!document.activeElement?.matches('input,textarea'),
       isMobile.value,
     )
+    const modal = !!document.querySelector(
+      '[data-modal-id],[data-choice-layer],.conversation-drawer-backdrop',
+    )
+    const frame = dialogFrame(browser, width.value, modal, isMobile.value)
     keyboardHeight.value = frame.inset
     const style = document.documentElement.style
     style.setProperty('--app-height', frame.height + 'px')
+    style.setProperty('--viewport-top', frame.backgroundTop + 'px')
     style.setProperty('--visual-height', frame.visual + 'px')
     style.setProperty('--keyboard-inset', frame.inset + 'px')
     style.setProperty('--visual-top', frame.top + 'px')
@@ -65,6 +72,8 @@ export function useWorkspaceViewport() {
   onMounted(() => {
     // #ifdef H5
     window.addEventListener('resize', queueBrowserViewport)
+    window.addEventListener('agrivision:modal-change', queueBrowserViewport)
+    window.addEventListener('scroll', queueBrowserViewport)
     window.addEventListener('focusin', queueBrowserViewport)
     window.addEventListener('focusout', queueBrowserViewport)
     window.visualViewport?.addEventListener('resize', queueBrowserViewport)
@@ -83,6 +92,8 @@ export function useWorkspaceViewport() {
     // #ifdef H5
     window.cancelAnimationFrame(browserFrameRequest)
     window.removeEventListener('resize', queueBrowserViewport)
+    window.removeEventListener('agrivision:modal-change', queueBrowserViewport)
+    window.removeEventListener('scroll', queueBrowserViewport)
     window.removeEventListener('focusin', queueBrowserViewport)
     window.removeEventListener('focusout', queueBrowserViewport)
     window.visualViewport?.removeEventListener('resize', queueBrowserViewport)

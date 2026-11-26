@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import AppIcon from './AppIcon.vue'
-import AppearanceSwitch from './AppearanceSwitch.vue'
 import ChatTitle from './ChatTitle.vue'
 
 defineProps<{
@@ -31,7 +30,6 @@ const emit = defineEmits<{ back: []; options: []; login: []; profile: [] }>()
       <text v-else role="heading" aria-level="1" class="web-workspace-title">{{ title }}</text>
     </view>
     <view class="web-header-actions">
-      <AppearanceSwitch />
       <button v-if="!accountName" class="web-header-button" @click="emit('login')">登录</button>
       <button
         v-else

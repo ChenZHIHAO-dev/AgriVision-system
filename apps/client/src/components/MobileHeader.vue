@@ -14,6 +14,7 @@ defineProps<{
   search?: string
 }>()
 const emit = defineEmits<{
+  home: []
   back: []
   history: []
   options: []
@@ -73,9 +74,14 @@ function updateSearch(event: unknown) {
       </view>
       <view v-else class="mobile-center">
         <ChatTitle v-if="chat" :title="title" :expanded="chatOptionsOpen" @open="emit('options')" />
-        <view v-else-if="compact" class="header-brand-mark" role="img" :aria-label="title"
-          ><AppIcon name="leaf" :size="23"
-        /></view>
+        <button
+          v-else-if="compact"
+          class="header-brand-mark"
+          aria-label="宛田观叶，返回首页"
+          @click="emit('home')"
+        >
+          <AppIcon name="leaf" :size="23" />
+        </button>
         <text v-else class="mobile-title" role="heading" aria-level="1">{{ title }}</text>
       </view>
       <view v-if="search === undefined && !compact" class="mobile-trailing" aria-hidden="true" />
@@ -88,8 +94,8 @@ function updateSearch(event: unknown) {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border-radius: 11px;
   background: var(--accent-soft);
 }

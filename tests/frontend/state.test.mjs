@@ -336,15 +336,19 @@ test('declining photos does not answer with another photography tutorial', async
   assert.doesNotMatch(answer.text, /先拍一张|补一张|怎样拍清/)
 })
 
-test('live guests do not load private records or knowledge at startup', async () => {
+test('live guests may load public knowledge but never private records at startup', async () => {
   const app = fresh()
   const calls = []
   const fetch = async (path) => {
     calls.push(path)
     return { items: [{ id: path }] }
   }
-  assert.deepEqual(await app.loadPrivateWorkspace(fetch, 'live', false), { records: [], cards: [] })
-  assert.deepEqual(calls, [])
+  assert.deepEqual(await app.loadPrivateWorkspace(fetch, 'live', false), {
+    records: [],
+    cards: [{ id: '/api/knowledge' }],
+  })
+  assert.deepEqual(calls, ['/api/knowledge'])
+  calls.length = 0
   const signedIn = await app.loadPrivateWorkspace(fetch, 'live', true)
   assert.equal(signedIn.records.length, 1)
   assert.equal(signedIn.cards.length, 1)

@@ -407,6 +407,8 @@ def test_provider_receives_explicit_knowledge_gap_and_no_assumed_region(tmp_path
         "recognized_disease_id": "wheat_glume_blotch",
         "recognized_disease_card_available": False,
         "retrieved_card_ids": [],
+        "hypothesis_card_ids": [],
+        "uncovered_hypothesis_ids": ["wheat_glume_blotch"],
     }
     assert context["location"] == ""
     assert "服务河南南阳及周边" not in system

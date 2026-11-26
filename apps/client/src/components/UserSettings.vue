@@ -1,59 +1,41 @@
 <script setup lang="ts">
 import AppIcon from './AppIcon.vue'
-import { themeChoice, setTheme } from '../lib/theme'
 import { appVersion } from '../lib/appInfo'
 import { dataMode } from '../lib/api'
 const preview = dataMode() === 'preview'
+defineProps<{ showBack?: boolean }>()
 const emit = defineEmits<{ back: [] }>()
-const themes = [
-  { id: 'light' as const, label: '浅色', icon: 'sun' },
-  { id: 'dark' as const, label: '深色', icon: 'moon' },
-  { id: 'system' as const, label: '跟随系统', icon: 'system' },
-]
 </script>
 <template>
   <view class="user-settings">
     <!-- #ifndef MP-WEIXIN -->
-    <button class="settings-back" @click="emit('back')">
+    <button v-if="showBack" class="settings-back" @click="emit('back')">
       <AppIcon name="back" :size="17" /><text>返回我的</text>
     </button>
-    <text class="settings-title">设置</text>
     <!-- #endif -->
     <view class="panel settings-card"
-      ><text class="settings-section-title">外观</text
-      ><text class="settings-description">选择浅色、深色或跟随系统，设置会自动保存。</text
-      ><view class="settings-themes"
-        ><button
-          v-for="theme in themes"
-          :key="theme.id"
-          :class="{ selected: themeChoice === theme.id }"
-          :aria-pressed="themeChoice === theme.id"
-          @click="setTheme(theme.id)"
-        >
-          <AppIcon :name="theme.icon" :size="24" /><text>{{ theme.label }}</text
-          ><AppIcon
-            v-if="themeChoice === theme.id"
-            name="check"
-            :size="15"
-            class="theme-check"
-          /></button></view></view
-    ><view class="panel settings-card"
       ><text class="settings-section-title">记录与隐私</text
       ><view class="privacy-row"
-        ><text>未登录</text><text>登录后可使用在线识别、AI 对话、资料和历史记录。</text></view
+        ><text>测试说明</text
+        ><text
+          >个人开发的内测版本，当前仅管理员账号使用，不开放注册、不收费。登录用于身份核验与防滥用，不主动要求手机号或身份证信息。</text
+        ></view
+      ><view class="privacy-row"
+        ><text>未登录</text
+        ><text>可以阅读参考资料与农业资讯；识别、AI 对话和记录需登录。</text></view
       ><view class="privacy-row"
         ><text>登录后</text
         ><text>{{
           preview
             ? '演示记录仅保留在当前页面内存，刷新或退出后清除。'
-            : '后续记录按账户保存。点「继续对话」可接续本次照片。'
+            : '服务端保存照片、对话和登录会话。你可以在历史记录中删除记录。'
         }}</text></view
       ><view class="privacy-row"
         ><text>图片与对话</text
         ><text>{{
           preview
             ? '离线预览只使用本地数据。'
-            : '照片由识别服务处理。使用 AI 问答时，相关对话、种植信息、识别摘要与农业资料摘录会交给 DeepSeek。照片和文件原件不转发。'
+            : '照片由识别服务处理。使用 AI 问答时，必要的问题、历史对话、种植信息、识别摘要及所选文档和农业资料摘录会交给 DeepSeek。图片和文件原件不发送给 DeepSeek。'
         }}</text></view
       ></view
     ><view class="panel settings-card about-card"
@@ -76,12 +58,6 @@ const themes = [
   min-height: 36px;
   text-align: left;
 }
-.settings-title {
-  display: block;
-  font-size: 28px;
-  font-weight: 650;
-  margin: 5px 0 23px;
-}
 .settings-card {
   padding: 24px;
   margin-bottom: 17px;
@@ -97,38 +73,6 @@ const themes = [
   color: var(--muted);
   font-size: 12px;
   line-height: 1.9;
-}
-.settings-themes {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 11px;
-  margin-top: 20px;
-}
-.settings-themes > button {
-  position: relative;
-  border: 1px solid var(--line);
-  border-radius: 13px;
-  padding: 17px 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 9px;
-  color: var(--muted);
-  font-size: 12px;
-}
-.settings-themes > button > text:first-child {
-  font-size: 25px;
-}
-.settings-themes > button.selected {
-  color: var(--accent);
-  border-color: var(--focus);
-  background: var(--accent-soft);
-}
-.theme-check {
-  position: absolute;
-  right: 10px;
-  top: 8px;
-  font-size: 12px;
 }
 .privacy-row {
   display: flex;
@@ -159,12 +103,6 @@ const themes = [
   .settings-card {
     padding: 21px;
   }
-  .settings-title {
-    font-size: 25px;
-  }
-  .settings-themes {
-    gap: 7px;
-  }
   .privacy-row {
     gap: 12px;
   }
@@ -179,13 +117,6 @@ const themes = [
   padding: 7px 10px;
   border-radius: 10px;
   background: var(--subtle);
-}
-.settings-themes > button {
-  border-color: transparent;
-  background: var(--subtle);
-}
-.settings-themes > button.selected {
-  border-color: transparent;
 }
 /* #ifdef MP-WEIXIN */
 .settings-back {

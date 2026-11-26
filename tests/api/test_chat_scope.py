@@ -197,6 +197,7 @@ def test_explicit_multi_crop_question_does_not_match_case_specific_products(text
 
 @pytest.mark.parametrize("text", [
     "遇到这个症状有什么建议",
+    "这是什么问题", "这是什么情况？", "这是啥毛病", "这个是怎么回事？", "这个严重吗？",
     "我已经给照片发给你了，就是上面那个照片遇到这个症状有什么建议",
     "这是什么病 这怎么处理",
     "后续有什么解决方案？",

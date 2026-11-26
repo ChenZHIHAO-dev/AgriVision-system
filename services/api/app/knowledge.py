@@ -95,6 +95,17 @@ class Knowledge:
     def get(self, card_id):
         return next((c for c in self.cards if c["id"] == card_id), None)
 
+    def recognition_cards(self, case):
+        """逐个匹配已识别线索的资料；不同照片的病名不能合并或靠关键词丢掉。
+
+        只取服务端已处理的 hypotheses，不把低分 top-k 全部当成病害。
+        没有资料的病名由调用方明确报告缺口，不借其他病害资料填充。
+        """
+        ids = [item["disease_id"] for item in case.get("evidence", {}).get("hypotheses", [])]
+        if case.get("disease_id"):
+            ids.insert(0, case["disease_id"])
+        return [card for identifier in dict.fromkeys(ids) if (card := self.get(identifier))]
+
     def matching_products(self, crop, disease_id, stage=""):
         # Only reviewed, unexpired label records can become user-facing products.
         if not disease_id:
