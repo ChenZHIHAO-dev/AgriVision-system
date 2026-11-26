@@ -26,7 +26,7 @@ const emit = defineEmits<{
             ? '离线演示账号：记录只在当前页面保留，不连接真实账户或云端。'
             : user
               ? '新的识别和对话会保存到此账户。'
-              : '未登录可拍照查看识别结果。询问 AI 和查看历史记录需登录。'
+              : '登录后使用在线识别、AI 对话、资料和历史记录。'
         }}</text>
       </view>
       <view v-if="!user" class="profile-actions">
@@ -77,7 +77,7 @@ const emit = defineEmits<{
       <AppIcon name="logout" :size="19" /><text>退出登录</text>
     </button>
     <!-- #ifndef MP-WEIXIN -->
-    <text class="profile-footnote">退出后仍可拍照识别，询问 AI 需登录。</text>
+    <text class="profile-footnote">退出后，使用在线功能时需重新登录。</text>
     <!-- #endif -->
   </view>
 </template>

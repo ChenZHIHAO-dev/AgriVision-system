@@ -9,6 +9,7 @@ type DashboardSection = 'recent' | 'resources' | 'news'
 const props = defineProps<{
   records: CaseRecord[]
   loggedIn: boolean
+  requiresLogin?: boolean
   cards: KnowledgeCard[]
   section: DashboardSection
   mobile?: boolean
@@ -323,7 +324,7 @@ watch(arranging, measureSection)
             }}</text>
             <text class="dashboard-empty-description">{{
               !loggedIn
-                ? '访客可拍照识别。AI 对话和记录需登录。'
+                ? '登录后使用在线识别、AI 对话和记录。'
                 : hasHistory
                   ? '试试作物名、标题或备注里的其他词。'
                   : '拍照识别或新建对话后，可在这里继续查看。'
@@ -332,8 +333,15 @@ watch(arranging, measureSection)
           <button v-if="!loggedIn" class="button secondary" @click="emit('login')">登录</button>
         </view>
       </view>
+      <view v-if="section !== 'recent' && requiresLogin" class="dashboard-empty">
+        <view class="dashboard-empty-copy">
+          <text class="dashboard-empty-title">登录后查看资料</text>
+          <text class="dashboard-empty-description">在线资料与识别使用同一个账户。</text>
+        </view>
+        <button class="button secondary" @click="emit('login')">登录</button>
+      </view>
       <KnowledgeLibrary
-        v-show="section !== 'recent'"
+        v-show="section !== 'recent' && !requiresLogin"
         embedded
         :reading="mobile"
         :section="section === 'news' ? 'news' : 'library'"

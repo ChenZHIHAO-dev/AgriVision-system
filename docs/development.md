@@ -60,10 +60,10 @@ App 内测可用 [HBuilderX 真机运行](https://uniapp.dcloud.net.cn/tutorial/
 | `npm run test:frontend` | 对话输入、键盘、深浅色、底栏、资料、历史和微信构建规则 |
 | `npm run typecheck` | Vue 和 TypeScript 校验 |
 | `.\.venv\Scripts\python.exe -m pytest -q` | 使用临时库检查账号隔离、识别、问答、资料和数据预处理 |
-| `.\.venv\Scripts\python.exe scripts/verify_local_pipeline.py` | 对已启动的本机 API 做游客识别、补图和登录门槛验证，测试后删除本次记录 |
+| `.\.venv\Scripts\python.exe scripts/verify_local_pipeline.py` | 默认检查健康信息、匿名业务拒绝和注册关闭；加 --username admin 检查实际识别、补图、选填资料与退出，并删除本次记录 |
 | `.\.venv\Scripts\python.exe scripts/smoke_ml.py` | 通过小规模合成数据检查 CPU 训练、评测、加载和识别接口 |
 
-真实服务检查可加 `--username admin` 测试登录承接。`--exercise-provider` 与 `--web` 会请求外部问答服务并消耗用量，日常回归用默认命令。 [真机和集成验收](validation.md)
+真实服务检查可加 `--username admin` 在终端隐藏输入密码，检查已登录流程。`--exercise-provider` 与 `--web` 会请求外部问答服务并消耗用量，日常回归用默认命令。 [真机和集成验收](validation.md)
 
 提交前运行 npm run test:frontend。其中的公开配置检查会扫描 Git 管理的文件，阻止具体格式的微信 AppID、常见提供商密钥、私钥和本机环境文件进入公开版本。真实设置保存在 .env、.env.wechat.local 或 secrets，示例配置只保留空字段和测试占位内容。
 

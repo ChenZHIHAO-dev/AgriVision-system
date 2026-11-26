@@ -25,6 +25,7 @@ from .knowledge import CROP_NAMES, Knowledge, crop_scope_conflicts, query_crop_s
 from .models import ModelRegistry
 from .recognition import recognition_state
 from .repository import CaseRepository
+from .security import RequestBodyLimit, RequestLimits, business_category
 from .schemas import (
     CaseUpdate,
     ConsultationRequest,
@@ -59,16 +60,12 @@ def create_app(settings=None):
     registry = ModelRegistry(settings, knowledge)
     crop_recognizer = CropRecognizer(settings)
     chat = Chat(settings, knowledge)
+    limits = RequestLimits()
     case_locks = {}
     lock_guard = Lock()
 
-    app = FastAPI(title="AgriVision API", version="1.4.0-beta.1")
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=list(settings.cors),
-        allow_methods=["GET", "POST", "PATCH", "DELETE"],
-        allow_headers=["Content-Type", "X-Client-ID", "Authorization"],
-    )
+    app = FastAPI(title="AgriVision API", version="1.5.0-beta.1")
+    app.add_middleware(RequestBodyLimit, max_upload=settings.max_upload)
     app.state.registry = registry
     app.state.crop_recognizer = crop_recognizer
     app.state.store = store
@@ -77,32 +74,74 @@ def create_app(settings=None):
 
     @app.middleware("http")
     async def account_scope(request: Request, call_next):
+        path, method = request.url.path, request.method
+        if not path.startswith("/api/") or method == "OPTIONS":
+            return await call_next(request)
+        async def business_response():
+            response = await call_next(request)
+            response.headers["Cache-Control"] = "private, no-store"
+            return response
+
+        public = (method, path) in {
+            ("GET", "/api/health"), ("GET", "/api/meta"),
+            ("POST", "/api/auth/login"), ("POST", "/api/auth/register"),
+        }
         bearer = request.headers.get("authorization", "")
         token = bearer[7:] if bearer.startswith("Bearer ") else ""
         viewer = auth.verify(token) if token else None
-        if token and viewer is None:
-            return JSONResponse(
-                status_code=401, content={"detail": "登录已过期，请重新登录"}
+        image_match = re.fullmatch(r"/api/cases/([^/]+)/images/([^/]+)", path)
+        image_owner = None
+        if method == "GET" and image_match:
+            image_owner = auth.image_owner(
+                request.query_params.get("access_token", ""), *image_match.groups()
             )
-        raw = request.headers.get("x-client-id", "")
-        scope = "u_" + viewer["id"] if viewer else auth.guest_owner(raw)
+        # 登录和启动元信息允许失效的旧 token；全部业务入口默认拒绝匿名访问。
+        if not public and viewer is None and image_owner is None:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "登录已过期，请重新登录" if token else "请先登录后使用服务"},
+                headers={"WWW-Authenticate": "Bearer", "Cache-Control": "private, no-store"},
+            )
+        scope = "u_" + viewer["id"] if viewer else image_owner or ""
         request.state.viewer = viewer
         request.state.owner = scope
         request.state.token = token
-        headers = [
-            (key, value)
-            for key, value in request.scope["headers"]
-            if key != b"x-client-id"
-        ]
+        headers = [(key, value) for key, value in request.scope["headers"] if key != b"x-client-id"]
         if scope:
             headers.append((b"x-client-id", scope.encode()))
         request.scope["headers"] = headers
-        return await call_next(request)
+        try:
+            if method == "POST" and path == "/api/auth/login":
+                # 只信任 ASGI 服务器给出的地址，不接受客户端伪造 X-Forwarded-For。
+                address = request.client.host if request.client else "unknown"
+                key = ("login", address)
+                with limits.slot("login", 2):
+                    ticket = limits.reserve(key, settings.login_attempts, settings.login_window_seconds)
+                    response = await business_response()
+                    if response.status_code < 400:
+                        limits.discard(key, ticket)
+                    return response
+            category = business_category(method, path)
+            if category:
+                maximum = settings.chat_concurrency if category == "chat" else settings.recognition_concurrency
+                with limits.slot(category, maximum):
+                    if category == "chat":
+                        limits.reserve(("chat-hour", scope), settings.chat_per_hour, 3600)
+                        limits.reserve(("chat-day", scope), settings.chat_per_day, 86400)
+                    else:
+                        limits.reserve(("recognition", scope), settings.recognition_per_minute, 60)
+                    return await business_response()
+            return await business_response()
+        except HTTPException as exc:
+            return JSONResponse(
+                status_code=exc.status_code, content={"detail": exc.detail},
+                headers={**(exc.headers or {}), "Cache-Control": "private, no-store"},
+            )
 
     def require_account(request: Request):
         if not request.state.viewer:
             raise HTTPException(
-                401, "请先登录后向 AI 提问", headers={"WWW-Authenticate": "Bearer"}
+                401, "请先登录后使用服务", headers={"WWW-Authenticate": "Bearer"}
             )
 
     def finish_sign_in(request, result, continue_case_id):
@@ -167,7 +206,8 @@ def create_app(settings=None):
             "deepseek_configured": bool(settings.get_deepseek_key()),
             "account_provider": ACCOUNT_PROVIDER,
             "record_storage": "server",
-            "guest_storage": "volatile-memory",
+            "business_access": "authenticated",
+            "session_storage": "process-memory",
             "web_search_models": ["deepseek-flash"],
         }
 
@@ -175,12 +215,14 @@ def create_app(settings=None):
     def mutation(case_id):
         with lock_guard:
             lock = case_locks.setdefault(case_id, Lock())
-        if not lock.acquire(blocking=False):
-            raise HTTPException(409, "这条记录正在处理，请稍后重试")
+            if not lock.acquire(blocking=False):
+                raise HTTPException(409, "这条记录正在处理，请稍后重试")
         try:
             yield
         finally:
-            lock.release()
+            with lock_guard:
+                lock.release()
+                case_locks.pop(case_id, None)
 
     def owner(value):
         if not value or not re.fullmatch(r"[A-Za-z0-9_-]{8,80}", value):
@@ -194,8 +236,11 @@ def create_app(settings=None):
         case.update(aggregate_images(case))
         return case
 
-    def serialize(case):
-        return serialize_case(case, store=store, auth=auth, knowledge=knowledge)
+    def serialize(case, request):
+        return serialize_case(
+            case, store=store, auth=auth, knowledge=knowledge,
+            session_token=request.state.token,
+        )
 
     def base_case(crop, location="", stage="不清楚", note=""):
         timestamp = now()
@@ -228,7 +273,7 @@ def create_app(settings=None):
         if len(content) > settings.max_upload:
             raise HTTPException(413, "图片不能超过 8MB，请压缩后重试")
         try:
-            return prepare_image(content)
+            return await run_in_threadpool(prepare_image, content)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
 
@@ -273,12 +318,14 @@ def create_app(settings=None):
 
     @app.get("/api/health")
     def health():
-        return {"application": "agrivision", "status": "ok", "version": app.version}
+        return {"application": "agrivision", "status": "ok", "version": app.version,
+                "build_commit": settings.build_commit}
 
     @app.get("/api/meta")
     def meta():
         return {
             "version": app.version,
+            "build_commit": settings.build_commit,
             "models": registry.status(),
             "deepseek_configured": bool(settings.get_deepseek_key()),
             "knowledge_count": len(knowledge.cards),
@@ -304,10 +351,10 @@ def create_app(settings=None):
         return card
 
     @app.get("/api/cases")
-    def cases(x_client_id: str = Header(default="")):
+    def cases(request: Request, x_client_id: str = Header(default="")):
         return {
             "items": [
-                serialize(case)
+                serialize(case, request)
                 for case in store.list(owner(x_client_id))
                 if case.get("images")
                 or case.get("is_demo")
@@ -316,7 +363,7 @@ def create_app(settings=None):
         }
 
     @app.post("/api/cases/demo", status_code=201)
-    def demo(body: DemoRequest, x_client_id: str = Header(default="")):
+    def demo(request: Request, body: DemoRequest, x_client_id: str = Header(default="")):
         client = owner(x_client_id)
         disease = {
             "wheat": "wheat_stripe_rust",
@@ -338,7 +385,7 @@ def create_app(settings=None):
             }
         )
         store.save(client, case)
-        return serialize(case)
+        return serialize(case, request)
 
     @app.post("/api/crop-recognition", response_model=CropRecognitionResponse)
     async def identify_crop(file: UploadFile = File(...)):
@@ -348,7 +395,7 @@ def create_app(settings=None):
         return await run_in_threadpool(crop_recognizer.predict, BytesIO(normalized))
 
     @app.post("/api/cases", status_code=201)
-    async def create_case(
+    async def create_case(request: Request,
         file: UploadFile = File(...),
         crop: Crop = Form(...),
         location: str = Form(default="", max_length=120),
@@ -360,12 +407,12 @@ def create_app(settings=None):
         case = await apply_upload(base_case(crop, location, stage, note), file, client)
         store.save(client, case)
         seed_photo_transcript(case, store=store, knowledge=knowledge)
-        return serialize(case)
+        return serialize(case, request)
 
     @app.post(
         "/api/consultations", status_code=201, dependencies=[Depends(require_account)]
     )
-    def consultation(body: ConsultationRequest, x_client_id: str = Header(default="")):
+    def consultation(request: Request, body: ConsultationRequest, x_client_id: str = Header(default="")):
         client = owner(x_client_id)
         case = base_case(body.crop, body.location, body.stage)
         case.update(
@@ -376,14 +423,14 @@ def create_app(settings=None):
             }
         )
         store.save(client, case)
-        return serialize(case)
+        return serialize(case, request)
 
     @app.get("/api/cases/{case_id}")
-    def case_detail(case_id: str, x_client_id: str = Header(default="")):
-        return serialize(get_case(x_client_id, case_id))
+    def case_detail(request: Request, case_id: str, x_client_id: str = Header(default="")):
+        return serialize(get_case(x_client_id, case_id), request)
 
     @app.post("/api/cases/{case_id}/context")
-    def update_case(
+    def update_case(request: Request,
         case_id: str, body: CaseUpdate, x_client_id: str = Header(default="")
     ):
         with mutation(case_id):
@@ -400,10 +447,10 @@ def create_app(settings=None):
             apply_context_choices(case, fields)
             case["updated_at"] = now()
             store.save(x_client_id, case)
-            return serialize(case)
+            return serialize(case, request)
 
     @app.post("/api/cases/{case_id}/images")
-    async def supplement(
+    async def supplement(request: Request,
         case_id: str,
         file: UploadFile = File(...),
         crop: Crop | None = Form(default=None),
@@ -437,10 +484,10 @@ def create_app(settings=None):
                 raise HTTPException(422, "请先选择照片中的作物")
             case = await apply_upload(case, file, owner(x_client_id))
             store.save(x_client_id, case)
-            return serialize(case)
+            return serialize(case, request)
 
     @app.delete("/api/cases/{case_id}/images/{image_id}")
-    def remove_unsent_image(
+    def remove_unsent_image(request: Request,
         case_id: str, image_id: str, x_client_id: str = Header(default="")
     ):
         with mutation(case_id):
@@ -486,10 +533,10 @@ def create_app(settings=None):
                 case.pop("evidence", None)
             case["updated_at"] = now()
             store.save(x_client_id, case)
-            return serialize(case)
+            return serialize(case, request)
 
     @app.post("/api/cases/{case_id}/retry")
-    async def retry_recognition(case_id: str, x_client_id: str = Header(default="")):
+    async def retry_recognition(request: Request, case_id: str, x_client_id: str = Header(default="")):
         with mutation(case_id):
             case = get_case(x_client_id, case_id)
             if case["is_demo"] or not case["images"]:
@@ -520,14 +567,14 @@ def create_app(settings=None):
             case.update(aggregate_images(case))
             case["updated_at"] = now()
             store.save(x_client_id, case)
-            return serialize(case)
+            return serialize(case, request)
 
     @app.post(
         "/api/cases/{case_id}/attachments",
         status_code=201,
         dependencies=[Depends(require_account)],
     )
-    async def document(
+    async def document(request: Request,
         case_id: str,
         file: UploadFile = File(...),
         filename: str | None = Form(default=None, max_length=160),
@@ -537,11 +584,15 @@ def create_app(settings=None):
             case = get_case(x_client_id, case_id)
             if len(case.get("documents", [])) >= 6:
                 raise HTTPException(422, "每条对话最多添加 6 份资料")
-            content = await file.read(settings.max_upload + 1)
-            await file.close()
             try:
-                item = extract_document(
-                    filename or file.filename or "document", content
+                content = await file.read(settings.max_upload + 1)
+            finally:
+                await file.close()
+            if len(content) > settings.max_upload:
+                raise HTTPException(413, "资料文件过大，请拆分后上传")
+            try:
+                item = await run_in_threadpool(
+                    extract_document, filename or file.filename or "document", content
                 )
             except ValueError as exc:
                 raise HTTPException(422, str(exc)) from exc
@@ -549,7 +600,7 @@ def create_app(settings=None):
             case.setdefault("documents", []).append(item)
             case["updated_at"] = now()
             store.save(x_client_id, case)
-            return serialize(case)
+            return serialize(case, request)
 
     @app.delete(
         "/api/cases/{case_id}/attachments/{attachment_id}",
@@ -575,8 +626,8 @@ def create_app(settings=None):
             store.save(x_client_id, case)
 
     @app.get("/api/cases/{case_id}/images/{image_id}")
-    def image(case_id: str, image_id: str, access_token: str = ""):
-        image_owner = auth.image_owner(access_token, case_id, image_id)
+    def image(request: Request, case_id: str, image_id: str, access_token: str = ""):
+        image_owner = request.state.owner
         if not image_owner:
             raise HTTPException(404, "图片链接已失效，请刷新记录")
         case = get_case(image_owner, case_id)
@@ -755,6 +806,13 @@ def create_app(settings=None):
             if folder.is_dir() and not any(folder.iterdir()):
                 folder.rmdir()
             return
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(settings.cors),
+        allow_methods=["GET", "POST", "PATCH", "DELETE"],
+        allow_headers=["Content-Type", "X-Client-ID", "Authorization"],
+    )
 
     web = settings.root / "apps/client/dist/build/h5"
     if settings.serve_web and web.is_dir():

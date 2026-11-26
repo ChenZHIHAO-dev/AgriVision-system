@@ -10,7 +10,7 @@ const bundle = (mode) =>
   build({
     stdin: {
       contents:
-        "export * from './apps/client/src/lib/auth.ts'; export * from './apps/client/src/lib/preview.ts'; export * from './apps/client/src/lib/assets.ts'; export * from './apps/client/src/lib/theme.ts'; export * from './apps/client/src/lib/conversationTitle.ts'",
+        "export * from './apps/client/src/lib/auth.ts'; export * from './apps/client/src/lib/transport.ts'; export * from './apps/client/src/lib/workspaceAccess.ts'; export * from './apps/client/src/lib/preview.ts'; export * from './apps/client/src/lib/assets.ts'; export * from './apps/client/src/lib/theme.ts'; export * from './apps/client/src/lib/conversationTitle.ts'",
       resolveDir: root,
       loader: 'ts',
     },
@@ -325,7 +325,6 @@ test('optional fields can be skipped or filled without creating messages or bloc
   assert.equal(updated.pending_question, undefined)
 })
 
-
 test('declining photos does not answer with another photography tutorial', async () => {
   const app = await demoMember()
   const record = await app.previewRequest('/api/consultations', 'POST', {})
@@ -335,4 +334,40 @@ test('declining photos does not answer with another photography tutorial', async
   const answer = updated.messages.at(-1)
   assert.equal(answer.photo_suggestion, undefined)
   assert.doesNotMatch(answer.text, /先拍一张|补一张|怎样拍清/)
+})
+
+test('live guests do not load private records or knowledge at startup', async () => {
+  const app = fresh()
+  const calls = []
+  const fetch = async (path) => {
+    calls.push(path)
+    return { items: [{ id: path }] }
+  }
+  assert.deepEqual(await app.loadPrivateWorkspace(fetch, 'live', false), { records: [], cards: [] })
+  assert.deepEqual(calls, [])
+  const signedIn = await app.loadPrivateWorkspace(fetch, 'live', true)
+  assert.equal(signedIn.records.length, 1)
+  assert.equal(signedIn.cards.length, 1)
+  assert.deepEqual(calls, ['/api/cases', '/api/knowledge'])
+  calls.length = 0
+  await app.loadPrivateWorkspace(fetch, 'preview', false)
+  assert.equal(calls.length, 2)
+})
+
+test('business 401 retains its HTTP status for the login return flow', async () => {
+  const app = fresh()
+  await assert.rejects(
+    app.serverRequest('/api/knowledge', 'GET'),
+    (error) => error instanceof app.ApiError && error.status === 401,
+  )
+})
+
+test('expired credentials clear locally without automatically repeating a paid question', async () => {
+  const app = fresh()
+  await app.auth.login('admin', 'admin123', true)
+  const previous = app.requests.length
+  app.auth.expire()
+  assert.equal(app.user.value, null)
+  assert.equal(app.accessToken(), '')
+  assert.equal(app.requests.length, previous)
 })

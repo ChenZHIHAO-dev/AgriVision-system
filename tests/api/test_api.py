@@ -36,7 +36,8 @@ def picture():
     return data.getvalue()
 
 
-def test_upload_persists_real_image_without_fabricating_prediction(client):
+def test_upload_persists_real_image_without_fabricating_prediction(client, account_headers):
+    OWNER = account_headers(client)
     result = client.post("/api/cases", headers=OWNER, data={"crop": "wheat"}, files={"file": ("leaf.jpg", picture(), "image/jpeg")})
     assert result.status_code == 201
     case = result.json()
@@ -46,8 +47,8 @@ def test_upload_persists_real_image_without_fabricating_prediction(client):
     assert loaded["images"][0]["quality"]["width"] == 500
     image = client.get(case['images'][0]['url'])
     assert image.status_code == 200 and image.headers["content-type"] == "image/jpeg"
-    assert client.get("/api/cases/" + case["id"], headers=OTHER).status_code == 404
-    assert client.get(f'/api/cases/{case["id"]}/images/{case["images"][0]["id"]}', params={"client_id": OTHER["X-Client-ID"]}).status_code == 404
+    assert client.get("/api/cases/" + case["id"], headers=OTHER).status_code == 401
+    assert client.get(f'/api/cases/{case["id"]}/images/{case["images"][0]["id"]}', params={"client_id": OTHER["X-Client-ID"]}).status_code == 401
 
 
 def test_demo_chat_context_and_deletion_are_bound_to_owner(client, account_headers):
@@ -60,7 +61,7 @@ def test_demo_chat_context_and_deletion_are_bound_to_owner(client, account_heade
     assert "演示" in response.json()["text"]
     loaded = client.get(f'/api/cases/{case["id"]}', headers=owner).json()
     assert len(loaded["messages"]) == 2
-    assert client.get("/api/cases", headers=OTHER).json()["items"] == []
+    assert client.get("/api/cases", headers=OTHER).status_code == 401
     updated = client.post(f'/api/cases/{case["id"]}/context', headers=owner, json={"stage": "拔节期", "note": "田边零星发生"})
     assert updated.json()["stage"] == "拔节期"
     assert client.post(f'/api/cases/{case["id"]}/messages', headers=OTHER, json={"text": "问诊"}).status_code == 401
@@ -73,7 +74,7 @@ def test_conversation_rename_is_saved_for_owner_without_changing_diagnosis(clien
     record = client.post("/api/cases/demo", headers=headers, json={"crop": "maize"}).json()
     path = "/api/cases/" + record["id"]
     rename = {"conversation_title": "  秋季玉米叶片观察  "}
-    assert client.post(path + "/context", headers=OTHER, json=rename).status_code == 404
+    assert client.post(path + "/context", headers=OTHER, json=rename).status_code == 401
     assert client.post(
         path + "/context", headers=headers, json={"conversation_title": "   "}
     ).status_code == 422
@@ -84,14 +85,16 @@ def test_conversation_rename_is_saved_for_owner_without_changing_diagnosis(clien
     assert client.get("/api/cases", headers=headers).json()["items"][0]["conversation_title"] == updated["conversation_title"]
 
 
-def test_invalid_images_and_crop_fail_before_case_creation(client):
+def test_invalid_images_and_crop_fail_before_case_creation(client, account_headers):
+    OWNER = account_headers(client)
     assert client.post("/api/cases", headers=OWNER, data={"crop": "wheat"}, files={"file": ("bad.jpg", b"not an image", "image/jpeg")}).status_code == 422
     assert client.post("/api/cases", headers=OWNER, data={"crop": "rice"}, files={"file": ("leaf.jpg", picture(), "image/jpeg")}).status_code == 422
     assert client.post("/api/cases", headers=OWNER, data={"crop": "wheat"}, files={"file": ("huge.jpg", b"x" * (8 * 1024 * 1024 + 1), "image/jpeg")}).status_code == 413
     assert client.get("/api/cases", headers=OWNER).json()["items"] == []
 
 
-def test_poor_quality_is_not_sent_to_classifier(client):
+def test_poor_quality_is_not_sent_to_classifier(client, account_headers):
+    OWNER = account_headers(client)
     buffer = BytesIO()
     Image.new("RGB", (100, 100), "white").save(buffer, "PNG")
     response = client.post("/api/cases", headers=OWNER, data={"crop": "wheat"}, files={"file": ("small.png", buffer.getvalue(), "image/png")})
@@ -100,13 +103,14 @@ def test_poor_quality_is_not_sent_to_classifier(client):
     assert response.json()["images"][0]["quality"]["issues"]
 
 
-def test_supplement_preserves_original_image_and_prediction_versions(client):
+def test_supplement_preserves_original_image_and_prediction_versions(client, account_headers):
+    OWNER = account_headers(client)
     case = client.post("/api/cases", headers=OWNER, data={"crop": "peanut"}, files={"file": ("one.jpg", picture(), "image/jpeg")}).json()
     response = client.post(f'/api/cases/{case["id"]}/images', headers=OWNER, files={"file": ("two.jpg", picture(), "image/jpeg")})
     assert len(response.json()["images"]) == 2
     assert len(response.json()["versions"]) == 2
     image_path = client.app.state.store.path.parent / "images" / case["id"]
-    assert not image_path.exists()
+    assert image_path.is_dir()
     assert all(client.get(image['url']).status_code==200 for image in response.json()['images'])
     client.delete(f'/api/cases/{case["id"]}', headers=OWNER)
     assert not image_path.exists()
@@ -160,12 +164,13 @@ def test_deletion_cannot_race_an_inflight_chat(client, monkeypatch, account_head
     assert client.delete(path,headers=owner).status_code==204
 
 
-def test_crop_scoped_retrieval_and_missing_model_metadata(client):
-    results = client.get("/api/knowledge", params={"q": "锈病", "crop": "wheat"}).json()["items"]
+def test_crop_scoped_retrieval_and_missing_model_metadata(client, account_headers):
+    headers = account_headers(client)
+    results = client.get("/api/knowledge", headers=headers, params={"q": "锈病", "crop": "wheat"}).json()["items"]
     assert results and all(row["crop"] in {"wheat", "general"} for row in results)
-    assert client.get("/api/knowledge/nonexistent").status_code == 404
+    assert client.get("/api/knowledge/nonexistent", headers=headers).status_code == 404
     assert not any(m["ready"] for m in client.get("/api/meta").json()["models"])
-    assert client.get("/api/cases").status_code == 400
+    assert client.get("/api/cases").status_code == 401
 
 
 @pytest.mark.anyio

@@ -30,47 +30,6 @@ def picture():
     return stream.getvalue()
 
 
-def test_guest_can_recognize_but_cannot_call_consultation_provider(tmp_path, monkeypatch):
-    app = app_at(tmp_path)
-    headers = {"X-Client-ID": "temporary-guest-session"}
-
-    async def unexpected_provider(*args, **kwargs):
-        pytest.fail("An unsigned request reached the consultation provider")
-
-    monkeypatch.setattr(app.state.chat, "answer", unexpected_provider)
-    with TestClient(app) as client:
-        record = client.post(
-            "/api/cases",
-            headers=headers,
-            data={"crop": "wheat"},
-            files={"file": ("test.jpg", picture(), "image/jpeg")},
-        ).json()
-        path = "/api/cases/" + record["id"]
-        assert record["persistence"] == "temporary"
-        assert client.get(record["images"][0]["url"]).status_code == 200
-        for route, body in (
-            ("/api/consultations", {"crop": "wheat"}),
-            (path + "/messages", {"text": "叶片需要观察什么？"}),
-            (path + "/resume", {"question_id": "pending-test-question"}),
-        ):
-            response = client.post(route, headers=headers, json=body)
-            assert response.status_code == 401
-        upload = client.post(
-            path + "/attachments", headers=headers, files={"file": ("notes.txt", b"test")}
-        )
-        assert upload.status_code == 401
-        assert client.delete(path + "/attachments/old", headers=headers).status_code == 401
-        assert len(client.get(path, headers=headers).json()["messages"]) == 2
-        assert client.get("/api/cases", headers=headers).json()["items"] == []
-        with app.state.store.persistent.connection() as db:
-            assert db.execute("SELECT count(*) FROM cases").fetchone()[0] == 0
-            assert db.execute("SELECT count(*) FROM messages").fetchone()[0] == 0
-        assert not (tmp_path / "runtime/images").exists()
-        assert client.post(
-            "/api/guest/end", json={"client_id": headers["X-Client-ID"]}
-        ).status_code == 204
-        assert client.get(path, headers=headers).status_code == 404
-        assert client.get(record["images"][0]["url"]).status_code == 404
 
 
 def test_account_records_follow_server_identity_across_clients_and_survive_restart(
@@ -100,7 +59,7 @@ def test_account_records_follow_server_identity_across_clients_and_survive_resta
             client.get(
                 "/api/cases/" + record["id"], headers={"X-Client-ID": "u_dev-admin"}
             ).status_code
-            == 404
+            == 401
         )
         client.post("/api/auth/logout", headers=authorization)
         assert client.get("/api/cases", headers=authorization).status_code == 401
@@ -110,7 +69,7 @@ def test_account_records_follow_server_identity_across_clients_and_survive_resta
 
 
 @pytest.mark.parametrize("admin_hash_value", ["", "plain-fake-password", "invalid:hash"])
-def test_unconfigured_admin_login_fails_without_blocking_guest_api(tmp_path, admin_hash_value):
+def test_unconfigured_admin_login_fails_without_blocking_bootstrap(tmp_path, admin_hash_value):
     with TestClient(app_at(tmp_path, admin_hash_value)) as client:
         assert client.get("/api/health").status_code == 200
         response = client.post(
@@ -120,24 +79,12 @@ def test_unconfigured_admin_login_fails_without_blocking_guest_api(tmp_path, adm
         assert "access_token" not in response.json()
 
 
-def test_only_admin_can_login_and_registration_keeps_guest_record(tmp_path, admin_hash, account_headers):
-    app = app_at(tmp_path, admin_hash)
-    guest = {"X-Client-ID": "register-guest-session"}
-    with TestClient(app) as client:
-        record = client.post(
-            "/api/cases",
-            headers=guest,
-            data={"crop": "wheat"},
-            files={"file": ("leaf.jpg", picture(), "image/jpeg")},
-        ).json()
-        response = client.post(
-            "/api/auth/register", headers=guest, json={"continue_case_id": record["id"]}
-        )
-        assert response.status_code == 403
+def test_only_admin_can_login_and_registration_is_disabled(tmp_path, admin_hash, account_headers):
+    with TestClient(app_at(tmp_path, admin_hash)) as client:
+        assert client.post("/api/auth/register", json={}).status_code == 403
         assert client.post(
             "/api/auth/login", json={"username": "grower", "password": "test-account"}
         ).status_code == 401
-        assert client.get("/api/cases/" + record["id"], headers=guest).status_code == 200
         me = client.get("/api/auth/me", headers=account_headers(client)).json()
         assert me["user"]["id"] == "dev-admin" and me["user"]["role"] == "admin"
         assert me["account_provider"] == "configured-admin"
@@ -165,10 +112,10 @@ def test_active_guest_images_share_context_expiry_and_eviction_never_writes_mess
         assert db.execute("SELECT count(*) FROM messages").fetchone()[0] == 0
 
 
-def test_retry_reuses_temporary_image_and_never_calls_chat(tmp_path, monkeypatch):
-    app = app_at(tmp_path)
-    headers = {"X-Client-ID": "retry-guest-session"}
+def test_retry_reuses_account_image_and_never_calls_chat(tmp_path, monkeypatch, admin_hash, account_headers):
+    app = app_at(tmp_path, admin_hash)
     with TestClient(app) as client:
+        headers = account_headers(client)
         record = client.post(
             "/api/cases",
             headers=headers,
@@ -178,7 +125,7 @@ def test_retry_reuses_temporary_image_and_never_calls_chat(tmp_path, monkeypatch
         seen = []
 
         def predict(crop, source):
-            seen.append((crop, source.read(3)))
+            seen.append((crop, source.read_bytes()[:3]))
             return {
                 "status": "identified",
                 "title": "疑似小麦白粉病",
@@ -205,7 +152,7 @@ def test_retry_reuses_temporary_image_and_never_calls_chat(tmp_path, monkeypatch
             and body["messages"][1]["provider"] == "recognition"
         )
         assert seen == [("wheat", b"\xff\xd8\xff")]
-        assert not (tmp_path / "runtime/images").exists()
+        assert (tmp_path / "runtime/images").is_dir()
 
 
 def test_basic_context_choices_never_call_provider_until_user_asks_again(
@@ -283,112 +230,3 @@ def test_unsent_photo_can_be_removed_but_sent_evidence_is_retained(tmp_path, acc
             client.delete(path + "/images/" + photo["id"], headers=headers).status_code
             == 409
         )
-
-
-
-def test_auth_continues_only_the_selected_photo_case(tmp_path, admin_hash):
-    app = app_at(tmp_path, admin_hash)
-    guest = {"X-Client-ID": "handoff-own-guest"}
-    other_guest = {"X-Client-ID": "handoff-other-guest"}
-    credentials = {"username": "admin", "password": "test-account"}
-
-    with TestClient(app) as client:
-        case = client.post(
-            "/api/cases",
-            headers=guest,
-            data={"crop": "wheat", "stage": "苗期"},
-            files={"file": ("leaf.jpg", picture(), "image/jpeg")},
-        ).json()
-        path = "/api/cases/" + case["id"]
-        case = client.post(
-            path + "/images",
-            headers=guest,
-            files={"file": ("extra.jpg", picture(), "image/jpeg")},
-        ).json()
-        other_case = client.post(
-            "/api/cases",
-            headers=other_guest,
-            data={"crop": "wheat"},
-            files={"file": ("other.jpg", picture(), "image/jpeg")},
-        ).json()
-        original_images = [client.get(photo["url"]).content for photo in case["images"]]
-        store = app.state.store
-        guest_owner = store.owner_of(case["id"])
-        assert guest_owner.startswith("g_") and guest["X-Client-ID"] not in guest_owner
-        stale_case = store.get(guest_owner, case["id"])
-        stale_case["documents"] = [{"id": "old-notes", "text": "旧访客资料"}]
-        stale_case["pending_question"] = {"id": "old-question"}
-        store.save(guest_owner, stale_case)
-        store.add_message(case["id"], {"role": "assistant", "provider": "knowledge"})
-
-        failed = client.post(
-            "/api/auth/login",
-            headers=guest,
-            json={**credentials, "password": "bad-password", "continue_case_id": case["id"]},
-        )
-        assert failed.status_code == 401
-
-        blocked = client.post(
-            "/api/auth/login",
-            headers=guest,
-            json={**credentials, "continue_case_id": other_case["id"]},
-        )
-        assert blocked.status_code == 404
-        assert client.get(path, headers=guest).status_code == 200
-
-        accepted = client.post(
-            "/api/auth/login",
-            headers=guest,
-            json={**credentials, "continue_case_id": case["id"]},
-        )
-        assert accepted.status_code == 200
-        result = accepted.json()
-        assert result["continued_case_id"] == case["id"]
-        account = {"Authorization": "Bearer " + result["access_token"]}
-        continued = client.get(path, headers=account).json()
-        assert continued["persistence"] == "account"
-        assert continued["documents"] == [] and "pending_question" not in continued
-        assert continued["recognition"] == case["recognition"]
-        assert continued["messages"] == case["messages"]
-        assert [client.get(photo["url"]).content for photo in continued["images"]] == original_images
-        assert all(client.get(photo["url"]).status_code == 404 for photo in case["images"])
-        assert client.get(path, headers=guest).status_code == 404
-        assert [item["id"] for item in client.get("/api/cases", headers=account).json()["items"]] == [case["id"]]
-        assert client.get("/api/cases/" + other_case["id"], headers=other_guest).status_code == 200
-        assert client.get(path, headers=other_guest).status_code == 404
-
-
-
-def test_case_write_failure_preserves_guest_photo_and_can_be_retried(
-    tmp_path, monkeypatch, account_headers, admin_hash
-):
-    app = app_at(tmp_path, admin_hash)
-    persistence = app.state.store.persistent
-    guest = {"X-Client-ID": "handoff-guest-retry"}
-
-    def interrupted(*args):
-        raise OSError("simulated store failure")
-
-    with TestClient(app, raise_server_exceptions=False) as client:
-        account = account_headers(client)
-        case = client.post(
-            "/api/cases",
-            headers=guest,
-            data={"crop": "wheat"},
-            files={"file": ("leaf.jpg", picture(), "image/jpeg")},
-        ).json()
-        case_id = case["id"]
-        path = "/api/cases/" + case_id
-        payload = {
-            "username": "admin",
-            "password": "test-account",
-            "continue_case_id": case_id,
-        }
-        with monkeypatch.context() as patch:
-            patch.setattr(persistence, "insert_case_with_messages", interrupted)
-            assert client.post("/api/auth/login", headers=guest, json=payload).status_code == 500
-        assert client.get(path, headers=guest).status_code == 200
-        assert client.get(case["images"][0]["url"]).status_code == 200
-        assert client.get(path, headers=account).status_code == 404
-        assert not (persistence.path.parent / "images" / case_id).exists()
-        assert client.post("/api/auth/login", headers=guest, json=payload).json()["continued_case_id"] == case_id

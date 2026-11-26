@@ -1,7 +1,7 @@
 import { previewRequest, previewUpload, previewImage } from './preview'
 import { asset } from './assets'
-import { apiBase, dataMode, errorText, serverRequest, sessionHeaders } from './transport'
-export { apiBase, setApiBase, dataMode, setDataMode, clientId } from './transport'
+import { ApiError, apiBase, dataMode, errorText, serverRequest, sessionHeaders } from './transport'
+export { ApiError, apiBase, setApiBase, dataMode, setDataMode, clientId } from './transport'
 export type { DataMode } from './transport'
 export type Crop = 'wheat' | 'maize' | 'peanut'
 export type ChatModel = 'deepseek-flash' | 'deepseek-v4-pro'
@@ -200,7 +200,7 @@ function uploadLive<T>(
           const result = JSON.parse(res.data)
           res.statusCode >= 200 && res.statusCode < 300
             ? resolve(result as T)
-            : reject(new Error(errorText(result, operationError)))
+            : reject(new ApiError(errorText(result, operationError), res.statusCode))
         } catch {
           reject(new Error('服务响应无法读取，请重试'))
         }

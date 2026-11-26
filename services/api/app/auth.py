@@ -41,14 +41,15 @@ class AuthManager:
         if self.password_hash is None:
             raise RuntimeError("管理员登录尚未配置，请联系维护人员")
         salt, digest = self.password_hash
-        if username.strip().lower() != ADMIN_USER["username"] or not hmac.compare_digest(
-            digest, _password_digest(password, salt)
-        ):
+        # 无论用户名是否正确都执行同一次密码校验，避免暴露账号匹配时差。
+        valid_password = hmac.compare_digest(digest, _password_digest(password, salt))
+        if username.strip().lower() != ADMIN_USER["username"] or not valid_password:
             raise ValueError("账号或密码不正确，请重新输入")
 
         token = secrets.token_urlsafe(40)
         expires = time.time() + (7 * 86400 if remember else 8 * 3600)
         with self.lock:
+            self.sessions = {key: deadline for key, deadline in self.sessions.items() if deadline > time.time()}
             self.sessions[hashlib.sha256(token.encode()).hexdigest()] = expires
         return {
             "user": dict(ADMIN_USER),
@@ -78,9 +79,11 @@ class AuthManager:
         ).hexdigest()
         return "g_" + digest
 
-    def image_token(self, owner, case_id, image_id):
+    def image_token(self, owner, case_id, image_id, session_token):
+        # 原生 image 组件不能附加 Authorization；短期、单图授权绑定登录会话。
+        session_key = hashlib.sha256(session_token.encode()).hexdigest()
         content = json.dumps(
-            [owner, case_id, image_id, int(time.time() + 900)], separators=(",", ":")
+            [owner, case_id, image_id, int(time.time() + 900), session_key], separators=(",", ":")
         ).encode()
         body = base64.urlsafe_b64encode(content).decode().rstrip("=")
         signature = hmac.new(
@@ -96,12 +99,16 @@ class AuthManager:
             ).hexdigest()
             if not hmac.compare_digest(signature, expected):
                 return None
-            owner, stored_case, stored_image, expires = json.loads(
+            owner, stored_case, stored_image, expires, session_key = json.loads(
                 base64.urlsafe_b64decode(body + "=" * (-len(body) % 4))
             )
+            with self.lock:
+                session_active = self.sessions.get(session_key, 0) > time.time()
             return (
                 owner
-                if stored_case == case_id
+                if session_active
+                and owner == "u_" + ADMIN_USER["id"]
+                and stored_case == case_id
                 and stored_image == image_id
                 and expires > time.time()
                 else None

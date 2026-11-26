@@ -18,9 +18,10 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.fixture
-def client(tmp_path):
-    settings = Settings(root=ROOT, runtime=tmp_path / "runtime", models=tmp_path / "models")
+def client(tmp_path, admin_hash, account_headers):
+    settings = Settings(root=ROOT, runtime=tmp_path / "runtime", models=tmp_path / "models", admin_password_hash=admin_hash)
     with TestClient(create_app(settings)) as instance:
+        instance.headers.update(account_headers(instance))
         yield instance
 
 
@@ -62,7 +63,7 @@ def write_crop_bundle(client, **overrides):
     return metadata
 
 
-def test_guest_crop_upload_without_weights_returns_no_guess_or_record(client, monkeypatch):
+def test_authenticated_crop_upload_without_weights_returns_no_guess_or_record(client, monkeypatch):
     def unexpected(*args, **kwargs):
         pytest.fail("stand-alone crop recognition must not use disease prediction or chat")
 

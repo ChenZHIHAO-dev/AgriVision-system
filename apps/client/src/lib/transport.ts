@@ -112,6 +112,15 @@ export function errorText(data: unknown, fallback: string) {
     ? data.detail
     : fallback
 }
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
 export function serverRequest<T>(
   path: string,
   method: 'GET' | 'POST' | 'DELETE',
@@ -133,18 +142,8 @@ export function serverRequest<T>(
       success: ({ statusCode, data }) =>
         statusCode >= 200 && statusCode < 300
           ? resolve(data as T)
-          : reject(new Error(errorText(data, fallback))),
+          : reject(new ApiError(errorText(data, fallback), statusCode)),
       fail: () => reject(new Error(networkError)),
     }),
   )
 }
-// #ifdef H5
-if (typeof window !== 'undefined' && window.addEventListener)
-  window.addEventListener('pagehide', () => {
-    if (dataMode() === 'live' && !accessToken() && navigator.sendBeacon)
-      navigator.sendBeacon(
-        apiBase() + '/api/guest/end',
-        new Blob([JSON.stringify({ client_id: clientId() })], { type: 'application/json' }),
-      )
-  })
-// #endif

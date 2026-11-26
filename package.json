@@ -1,6 +1,6 @@
 {
   "name": "agrivision",
-  "version": "1.4.0-beta.4",
+  "version": "1.5.0-beta.1",
   "private": true,
   "workspaces": [
     "apps/client"

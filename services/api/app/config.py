@@ -22,6 +22,14 @@ class Settings:
     allow_experimental_models: bool = False
     admin_password_hash: str = field(default="", repr=False)
     serve_web: bool = True
+    build_commit: str = ""
+    login_attempts: int = 5
+    login_window_seconds: int = 300
+    recognition_per_minute: int = 30
+    recognition_concurrency: int = 2
+    chat_per_hour: int = 30
+    chat_per_day: int = 100
+    chat_concurrency: int = 2
 
     def get_deepseek_key(self):
         """Only the application runtime reads the user-owned, git-ignored file."""
@@ -50,4 +58,12 @@ class Settings:
             allow_experimental_models=os.getenv("AGRIVISION_ALLOW_EXPERIMENTAL_MODELS", "1") == "1",
             admin_password_hash=os.getenv("AGRIVISION_ADMIN_PASSWORD_HASH", ""),
             serve_web=os.getenv("AGRIVISION_SERVE_WEB", "1") == "1",
+            build_commit=os.getenv("AGRIVISION_BUILD_COMMIT", ""),
+            login_attempts=max(1, int(os.getenv("AGRIVISION_LOGIN_ATTEMPTS", "5"))),
+            login_window_seconds=max(1, int(os.getenv("AGRIVISION_LOGIN_WINDOW_SECONDS", "300"))),
+            recognition_per_minute=max(1, int(os.getenv("AGRIVISION_RECOGNITION_PER_MINUTE", "30"))),
+            recognition_concurrency=max(1, int(os.getenv("AGRIVISION_RECOGNITION_CONCURRENCY", "2"))),
+            chat_per_hour=max(1, int(os.getenv("AGRIVISION_CHAT_PER_HOUR", "30"))),
+            chat_per_day=max(1, int(os.getenv("AGRIVISION_CHAT_PER_DAY", "100"))),
+            chat_concurrency=max(1, int(os.getenv("AGRIVISION_CHAT_CONCURRENCY", "2"))),
         )

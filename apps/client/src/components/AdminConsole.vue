@@ -31,7 +31,8 @@ const emit = defineEmits<{ close: []; refresh: [] }>()
           >{{ model.classes }} 类 · {{ model.version }}</text
         ></view
       ><text class="fine-print admin-note"
-        >当前仅开放管理员登录。登录后的识别和对话记录由服务端按账户保存，游客的识别信息仅在当前会话暂存。</text
+        >当前仅开放管理员登录。在线识别、AI
+        对话和资料均需登录；识别与对话记录由服务端按账户保存。</text
       ></view
     ><template #footer
       ><button class="button primary full-width" :disabled="busy" @click="emit('refresh')">

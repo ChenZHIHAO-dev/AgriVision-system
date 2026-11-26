@@ -67,7 +67,7 @@ async function usePreview() {
         {{ busy ? '正在接续…' : '使用演示账号' }}
       </button>
       <button class="text-button guest-link" :disabled="busy" @click="close">
-        {{ continueCaseId ? '暂不登录，返回识别结果' : '暂不登录，继续拍照识别' }}
+        {{ continueCaseId ? '暂不登录，返回识别结果' : '暂不登录，返回页面' }}
       </button>
     </template>
   </UiDialog>
@@ -138,7 +138,7 @@ async function usePreview() {
       ><button class="button primary full-width auth-submit" :disabled="busy" @click="submit">
         {{ busy ? '正在处理…' : '登录' }}</button
       ><button class="text-button guest-link" :disabled="busy" @click="close">
-        {{ continueCaseId ? '暂不登录，返回识别结果' : '暂不登录，继续拍照识别' }}
+        {{ continueCaseId ? '暂不登录，返回识别结果' : '暂不登录，返回页面' }}
       </button></template
     >
   </UiDialog>

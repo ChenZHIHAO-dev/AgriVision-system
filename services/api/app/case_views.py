@@ -25,7 +25,7 @@ def case_advice(case, receipt, knowledge):
         advice["sources"] = list(sources.values())
     return advice
 
-def serialize_case(case, *, store, auth, knowledge):
+def serialize_case(case, *, store, auth, knowledge, session_token):
     result = dict(case)
     record_owner = store.owner_of(case["id"])
     result["persistence"] = (
@@ -35,7 +35,7 @@ def serialize_case(case, *, store, auth, knowledge):
         {
             **image,
             "url": f"/api/cases/{case['id']}/images/{image['id']}?access_token="
-            + auth.image_token(record_owner, case["id"], image["id"]),
+            + auth.image_token(record_owner, case["id"], image["id"], session_token),
         }
         for image in case["images"]
     ]

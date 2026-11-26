@@ -10,6 +10,7 @@ import {
   type Component,
 } from 'vue'
 import AppIcon from '../../components/AppIcon.vue'
+import { businessLoginRequired, loadPrivateWorkspace } from '../../lib/workspaceAccess'
 // #ifndef MP-WEIXIN
 import MobileHeader from '../../components/MobileHeader.vue'
 // #endif
@@ -66,6 +67,7 @@ import RecognitionResult from '../../components/RecognitionResult.vue'
 import RecognitionSummary from '../../components/RecognitionSummary.vue'
 import { recognitionFor, imageQuestion } from '../../lib/recognition'
 import {
+  ApiError,
   apiBase,
   dataMode,
   request,
@@ -120,6 +122,10 @@ const cropLookup = ref<{
   error: string
 } | null>(null)
 function openCropLookup() {
+  if (businessLoginRequired(mode.value, !!user.value)) {
+    requestBusinessLogin('crop')
+    return
+  }
   cropLookup.value = { busy: false, photo: '', result: null, error: '' }
 }
 function useCropLookup(value: Crop) {
@@ -134,7 +140,8 @@ async function lookUpCrop(state: NonNullable<typeof cropLookup.value>, path: str
   try {
     state.result = await identifyCrop(path)
   } catch (error) {
-    state.error = error instanceof Error ? error.message : '作物识别暂时失败，请重试'
+    if (error instanceof ApiError && error.status === 401) showError(error)
+    else state.error = error instanceof Error ? error.message : '作物识别暂时失败，请重试'
   } finally {
     state.busy = false
   }
@@ -175,7 +182,9 @@ const adminOpen = ref(false),
   renameError = ref(''),
   deleteTarget = ref<CaseRecord | null>(null)
 type ConsultationLoginIntent = {
-  action: 'new' | 'continue' | 'history'
+  action: 'new' | 'continue' | 'history' | 'photo' | 'crop' | 'library' | 'demo'
+  photoSource?: 'album' | 'camera'
+  photoTarget?: 'identify' | 'supplement' | 'crop'
   crop?: Crop | null
   record?: CaseRecord | null
   targetId?: string
@@ -447,27 +456,62 @@ function showToast(text: string) {
 }
 function showError(value: unknown) {
   error.value = value instanceof Error ? value.message : '操作未完成，请重试'
+  if (value instanceof ApiError && value.status === 401 && mode.value === 'live') {
+    // 只恢复页面与未发送草稿；重新登录不能自动重复付费提问。
+    const targetId = current.value?.id
+    const wasCropLookup = !!cropLookup.value
+    rememberDraft()
+    const draft = targetId
+      ? drafts.get(targetId)
+      : { text: chatText.value, documents: [], images: [] }
+    const path = { ...viewPath.value, layers: [...viewPath.value.layers] }
+    auth.expire()
+    records.value = []
+    cards.value = []
+    current.value = null
+    retainedCase.value = null
+    lastPhotoCase.value = null
+    cropLookup.value = null
+    selectedCard.value = null
+    photoDialogOpen.value = false
+    editOpen.value = false
+    regionOpen.value = false
+    adminOpen.value = false
+    openAuth('登录已过期，请重新登录后继续。', {
+      action: wasCropLookup
+        ? 'crop'
+        : selectedPhoto.value
+          ? 'photo'
+          : targetId
+            ? 'continue'
+            : 'library',
+      targetId,
+      draft,
+      path,
+    })
+  }
 }
 async function refresh() {
   refreshing.value = true
   try {
-    const [system, history, knowledge] = await Promise.all([
-      request<Meta>('/api/meta'),
-      request<{ items: CaseRecord[] }>('/api/cases'),
-      request<{ items: KnowledgeCard[] }>('/api/knowledge'),
-    ])
-    meta.value = system
-    records.value = history.items
-    cards.value = knowledge.items
+    meta.value = await request<Meta>('/api/meta')
     online.value = true
+    const workspace = await loadPrivateWorkspace(request, mode.value, !!user.value)
+    records.value = workspace.records
+    cards.value = workspace.cards
   } catch (value) {
-    online.value = false
+    // 401 表示需要登录，不能显示为服务离线或丢弃已取得的启动信息。
+    if (!(value instanceof ApiError && value.status === 401)) online.value = false
     showError(value)
   } finally {
     refreshing.value = false
   }
 }
 function navigate(value: Tab) {
+  if (value === 'knowledge' && businessLoginRequired(mode.value, !!user.value)) {
+    requestBusinessLogin('library')
+    return
+  }
   if (value === 'history' && !user.value) {
     requestConsultationLogin('history')
     return
@@ -534,6 +578,19 @@ function openAuth(reason = '', intent: ConsultationLoginIntent | null = null) {
 function cancelAuth() {
   authOpen.value = false
   authIntent.value = null
+}
+function requestBusinessLogin(
+  action: 'photo' | 'crop' | 'library' | 'demo',
+  photoSource: 'album' | 'camera' = 'album',
+  photoTarget: 'identify' | 'supplement' | 'crop' = 'identify',
+) {
+  openAuth('登录后可使用拍照识别、AI 对话和资料服务。', {
+    action,
+    photoSource,
+    photoTarget,
+    path: { ...viewPath.value, layers: [...viewPath.value.layers] },
+    draft: { text: '', documents: [], images: [] },
+  })
 }
 function requestConsultationLogin(
   action: ConsultationLoginIntent['action'],
@@ -627,6 +684,22 @@ async function signedIn(result: AuthSuccess) {
       const recovery = { id: intent.record.id, path: intent.path, draft: intent.draft }
       pendingCaseRecovery.value = recovery
       await loadContinuedCase(recovery)
+    } else if (intent.action === 'photo') {
+      await refresh()
+      if (selectedPhoto.value) await startCase()
+      else choosePhoto(intent.photoSource || 'album', intent.photoTarget || 'identify')
+    } else if (intent.action === 'crop') {
+      await refresh()
+      openCropLookup()
+    } else if (intent.action === 'library') {
+      navigate(intent.path.page === 'home' ? 'home' : 'knowledge')
+    } else if (intent.action === 'demo') {
+      await demo()
+    } else if (intent.action === 'continue' && intent.targetId) {
+      await openCase(intent.targetId)
+      drafts.save(intent.targetId, intent.draft)
+      restoreComposer()
+      openChat()
     } else if (intent.action === 'history') {
       if (intent.targetId) await openCase(intent.targetId)
       else navigate('history')
@@ -639,7 +712,7 @@ async function signedIn(result: AuthSuccess) {
       }
     }
     await refresh()
-    showToast(result.preview ? '已进入离线演示，可继续提问。' : '已登录，可继续对话。')
+    showToast(result.preview ? '已进入离线演示，可继续使用。' : '已登录，可继续使用。')
   } catch (value) {
     showError(value)
   }
@@ -660,7 +733,7 @@ async function signOut() {
   waitingForNetwork.value = false
   note.value = ''
   await refresh()
-  showToast('已退出登录，仍可拍照识别；询问 AI需登录。')
+  showToast('已退出登录，使用在线功能时请重新登录。')
 }
 function changeProvince(value: string) {
   province.value = value
@@ -688,6 +761,10 @@ function choosePhoto(
   source: 'album' | 'camera' = 'album',
   target: 'identify' | 'supplement' | 'crop' = 'identify',
 ) {
+  if (businessLoginRequired(mode.value, !!user.value)) {
+    requestBusinessLogin('photo', source, target)
+    return
+  }
   const lookup = target === 'crop' ? cropLookup.value : null
   if (
     busy.value ||
@@ -721,6 +798,10 @@ function choosePhoto(
   })
 }
 async function startCase() {
+  if (businessLoginRequired(mode.value, !!user.value)) {
+    requestBusinessLogin('photo')
+    return
+  }
   const selected = selectedPhoto.value
   if (!selected?.path || busy.value) return
   // #ifdef H5
@@ -751,6 +832,10 @@ async function startCase() {
   }
 }
 async function demo() {
+  if (businessLoginRequired(mode.value, !!user.value)) {
+    requestBusinessLogin('demo')
+    return
+  }
   if (busy.value) return
   busy.value = true
   busyText.value = '正在打开演示样例…'
@@ -1719,12 +1804,17 @@ function newFromDrawer() {
           :records="records"
           :cards="cards"
           :logged-in="!!user"
+          :requires-login="businessLoginRequired(mode, !!user)"
           @card="selectedCard = $event"
           @source="openSource"
           @capture="navigate('identify')"
           @open="openConversation"
           @history="navigate('history')"
-          @login="openAuth('登录后，后续记录会保存到你的账户。')"
+          @login="
+            homeSection === 'recent'
+              ? requestConsultationLogin('history')
+              : requestBusinessLogin('library')
+          "
         />
         <scroll-view v-if="tab !== 'home'" v-show="!chatMode" scroll-y class="page-scroll">
           <view :key="tab" class="page-content" :style="profilePageStyle">
@@ -1748,7 +1838,7 @@ function newFromDrawer() {
             <template v-else-if="tab === 'history'">
               <view v-if="!user" class="panel empty-state login-empty"
                 ><view class="empty-icon">🌾</view><text class="section-title">登录后查看记录</text
-                ><text class="muted">访客可拍照查看识别结果。登录后可询问 AI 并保存记录。</text
+                ><text class="muted">登录后可拍照识别、询问 AI、查阅资料并保存记录。</text
                 ><button
                   class="button primary"
                   @click="openAuth('登录后可保存并查看你的历史记录。')"

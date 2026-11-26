@@ -40,6 +40,7 @@ export interface AuthGateway {
   previewLogin(continueCaseId?: string): Promise<AuthSuccess>
   logout(): Promise<void>
   restore(): Promise<void>
+  expire(): void
 }
 const previous = storedSession()
 export const user = ref<User | null>(previous?.accessToken ? (previous.user as User) : null)
@@ -70,6 +71,7 @@ function finish(result: AuthResponse, remember: boolean, selected?: string): Aut
   return { ...result.user, continuedCaseId: result.continued_case_id }
 }
 export const auth: AuthGateway = {
+  expire: clear,
   async login(raw, password, remember, continueCaseId) {
     const username = raw.trim().toLowerCase()
     if (!username || !password) throw new Error('请填写账号和密码')

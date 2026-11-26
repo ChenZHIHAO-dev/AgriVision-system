@@ -40,7 +40,7 @@ const themes = [
     ><view class="panel settings-card"
       ><text class="settings-section-title">记录与隐私</text
       ><view class="privacy-row"
-        ><text>未登录</text><text>可以拍照查看识别结果，询问 AI 和查看历史记录需登录。</text></view
+        ><text>未登录</text><text>登录后可使用在线识别、AI 对话、资料和历史记录。</text></view
       ><view class="privacy-row"
         ><text>登录后</text
         ><text>{{
