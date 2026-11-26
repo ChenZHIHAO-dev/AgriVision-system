@@ -45,6 +45,7 @@ flowchart LR
 | [记录结果](../services/api/app/case_views.py) | 组织对外记录、照片识别消息、参考资料和访问令牌 |
 | [图像服务](../services/api/app/models.py) | `imaging.py` 质检，`crop_recognition.py` 做作物候选，`models.py` 按作物加载病害模型，`evidence.py` 和 `recognition.py` 汇总回执 |
 | [访问边界](../services/api/app/access.py) | 统一 HTTP 身份、会话图片授权、账户归属和额度；`auth.py` 只管凭证/签名，`security.py` 只管资源限制 |
+| [账户接口](../services/api/app/account_routes.py) / [会话存储](../services/api/app/session_store.py) | 路由协调登录接续；`AuthManager` 校验密码/签名，`SessionStore` 负责会话到期、撤销与 SQLite 迁移；不引入独立数据库服务 |
 | [账户记录与存储](../services/api/app/repository.py) | `repository.py` 按账户隔离记录，`store.py` 负责 SQLite 与图片文件；界面不直接访问数据库 |
 | [问答与资料](../services/api/app/chat.py) | `chat_scope.py` 按当前问题和已有农业上下文决定业务范围，`conversation_policy.py` 决定可选建议与跨作物语境，`context.py` 提取明确资料，`intake.py` 处理资料回复；`knowledge.py` 检索资料，`chat.py` 组织本地或 DeepSeek 回答 |
 | [训练与推理](../ml/agrivision_ml) | 筛选、预处理、分组划分、训练、校准、评估和模型包推理 |
@@ -75,7 +76,7 @@ flowchart LR
 
 ## 联网内测的访问与运行边界
 
-2026-11-27 用户确认改为登录后使用全部联网业务。公开接口仅保留健康检查、最小状态信息、登录和注册关闭响应；不能用客户端 ID 代替登录。单管理员的密码只存带盐哈希，会话暂存在单进程内存，重启后重新登录。签名图片链接绑定创建它的会话，退出后失效；它不能代替其他 API 的身份凭据。
+2026-11-27 用户确认改为登录后使用全部联网业务。公开接口仅保留健康检查、最小状态信息、登录和注册关闭响应；不能用客户端 ID 代替登录。单管理员的密码只存带盐哈希，记住登录的令牌摘要进入现有 SQLite，7 天内可跨重启；普通会话为进程内 8 小时。更换密码配置会清除旧会话并轮换图片签名密钥。签名图片链接绑定创建它的会话，退出后失效；它不能代替其他 API 的身份凭据。
 
 登录失败、识别/上传与问答分别限流；CPU 推理和问答分别限制并发，超限返回 429 和重试时间。用量计数当前在单进程内存，重启会重置，因此它是内测保护，不是持久化计费账本。上传字节数与图片解码像素数都受限制。云机先使用识别并发 1、单 Uvicorn 进程、2 个 Torch 线程；不要为了增加 HTTP worker 重复加载所有模型。
 

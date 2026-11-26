@@ -12,7 +12,8 @@ from starlette.concurrency import run_in_threadpool
 
 from .access import AccountScopeMiddleware, require_account
 from .attachments import extract_document
-from .auth import ACCOUNT_PROVIDER, AuthManager
+from .account_routes import create_account_router
+from .auth import AuthManager
 from .case_views import now, seed_photo_transcript, serialize_case
 from .chat import Chat
 from .config import Settings
@@ -33,8 +34,6 @@ from .schemas import (
     Crop,
     CropRecognitionResponse,
     DemoRequest,
-    GuestEndRequest,
-    LoginRequest,
     MessageRequest,
     ResumeRequest,
 )
@@ -56,7 +55,7 @@ def append_prediction_version(case, image_id, prediction, *, trigger=None):
 def create_app(settings=None):
     settings = settings or Settings.from_env()
     store = CaseRepository(settings.runtime / "agrivision.sqlite3")
-    auth = AuthManager(settings.admin_password_hash)
+    auth = AuthManager(settings.admin_password_hash, database=store.persistent)
     knowledge = Knowledge(settings.root)
     registry = ModelRegistry(settings, knowledge)
     crop_recognizer = CropRecognizer(settings)
@@ -64,7 +63,7 @@ def create_app(settings=None):
     case_locks = {}
     lock_guard = Lock()
 
-    app = FastAPI(title="AgriVision API", version="1.5.0-beta.2")
+    app = FastAPI(title="AgriVision API", version="1.5.0-beta.3")
     app.add_middleware(RequestBodyLimit, max_upload=settings.max_upload)
     # 注册顺序与原实现一致：CORS 在最外层，其次鉴权/额度，再检查请求体。
     app.add_middleware(AccountScopeMiddleware, auth=auth, settings=settings)
@@ -73,73 +72,6 @@ def create_app(settings=None):
     app.state.store = store
     app.state.chat = chat
     app.state.auth = auth
-
-    def finish_sign_in(request, result, continue_case_id):
-        guest_owner = request.state.owner
-        if continue_case_id:
-            try:
-                with mutation(continue_case_id):
-                    account_owner = "u_" + result["user"]["id"]
-                    if not store.continue_case(guest_owner, account_owner, continue_case_id):
-                        raise HTTPException(404, "这条临时识别记录已失效，请重新拍照或上传")
-            except Exception:
-                auth.logout(result["access_token"])
-                raise
-            result["continued_case_id"] = continue_case_id
-        elif store.temporary_owner(guest_owner):
-            store.clear_guest(guest_owner)
-        return result
-
-    @app.post("/api/auth/login")
-    def login(request: Request, body: LoginRequest):
-        try:
-            result = auth.login(body.username, body.password, body.remember)
-        except ValueError as exc:
-            raise HTTPException(401, str(exc)) from exc
-        except RuntimeError as exc:
-            raise HTTPException(503, str(exc)) from exc
-        return finish_sign_in(request, result, body.continue_case_id)
-
-    @app.post("/api/auth/register")
-    def register():
-        raise HTTPException(403, "当前仅开放管理员登录")
-
-    @app.get("/api/auth/me")
-    def account(request: Request):
-        if not request.state.viewer:
-            raise HTTPException(401, "请先登录")
-        return {"user": request.state.viewer, "account_provider": ACCOUNT_PROVIDER}
-
-    @app.post("/api/auth/logout", status_code=204)
-    def logout(request: Request):
-        auth.logout(request.state.token)
-
-    @app.post("/api/guest/end", status_code=204)
-    def end_guest(request: Request, body: GuestEndRequest):
-        guest = (
-            request.state.owner
-            if request.state.owner.startswith("g_")
-            else auth.guest_owner(body.client_id)
-        )
-        if guest:
-            store.clear_guest(guest)
-
-    @app.get("/api/admin/status")
-    def admin_status(request: Request):
-        if not request.state.viewer:
-            raise HTTPException(401, "请先登录管理员账户")
-        if request.state.viewer["role"] != "admin":
-            raise HTTPException(403, "仅管理员可查看服务配置")
-        return {
-            "version": app.version,
-            "models": registry.status(),
-            "deepseek_configured": bool(settings.get_deepseek_key()),
-            "account_provider": ACCOUNT_PROVIDER,
-            "record_storage": "server",
-            "business_access": "authenticated",
-            "session_storage": "process-memory",
-            "web_search_models": ["deepseek-flash"],
-        }
 
     @contextmanager
     def mutation(case_id):
@@ -153,6 +85,15 @@ def create_app(settings=None):
             with lock_guard:
                 lock.release()
                 case_locks.pop(case_id, None)
+
+    app.include_router(create_account_router(
+        auth=auth,
+        store=store,
+        mutation=mutation,
+        version=app.version,
+        model_status=registry.status,
+        deepseek_configured=lambda: bool(settings.get_deepseek_key()),
+    ))
 
     def owner(value):
         if not value or not re.fullmatch(r"[A-Za-z0-9_-]{8,80}", value):

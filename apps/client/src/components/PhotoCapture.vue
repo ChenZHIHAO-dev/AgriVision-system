@@ -59,7 +59,7 @@ const scope = computed(() => {
         /></view>
         <text class="camera-title">{{ desktopWeb ? '上传一张症状照片' : '拍清楚，再识别' }}</text>
         <text class="camera-description">{{
-          desktopWeb ? '选择叶片或麦穗等异常部位的清晰近照' : '在自然光下对焦，尽量拍清异常部位'
+          desktopWeb ? '选择叶片或麦穗等异常部位的清晰近照，尽量使用原图' : '自然光下拍清异常部位，避免翻拍屏幕'
         }}</text>
         <view class="capture-actions">
           <button

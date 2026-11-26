@@ -1,4 +1,4 @@
-"""Authenticate the single configured administrator without an account database."""
+"""校验单管理员密码、签发令牌和图片短链；会话生命周期交给 SessionStore。"""
 
 import base64
 import hashlib
@@ -7,7 +7,9 @@ import json
 import re
 import secrets
 import time
-from threading import RLock
+
+from .session_store import SessionStore
+from .store import Store
 
 ACCOUNT_PROVIDER = "configured-admin"
 ADMIN_USER = {"id": "dev-admin", "username": "admin", "name": "Admin", "role": "admin"}
@@ -30,11 +32,11 @@ def hash_admin_password(password: str) -> str:
 
 
 class AuthManager:
-    def __init__(self, admin_password_hash: str = ""):
-        self.lock = RLock()
-        self.sessions = {}
-        self.signing_key = secrets.token_bytes(32)
-        match = ADMIN_HASH_FORMAT.fullmatch(admin_password_hash.strip())
+    def __init__(self, admin_password_hash: str = "", *, database: Store):
+        configured_hash = admin_password_hash.strip()
+        self.sessions = SessionStore(database, hashlib.sha256(configured_hash.encode()).hexdigest())
+        self.signing_key = self.sessions.signing_key
+        match = ADMIN_HASH_FORMAT.fullmatch(configured_hash)
         self.password_hash = tuple(bytes.fromhex(part) for part in match.groups()) if match else None
 
     def login(self, username, password, remember=False):
@@ -48,9 +50,7 @@ class AuthManager:
 
         token = secrets.token_urlsafe(40)
         expires = time.time() + (7 * 86400 if remember else 8 * 3600)
-        with self.lock:
-            self.sessions = {key: deadline for key, deadline in self.sessions.items() if deadline > time.time()}
-            self.sessions[hashlib.sha256(token.encode()).hexdigest()] = expires
+        self.sessions.issue(hashlib.sha256(token.encode()).hexdigest(), expires, remember=remember)
         return {
             "user": dict(ADMIN_USER),
             "access_token": token,
@@ -59,17 +59,11 @@ class AuthManager:
         }
 
     def verify(self, token):
-        with self.lock:
-            key = hashlib.sha256(token.encode()).hexdigest()
-            expires = self.sessions.get(key)
-            if expires is None or expires <= time.time():
-                self.sessions.pop(key, None)
-                return None
-            return dict(ADMIN_USER)
+        key = hashlib.sha256(token.encode()).hexdigest()
+        return dict(ADMIN_USER) if self.sessions.active(key) else None
 
     def logout(self, token):
-        with self.lock:
-            self.sessions.pop(hashlib.sha256(token.encode()).hexdigest(), None)
+        self.sessions.revoke(hashlib.sha256(token.encode()).hexdigest())
 
     def guest_owner(self, client_id):
         if not re.fullmatch(r"[A-Za-z0-9_-]{8,80}", client_id):
@@ -102,8 +96,7 @@ class AuthManager:
             owner, stored_case, stored_image, expires, session_key = json.loads(
                 base64.urlsafe_b64decode(body + "=" * (-len(body) % 4))
             )
-            with self.lock:
-                session_active = self.sessions.get(session_key, 0) > time.time()
+            session_active = self.sessions.active(session_key)
             return (
                 owner
                 if session_active
