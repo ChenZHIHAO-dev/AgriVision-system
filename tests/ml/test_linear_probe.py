@@ -146,3 +146,50 @@ def test_image_path_cannot_escape_manifest_root(probe_inputs):
     escaped = [{**rows[0], "path": "../labels.json"}]
     with pytest.raises(ValueError, match="图片路径"):
         linear_probe.validate_source_images(args.data_root, escaped)
+
+
+@pytest.mark.parametrize('architecture,size', [('swin_t', 224), ('convnext_tiny', 320)])
+def test_exported_bundle_loads_real_backbone_and_preserves_image_scores(tmp_path, architecture, size):
+    """实际保存/重载骨干，核对数据集固定变换、letterbox 和部署分类分数。
+
+    使用随机初始化骨干与小型合成线性头，不下载预训练权重；此处检验导出
+    接线而非识别质量。真实训练包的逐类验证照片另写 inference-check.json。
+    """
+    import hashlib
+    import json
+    from PIL import Image
+    from ml.agrivision_ml.inference import Predictor
+    from ml.agrivision_ml.linear_probe import replace_head, install_head
+    from ml.agrivision_ml.model import build_model
+    from ml.agrivision_ml.train import Images
+
+    torch.set_num_threads(2)
+    torch.manual_seed(42)
+    labels = ['a', 'b', 'c', 'd']
+    path = tmp_path / 'rectangular.png'
+    Image.new('RGB', (300, 100), (40, 160, 80)).save(path)
+    row = {'path': path.name, 'label': 'a', 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
+    dataset = Images(tmp_path, [row], labels, size, False, resize='letterbox')
+    image_tensor, _ = dataset[0]
+    model = build_model(architecture, len(labels), pretrained=False).eval()
+    replace_head(model, architecture, torch.nn.Identity())
+    with torch.inference_mode():
+        clean_features = model(image_tensor.unsqueeze(0)).numpy()
+    rng = np.random.default_rng(42)
+    synthetic_x = rng.normal(size=(24, clean_features.shape[1])).astype('float32')
+    classifier = LogisticRegression(C=.1, max_iter=500).fit(synthetic_x, np.arange(24) % 4)
+    expected = classifier.predict_proba(clean_features)[0]
+    install_head(model, architecture, classifier, len(labels))
+    torch.save(model.state_dict(), tmp_path / 'weights.pt')
+    (tmp_path / 'metadata.json').write_text(json.dumps({
+        'architecture': architecture, 'labels': labels, 'label_names': {v: v for v in labels},
+        'input_size': size, 'resize': 'letterbox', 'temperature': 1.,
+    }), encoding='utf-8')
+    predictor = Predictor(tmp_path, device='cpu')
+    with Image.open(path) as photo:
+        # 输入几何必须完全相同，不能只比较分类头的形状。
+        torch.testing.assert_close(predictor.transform(photo.convert('RGB')), image_tensor, rtol=0, atol=0)
+    actual = predictor.predict(path)
+    assert [item['id'] for item in actual] == [labels[i] for i in np.argsort(-expected)[:3]]
+    for item in actual:
+        assert item['score'] == pytest.approx(float(expected[labels.index(item['id'])]), abs=1e-6)
