@@ -82,3 +82,48 @@ def test_diagnostic_keeps_training_identity_and_writes_traceable_errors(external
     assert len(errors) == 1
     assert errors[0]['source_labels'] == 'original-b'
     assert errors[0]['true'] == 'b' and errors[0]['predicted'] == 'a'
+
+
+def test_partial_coverage_requires_explicit_opt_in(external_input):
+    root, manifest, _, _ = external_input
+    with pytest.raises(ValueError, match='未覆盖全部'):
+        external_report.read_external_rows(manifest, root, ['a', 'b', 'c'])
+    rows = external_report.read_external_rows(manifest, root, ['a', 'b', 'c'], allow_partial_labels=True)
+    assert {row['label'] for row in rows} == {'a', 'b'}
+
+
+def test_missing_class_output_remains_an_error():
+    # 一张a被预测成无真实样本的c：不能裁掉c列后把这次误判从分母抹去。
+    value = external_report.coverage_metrics([[1, 0, 1], [0, 2, 0], [0, 0, 0]], ['a', 'b', 'c'])
+    assert value['accuracy'] == .75
+    assert value['macro_f1'] == pytest.approx(5/6)
+    assert value['evaluated_labels'] == ['a', 'b']
+    assert value['missing_labels'] == ['c']
+    assert value['counts'] == [2, 2, 0]
+    assert value['confusion_matrix'][0][2] == 1
+
+
+def test_partial_diagnostic_keeps_full_probabilities(external_input, monkeypatch):
+    root, manifest, _, _ = external_input
+    bundle = root / 'partial-bundle'
+    bundle.mkdir()
+    (bundle / 'weights.pt').write_bytes(b'test-only')
+    metadata = {'input_size': 16, 'resize': 'letterbox', 'temperature': 1.,
+                'threshold': .7, 'margin': .12, 'manifest_sha256': 'training',
+                'version': 'test', 'architecture': 'swin_t', 'labels': ['a', 'b', 'c']}
+    (bundle / 'metadata.json').write_text(json.dumps(metadata))
+    model = lambda images: torch.tensor([[0., 0., 4.]]).repeat(len(images), 1)
+    monkeypatch.setattr(external_report, 'Predictor', lambda *_: SimpleNamespace(
+        labels=['a', 'b', 'c'], metadata=metadata, model=model))
+    monkeypatch.setattr(external_report, 'save_confusion', lambda *args: None)
+    output = root / 'partial-report'
+    result = external_report.report(bundle, root, manifest, output, threads=1, allow_partial_labels=True)
+    assert result['accuracy'] == result['macro_f1'] == 0
+    assert result['missing_labels'] == ['c']
+    assert result['evaluation_role'] == 'external_development_label_subset'
+    assert result['selective']['accepted'] == 2
+    assert result['selective']['accuracy'] == 0
+    with (output / 'predictions.csv').open(encoding='utf-8-sig') as stream:
+        predictions = list(csv.DictReader(stream))
+    assert all(set(json.loads(row['scores'])) == {'a', 'b', 'c'} for row in predictions)
+    assert all(row['predicted'] == 'c' for row in predictions)

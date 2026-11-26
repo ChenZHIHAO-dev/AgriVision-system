@@ -496,7 +496,7 @@ PlantVillage 彩色玉米四类使用单独的作者数据入口；不下载灰�
 .\.venv\Scripts\python.exe -m ml.agrivision_ml.cross_validation --data-root data/peanut/prepared/images --manifest data/peanut/prepared/manifest.csv --labels data/peanut/prepared/labels.json --output artifacts/experiments/peanut-cv
 ```
 
-加 `--run` 才开始训练。小麦十个开发折已结束，玉米、花生的完整微调仍在既有队列中，**不要同时另开训练**；按玉米 → 花生 → 作物种类串行。完整训练命令：
+加 `--run` 才开始训练。小麦、玉米各十个开发折已结束，花生完整微调仍在既有队列中，作物种类随后执行，**不要同时另开训练**。以下是复现完整训练的命令，已完成的玉米实验不必重跑：
 
 ```powershell
 .\.venv\Scripts\python.exe -m ml.agrivision_ml.cross_validation --data-root data/maize/prepared/images --manifest data/maize/prepared/manifest.csv --labels data/maize/prepared/labels.json --output artifacts/experiments/maize-cv --run
@@ -510,6 +510,17 @@ PlantVillage 彩色玉米四类使用单独的作者数据入口；不下载灰�
 
 玉米/花生这些折只保证已知近重复组隔离，是**来源内部的模型对照**；没有真实植株 ID，不能称为跨植株、跨田块或国内田间验证。部署前还需看独立来源、混淆类别和手机真图结果。最终指标继续汇总在本文件，不另建多个实验 Markdown。
 
+
+玉米完整网络微调已完成，以下来自 `artifacts/experiments/maize-cv/summary.json`，每种方案覆盖同一开发池的 3,140 张图，原最终测试 564 张没有进入五折：
+
+| 方案 | 完成折数 | 折平均准确率 | 折平均 Macro-F1 | F1 样本标准差 | 外层合并准确率 / Macro-F1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Swin-T，224，轻增强，最多 20 epoch | 5/5 | 98.82% | 98.39% | 0.47 个百分点 | 98.82% / 98.39% |
+| ConvNeXt-Tiny，320，轻增强，最多 20 epoch | 5/5 | 99.08% | 98.74% | 0.27 个百分点 | 99.08% / 98.74% |
+
+ConvNeXt 的折平均 Macro-F1 高约 0.35 个百分点。合并外层预测中，灰斑病召回从 Swin 的 404/425（95.06%）升到 ConvNeXt 的 411/425（96.71%），剩余 14 张灰斑仍混为大斑。ConvNeXt 的大斑、普通锈病、健康召回分别为 814/828、917/918、969/969。输入大小也不同，结果不能单独归因于架构。
+
+这是 PlantVillage 来源内部对照，没有据此启用玉米接口或把开发折当作部署包。下面的田间诊断仍是需要解决的问题；完整微调尚未完成独立田间验证。各折日志是 `maize-cv/<架构>/fold-*/run.log`；`bundle/training-curves.png`、`bundle/training.json`、`bundle/evaluation-test.json` 与 `bundle/confusion-test.png` 保存曲线、逐轮记录和外层评估，不增加图片目录。
 
 ### 10.4 已完成的冻结骨干对照
 
@@ -549,6 +560,8 @@ PlantVillage 彩色玉米四类使用单独的作者数据入口；不下载灰�
 最终包保留原始候选元数据；部署副本才标记 `development_ready=true`，仍为 `validated=false`、`field_verified=false`。每个任务只用一份 `artifacts/models/<作物>`，上一版最多保留一个回退目录。程序不会把开发折直接发布。
 
 复现入口是 `ml/agrivision_ml/cached_probe_cv.py`，不是重新整理图片的命令。它复用公开预训练骨干的特征，只在当前折的训练索引上取增强视图。已有运行配置带源码与数据哈希；改代码后不覆盖旧实验记录或假装恢复。两次已完成的实际命令均明确用了 0.95/0.95 验收值，默认值现在也统一为 0.95；历史 recipe 不改写。
+
+外部来源只覆盖模型部分类别时，`external_report.py` 默认会停止；明确用于局部诊断才加 `--allow-partial-labels`。报告列出 `evaluated_labels` 与 `missing_labels`，Macro-F1 只对有真实样本的类别求平均，同时保留完整混淆矩阵、原模型全部输出分数和原拒识阈值。预测到缺少真实样本的模型类别仍计为错误，不删除该输出列后重新归一化，也不能据此宣布缺少类别或整个模型已通过验收。
 
 ### 10.6 玉米田间原图方向一致性对照
 
@@ -647,10 +660,42 @@ GBIF 和 iNaturalist 的来源标签不是逐图人工审核。补充的栽培�
 
 11 对跨来源感知哈希候选经逐对查看确认为不同照片，复核记录在 `data/maize/review/field-overlap-review.csv`，带两侧文件哈希和理由；只解除这些误报边，其余重复分组规则不变。不通过改模型预测或改病名来消除冲突。
 
-此来源已经用于排错，之后不能称为全新独立测试。日期分组也不等于作者提供了植株编号。`recipe.json` 的 `training_enabled=false` 表示尚未训练；先修复共享 EXIF 解码、等待现有训练结束，再进行固定方案对照。已有清单不重复覆盖。首次复现入口如下：
+此来源已经用于排错，之后不能称为全新独立测试。日期分组也不等于作者提供了植株编号。清单 `recipe.json` 的 `training_enabled=false` 表示尚未开放共享训练核心的端到端微调：共享 EXIF 解码修复仍需等待全部现有训练队列结束，不能热改 worker。下面的独立 EXIF 诊断和 CPU 线性对照是明确的例外，它们自行复用已有 `decode_rgb`，不更改共享核心、不追加 GPU 任务。已有清单不重复覆盖。首次复现入口如下：
 
 ```powershell
 .\.venv\Scripts\python.exe -B -m ml.agrivision_ml.preprocessing.field_manifest --root . --baseline data/maize/prepared/manifest.csv --external data/maize/evaluation/pretoria-field-single-supported.csv --overlap-review data/maize/review/field-overlap-review.csv --validation-dates 2019-03-13 --output artifacts/experiments/maize-field-development
 ```
 
 命令只读原图并写小型审计、清单和来源表；不执行增强或训练。在线增强仍由训练读取时进行，原图不另存增强副本。
+
+独立 EXIF 方向对照已经完成，入口与结果见 10.6；它仅改变解码方向，保留原模型、阈值与报告。后续共享解码修复会同时覆盖训练和推理，再检查普通图、旋转图与镜像 EXIF 图的一致性。
+
+独立 CPU 田间数据加入对照入口为 `ml/agrivision_ml/field_probe.py`。两组已经运行结束，固定目录保留结果，**不要重复覆盖**。首次复现命令：
+
+```powershell
+.\.venv\Scripts\python.exe -B -m ml.agrivision_ml.field_probe --threads 2 --batch-size 8
+```
+
+两组固定使用公开 ImageNet ConvNeXt-Tiny、320 等比例补边、EXIF 校正、C=0.1、clean-only（额外增强视图为 0）、每张原图来源权重为 1。PV-only 使用原训练 2,587 张，PV+field 使用同样的 PV 图加田间 719 张。两组分别在完全相同的 PV 验证 553 张与田间日期块验证 370 张上报告结果，不读取原最终测试图片，不调阈值，也不导出上线包。clean-only 是这次控制变量的选择，完整网络微调仍使用前述在线增强。
+
+旧 PV 特征只有通过原缓存入口的源码、骨干、数据哈希和解码方向等价检查才能复用；只取每张图的 clean 首视图，旧增强片段不进入此次实验。实际只新提取 1,089 张田间 clean 特征。`balanced` 类权重分别从每组训练标签计算，实际值在前向前已写入配方；添加田间图也改变了类别分布，因此不把结果夸成“只增加图片数量”的因果结论。
+
+固定输出为 `artifacts/experiments/maize-field-development/linear-probe`：`recipe.json` 记录预先设定的配方，`features.json` 记录特征来源；`pv_only` 与 `pv_plus_field` 各保存线性头、逐图预测、分来源指标和混淆矩阵。完整对比汇总为 `comparison.json`；不保存增强照片，也不另建实验 Markdown。
+
+实际结果（2026-11-27）：两次线性拟合均收敛。以下都是开发验证，未达到田间可用目标，**不导出或启用玉米模型**。
+
+| 训练数据 | PV 验证 553 图准确率 / Macro-F1 | 田间日期块验证 370 图准确率 / Macro-F1 |
+| --- | ---: | ---: |
+| PV-only，2,587 张 | 98.19% / 97.57% | 51.08% / 41.69% |
+| PV + 田间，3,306 张 | 98.19% / 97.45% | 62.43% / 50.88% |
+
+| 田间类别 | 验证图数 | PV-only 召回 | PV + 田间召回 |
+| --- | ---: | ---: | ---: |
+| 大斑病 | 67 | 39/67，58.21% | 37/67，55.22% |
+| 普通锈病 | 31 | 2/31，6.45% | 2/31，6.45% |
+| 健康参考 | 106 | 87/106，82.08% | 70/106，66.04% |
+| 灰斑病 | 166 | 61/166，36.75% | 122/166，73.49% |
+
+加入田间训练图后，灰斑召回提高，但健康和大斑召回下降，普通锈病没有改善。新头把 20/31 张普通锈病、31/106 张健康图判为灰斑；因此总体提升不能掩盖逐类短板。两个条件各自的 `confusion-field.png`、`confusion-baseline.png` 和 `predictions.csv` 保留完整混淆及逐图结果。
+
+按“大斑、普通锈病、健康、灰斑”的固定顺序，PV-only 的实际类别权重为 **0.9483、0.8544、0.8115、1.8426**，PV+田间为 **1.0947、0.9922、0.9023、1.0305**。来源权重始终为 1，但新增数据改变了 balanced 权重。下一步需要核对症状尺度、来源与拍摄日差异及特征表达；不按这些错例删图，不据此称独立田间验收通过，也不只通过调拒识阈值掩盖低召回。
