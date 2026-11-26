@@ -550,6 +550,14 @@ PlantVillage 彩色玉米四类使用单独的作者数据入口；不下载灰�
 
 复现入口是 `ml/agrivision_ml/cached_probe_cv.py`，不是重新整理图片的命令。它复用公开预训练骨干的特征，只在当前折的训练索引上取增强视图。已有运行配置带源码与数据哈希；改代码后不覆盖旧实验记录或假装恢复。两次已完成的实际命令均明确用了 0.95/0.95 验收值，默认值现在也统一为 0.95；历史 recipe 不改写。
 
+### 10.6 玉米田间原图方向一致性对照
+
+Pretoria 原图审计发现 380/1,090 张带有 EXIF 旋转指示；原 prepared 已校正方向，但直接读取田间 raw 的评估入口尚未校正。为区分解码问题与场景差异，使用同一个最终 ConvNeXt 包、同样阈值与温度，仅对这 380 张应用已有 `decode_rgb` 再推理；另外 710 张复用经过图像、模型和清单哈希核对的原逐图分数。
+
+修正后准确率 **41.47%**、Macro-F1 **34.39%**，原结果为 40.28% / 33.34%。40 张由错变对，27 张由对变错，100 张首选类别变化。普通锈病仍只有 6/107 正确，高分误判仍有 120 张。因此方向一致性需要修复，但不能把低外域表现都解释成 EXIF；目前仍不启用玉米服务。
+
+对照入口 `ml/agrivision_ml/exif_diagnostic.py` 保留原照片和原报告，结果放在 `artifacts/experiments/maize-linear-probe/grouped-cv/final-refit/external-pretoria-exif`。它没有重新训练、改标签或用外域结果调阈值。正在运行的训练核心不热改；队列结束后再统一训练与推理的解码入口并进行方向一致性回归。
+
 ## 11. 作物种类识别：先整理来源，再训练
 
 这项回答“是什么作物”，与小麦、玉米、花生的“是什么病害”分别训练。首批目标是 14 种作物/蔬果；最终标签以真正有足够独立观察组的工作集为准。默认不增加没有真实图片的 other 类。
@@ -632,3 +640,17 @@ GBIF 和 iNaturalist 的来源标签不是逐图人工审核。补充的栽培�
 按最新要求，内部独立验证/留出准确率和 Macro-F1 均至少 95%，并逐类检查召回率及混淆。达到此门槛仍需目标 CPU 和实际接口测试；外域表现单独报告，不能拿同源数据成绩替代手机田间表现。没有通过的模型保持不可用，不把阈值调高后的少数接受样本准确率冒充整体准确率。
 
 增强只在训练读取时或冻结骨干的训练视图提取时执行，验证/测试只用固定预处理。`cached_probe_cv.py` 复用公开 ImageNet 预训练骨干特征节省重复计算，按每折训练索引取增强视图，内层验证选择线性头，外层仅评估；选型后按原 train/val 重新拟合，再做一次原 test 验收。每折仅保留分类头、统计和图表，不复制图片或整套骨干。
+
+### 12. 玉米田间开发清单（只生成引用，不复制图片）
+
+新增入口 `ml/agrivision_ml/preprocessing/field_manifest.py` 保留原 PlantVillage 开发划分，检查跨来源重复，再按 Pretoria 完整拍摄日分组。已生成固定清单 `artifacts/experiments/maize-field-development/manifest.csv`：PV 原训练 2,587 张、验证 553 张；田间训练 719 张、验证 370 张，共 4,229 张。原 PV 测试 564 张不进入，另 1 张无日期照片暂缓。验证日为 `2019-03-13`。
+
+11 对跨来源感知哈希候选经逐对查看确认为不同照片，复核记录在 `data/maize/review/field-overlap-review.csv`，带两侧文件哈希和理由；只解除这些误报边，其余重复分组规则不变。不通过改模型预测或改病名来消除冲突。
+
+此来源已经用于排错，之后不能称为全新独立测试。日期分组也不等于作者提供了植株编号。`recipe.json` 的 `training_enabled=false` 表示尚未训练；先修复共享 EXIF 解码、等待现有训练结束，再进行固定方案对照。已有清单不重复覆盖。首次复现入口如下：
+
+```powershell
+.\.venv\Scripts\python.exe -B -m ml.agrivision_ml.preprocessing.field_manifest --root . --baseline data/maize/prepared/manifest.csv --external data/maize/evaluation/pretoria-field-single-supported.csv --overlap-review data/maize/review/field-overlap-review.csv --validation-dates 2019-03-13 --output artifacts/experiments/maize-field-development
+```
+
+命令只读原图并写小型审计、清单和来源表；不执行增强或训练。在线增强仍由训练读取时进行，原图不另存增强副本。
