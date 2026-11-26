@@ -27,3 +27,15 @@
 ## DINOv2 实验权重
 
 作物种类识别对照使用 Meta 发布的 DINOv2 ViT-B/14 with registers，通过 timm 加载。代码和官方模型权重为 Apache License 2.0；参见[官方模型卡](https://github.com/facebookresearch/dinov2/blob/main/MODEL_CARD.md)及[完整许可证](https://github.com/facebookresearch/dinov2/blob/main/LICENSE)。该权重保存在本地忽略缓存，不随本仓库或网页分发，项目自己的非商业条款不替换其原许可。实验配置记录下载 URL、SHA256 和实现版本。
+
+## 花生原图及 AgML 镜像
+
+Aishwarya Manvikar（Aishwarya M. P.）、A. Padmanabha Reddy 发布的 [Mendeley Data V3，DOI 10.17632/22p2vcbxfk.3](https://data.mendeley.com/datasets/22p2vcbxfk/3)使用 CC BY 4.0。本轮补取的 [Project-AgML 官方镜像](https://huggingface.co/datasets/Project-AgML/groundnut_leaf_disease_classification_2)引用同一数据 DOI，标注同一许可；镜像不是另一套独立授权，也不受本项目自有代码许可替代。原作者论文为 [Data in Brief 48 (2023), 109185](https://doi.org/10.1016/j.dib.2023.109185)。
+
+镜像 revision、两份原包 SHA-256、原文件名和逐图哈希保留于 `data/peanut/sources/mendeley-22p2vcbxfk-v3/raw-agml/source.json` 与 `images.csv`。JPEG 字节未修改；本项目只增加来源审计、标签映射和外域清单。图片、打包副本及模型权重不随公开仓库分发；后续分发时须保留作者、来源、[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)及实际修改说明。原图 3,058 张与原文 3,059 张的差异、处理包隔离和人工抽查范围见[数据来源说明](docs/data-sources.md)。
+
+## Cornell 手持玉米 NLB 数据
+
+Tyr Wiesner-Hanks、Ethan L. Stewart、Nicholas Kaczmar、Chad DeChant、Harvey Wu、Rebecca J. Nelson、Hod Lipson、Michael A. Gore 发布的 [Image set for deep learning: field images of maize annotated with disease symptoms](https://doi.org/10.1186/s13104-018-3548-6)对应 [OSF p67rz 原库](https://osf.io/p67rz/)。原论文的权利说明将数据置于 [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)，论文正文另为 CC BY 4.0；本项目保留作者与出处便于科研追溯，不将正文许可与数据许可混为一谈。
+
+本轮仅取得 1,787 张手持原图的原始归档及专家标注，下载地址、发布方 MD5、本地 SHA-256、标注与数量差异保存在 `data/maize/sources/cornell-nlb-handheld-osf-p67rz/source.json`。原包不随公开仓库分发；统计、EXIF 方向和适用边界见[数据来源说明](docs/data-sources.md)。Purdue CD&S 目前只核验公开清单，数据许可尚未明确，未下载图像，不借用 Cornell 的许可。

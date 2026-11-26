@@ -54,18 +54,19 @@
 
 来源配置及未解决缺口在 `configs/datasets/maize-peanut.json`；逐图审核表在 `data/<crop>/review/source-audit.csv`。`hold` 是暂缓，`review` 是待筛，均不代表人工通过。
 
-| 来源 | 原图数 | 当前用途与限制 |
+| 来源 | 已取得图像数 | 当前用途与限制 |
 | --- | ---: | --- |
 | [PlantVillage 彩色玉米图](https://github.com/spMohanty/PlantVillage-Dataset) | 3,852 | 美国受控背景，CC BY-SA 3.0。148 张跨标签近重复冲突暂缓，3,704 张用于四类内部实验；不重复下载灰度/去背景副本 |
 | [花生 x6x5jkk873 v2](https://data.mendeley.com/datasets/x6x5jkk873/2) | 1,720 | 印度西孟加拉，CC BY 4.0。1,620 张四类候选去重至 1,600；Rosette 100 张暂缓 |
-| [花生 22p2vcbxfk v3](https://data.mendeley.com/datasets/22p2vcbxfk/3) | 10,361 | 印度 Karnataka，CC BY 4.0。已有增强缺母图关系，健康/缺素有精确重复，整来源 hold |
+| [花生 22p2vcbxfk v3](https://data.mendeley.com/datasets/22p2vcbxfk/3) | 10,361 处理图；另补 3,058 原图 | 印度 Karnataka，CC BY 4.0。原处理包缺增强母图关系、健康/缺素有精确重复，继续 hold；同 DOI 的 AgML 原图镜像已核验，单独做外域开发检查，不加入当前工作集 |
 | [玉米 w56xxnykcc v1](https://data.mendeley.com/datasets/w56xxnykcc/1) | 1,079 | 厄瓜多尔，CC BY 4.0。小斑 220、健康 232 可映射，其余 627 有标签问题；目录普通锈与表中南方锈冲突不猜测重标 |
 | [玉米 49dd6srhm6 v1](https://data.mendeley.com/datasets/49dd6srhm6/1) | 3,214 | 地区未知，CC BY 4.0。只有 Corn 目录及生成描述，无可靠病害标签，hold |
 | [玉米虫损 xwnvpkpkxk v2](https://data.mendeley.com/datasets/xwnvpkpkxk/2) | 1,249 | CC BY 4.0，地点未知，作者单位不能当采集地。V4/V6/V8 与虫损等级不是病类；135 个重复条目、24 组跨等级同图冲突，hold |
 | [Pretoria 玉米田间](https://doi.org/10.25403/UPresearchdata.20237613.v1) | 2,355 | 南非，CC BY 4.0。已完整下载、官方 MD5/CRC/解码通过，单独做外部评估 |
+| [Cornell 手持 NLB](https://osf.io/p67rz/) | 1,787 | 美国纽约 Musgrave 农场，CC0。只下载手持原包与专家标注；完整校验通过，未下载无人机/高杆图，未加入当前工作集 |
 | [PLANTHEAD 花生](https://zenodo.org/records/17053222) | 630 | 肯尼亚，CC BY 4.0。6 类共抽查 48 张，均类发现 PDPs 水印，整来源 hold，不用于训练/正式外测，不做去水印 |
 
-前五个来源的 20,226 张均完成解码检查，168 张抽样未见明显水印/拼图，仍非全量人工确认。新增虫损来源 24 张抽样未见明显水印，但标签任务不同且分辨率与类别混杂，暂不纳入病害训练。
+原有五个来源的 20,226 张（不含本轮补取原图）均完成解码检查，168 张抽样未见明显水印/拼图，仍非全量人工确认。新增虫损来源 24 张抽样未见明显水印，但标签任务不同且分辨率与类别混杂，暂不纳入病害训练。
 
 ### 玉米工作集
 
@@ -82,6 +83,18 @@ Pretoria 保留完整多标签：891 张多标签图（含 17 条无症状与其
 
 70 张分层抽样未见明显数字水印或拼图，有手套、背景板、采样笔迹；没有全量人工审核。308 个文件名带 Cedara 地点提示，其余站点未知，没有真实同株/同叶 ID。整来源留在外部评估；若后续根据错例调整方案，应标为外部开发集，再另留新来源作最终测试。
 
+### Cornell 手持玉米原图与 Purdue 待确认来源
+
+[Wiesner-Hanks 等的原始论文](https://link.springer.com/article/10.1186/s13104-018-3548-6)及 [OSF 原库](https://osf.io/p67rz/)对应美国纽约 Aurora 的 Musgrave Research Farm，2015 年手持拍摄；试验有人工接种条件，不能视为全国自然田间随机采样。本轮仅取得 `images_handheld.tar.gz` 与 `annotations_handheld.csv`，不混入高杆/无人机图，保存于 `data/maize/sources/cornell-nlb-handheld-osf-p67rz`。
+
+原包 **10,200,974,706 字节**，发布方 MD5 `67262d2eb434798b777d919a273f3787` 通过；SHA-256 为 `9bf7a09592a9f26a10486594256d3b30bafc51e75320d6fb7e9b1574df14808e`。流式核对得到 **1,787 张、1,787 个独立文件哈希**，全部对应专家标注、无图像头部错误；只保留原包一份，未再复制解压图库。与当前玉米 3,704 张工作集的原始文件 SHA-256 交集为 0，尚未据此保证所有衍生图互不重复。
+
+当前专家 CSV 有 **7,699 行**，原文报告 7,669 行，保留 30 行差异。1,019 张图含非零 NLB 病斑线；另 768 张坐标全零，表示未标出可见 NLB 病斑，**不等同于健康，也不排除其他病害**。6,931 条非零线段不直接等于病斑数，弯曲病斑可能用多段描述。图片尺寸为 6000×4000（1,618 张）、5184×3456（165 张）、3456×5184（4 张）。EXIF 方向为 1（1,591 张）、缺失（169 张）、8（12 张）、3（5 张）、6（10 张），共 **27 张非默认方向**；后续评估须明确方向处理，当前未改原图或训练核心。
+
+逐图文件哈希、标注数量、尺寸、方向和核验边界保存在同目录 `source.json`。本轮没有运行模型、依据预测择样、指定正式测试角色或完成全库人工画面审核。数据采用 CC0；论文正文采用 CC BY 4.0，两者区分记录。
+
+[Purdue CD&S 论文](https://arxiv.org/abs/2110.12084)与 [OSF 清单](https://osf.io/s6ru5/)本轮仅核验元数据。公开 `Dataset_Original` 实际列出 1,571 张（GLS 523、NLB 497、NLS 551），与论文 1,597 张存在差异；未用换背景增强图补足。公开节点没有明确数据许可，本轮未下载其图片。清单、哈希与许可缺口在 `data/maize/sources/purdue-cds-osf-s6ru5/source.json`，不把论文许可直接移用到数据。
+
 ### 花生工作集
 
 | 类别 / ID | 工作图 | 训练 | 验证 | 最终测试 |
@@ -92,6 +105,30 @@ Pretoria 保留完整多标签：891 张多标签图（含 17 条无症状与其
 | 花生链格孢叶斑病（Alternaria leaf spot） `peanut_alternaria_leaf_spot` | 448 | 310 | 70 | 68 |
 
 早期/晚期叶斑在印度原始标签中合并，保持 `peanut_leaf_spot`；不能反向凭文件名拆病种。锈病 120 张明显偏少，损失加权可改善训练关注度，但不能补足田间变化。
+
+### 花生原图外域检查：同 DOI 的 AgML 镜像
+
+原作者 Aishwarya Manvikar（Aishwarya M. P.）与 A. Padmanabha Reddy 的[数据论文](https://doi.org/10.1016/j.dib.2023.109185)说明：田间采集 3,059 张 1200×800 原图，裁取兴趣区域并增强为 10,361 张 256×256 处理图。此前下载的 `Groundnut_Leaf_dataset.zip` 只有处理图，没有遗漏未解压的 `Raw_Data` 目录。本轮从 [Project-AgML 官方镜像](https://huggingface.co/datasets/Project-AgML/groundnut_leaf_disease_classification_2)补取 **3,058 张、5 类原图**；该数量和类别分布与[后续原研究](https://arccjournals.com/journal/legume-research-an-international-journal/LRF-814)一致，保留与原论文相差 1 张的事实，不补造图片。
+
+图像仍位于同来源的 `data/peanut/sources/mendeley-22p2vcbxfk-v3/raw-agml/images`。镜像 revision 为 `bc2dda7f693d784900d73bba4a1bf8c4cad868fd`，两份 parquet 的发布方 SHA-256 均通过；逐图 JPEG 字节原样解出，全部 1200×800，EXIF 方向字段均缺失，无解码错误。全部原文件名、作者标签、字节/像素哈希保存在 `images.csv`，来源与许可在 `source.json`；复核提取后哈希后删除本轮 parquet 副本，只保留一套 JPEG。原 10,361 张处理包仍隔离，不与原图叠加训练。
+
+| 作者类别 | 原图 | 本轮外域清单 | 映射 |
+| --- | ---: | ---: | --- |
+| early_leaf_spot | 885 | 877 | `peanut_leaf_spot` |
+| late leaf spot | 689 | 689 | `peanut_leaf_spot` |
+| rust | 226 | 225 | `peanut_rust` |
+| healthy leaf | 929 | 921 | `healthy` |
+| nutrition deficiency | 329 | 0 | 模型不支持，单独保留，不当作健康或具体病原 |
+
+固定入口 `data/peanut/evaluation/agml-leaf-supported.csv`，图像路径相对 **`data/peanut`**，共 **2,712 张**：叶斑病类 1,566、健康参考 921、锈病 225。清单 SHA-256 为 `180548b96faf0334e8f58c535800872b2c33637f9a966e4e475d84e79942bba3`。没有链格孢叶斑真实样本，评估必须声明类别子集，并保留模型全部四类输出。
+
+模型推理前已确定筛选规则：营养缺乏 329 张不纳入；`IMG_8863.JPG`（行 1134）主要展示根/植株基部，标为 hold；人工对照确认的同叶/同场景连拍按文件 SHA-256 字典序每组保留一张，去除组内多余 16 张。`review.csv` 保存决定，`review-group-links.csv` 保存 18 条视觉确认边，其中包括哈希未连通的 2251↔2354；12 个视觉推断组各留一张，另外 **2,700 张采集身份未知**，不能称为独立植株。原图和原作者标签均保留，当前 `prepared` 及其训练/验证/测试不变。
+
+每类均匀抽查 12 张，共 60 张，未见明显机构/文字叠加水印；另查看了全部 17 对源内哈希候选。这不是全库逐图病名审核。部分 rust 图同时呈现斑块等现象，仍保留作者标签，不依据缩略图重诊断。与当前 1,600 张花生工作集原图的字节、解码像素完全重复及本轮 dHash64 汉明距离≤6 跨来源候选均为 0；这些检查不能排除所有裁剪、旋转等衍生重复。地点为印度 Karnataka 两处农田，资料只支持外域开发诊断，不代表国内田间验收。
+
+本轮外域报告已只读核对全部 2,712 行：图片路径、原作者标签、early/late 合并映射、模型标签顺序、预测分数的最大值与混淆矩阵一致，清单、权重、metadata 哈希与报告记录一致，未发现路径或类别索引错配。按作者细标签，晚期叶斑正确 **118/689**（552 张预测为锈病），早期叶斑正确 **394/877**（321 张预测为健康），锈病正确 **141/225**，健康参考正确 **640/921**。完整指标统一见[训练清单](recognition-training-checklist.md)第 10.7 节。
+
+对每个作者类别的 3 张最高置信错误图做画面复核后，发现参考标签本身也有边界：例如 healthy 行 340 的同框其他叶片可见斑点，部分 rust 图同时有明显斑块；早期叶斑样例有轻微或不清楚的表现。另一些晚斑图暗色斑点清晰，模型仍以很高分数预测锈病。**指标衡量与作者标签的一致性，作者标签未经本项目逐图确诊，不能视为人工确诊金标准，也不能把所有差异单独归因模型。** 这些错例只用于分析，没有修改原图、标签、清单或阈值。来源/取景变化、轻症与混合症状边界、冻结通用特征的适应程度都是待区分因素；当前温度 0.6 会使分数更尖锐，但不会改变最大分数对应类别。审计及拼图留在 `.cache/vision-review/peanut-agml-evaluation-audit.json` 和 `peanut-agml-high-confidence-errors.jpg`。
 
 国内花生线索包括[华南农业大学研究](https://www.mdpi.com/2076-3417/11/4/1950)和[河南采集研究](https://pmc.ncbi.nlm.nih.gov/articles/PMC10248705/)，未找到公开完整原图库，不把论文插图或报告数量算作已下载数据。国内名称参考[玉米病名资料](https://www.chinaagrisci.com/CN/10.3864/j.issn.0578-1752.2020.02.006)和[花生叶斑资料](https://www.agri.cn/sc/zxjc/zwbch/202311/t20231129_8129154.htm)，采集地点仍如实标印度等原信息。
 
