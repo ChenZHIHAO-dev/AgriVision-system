@@ -103,7 +103,7 @@ sudo systemctl is-active agrivision-api.service
 
 ## 模型怎样上线
 
-每个模型包包含架构、输入尺寸、标签顺序、校准温度、阈值、权重与版本。上传到暂存目录，校验 SHA256，先做 CPU 加载与样图验收，再成对替换正式目录中的 `weights.pt` 和 `metadata.json`。交叉验证的开发折包 `development_only=true` 不能直接当发布包；选择方案后训练部署模型并完成留出验收。先保留一个可回退的上一版模型，不能混用两版 metadata 与权重。
+每个模型包包含架构、输入尺寸、标签顺序、校准温度、阈值、权重与版本。上传到暂存目录，校验 SHA256，先做 CPU 加载与样图验收，再成对替换正式目录中的 `weights.pt` 和 `metadata.json`。交叉验证原开发折包 `development_only=true` 不直接当发布包。当前DINO通过 `internal_preview.py` 验证原final779张的隔离和93%整体门槛后，另导出保留源身份的管理员预览包；这不等于重训或田间验收。先保留一个可回退的上一版模型，不能混用两版 metadata 与权重。
 
 | 模型任务 | 服务目录 |
 | --- | --- |
@@ -132,3 +132,9 @@ sudo systemctl is-active agrivision-api.service
 ```
 
 把 `--base` 换成 `https://agriapi.zchenh.xyz` 再检查另一入口。只有明确加 `--exercise-provider` 或 `--web` 才会产生真实外部问答请求。开发与训练命令分别见 [开发说明](development.md) 和 [训练清单](recognition-training-checklist.md)。
+
+### 2026-11-27 四模型内测状态
+
+云端 `9c45f05` 已注册小麦8类、玉米4类、花生4类、作物种类14类，均标记experimental且只允许登录后使用。DINO所需timm1.0.31及依赖已补齐，CPU torch2.7.1 / torchvision0.22.1保持。云端2线程独立DINO基准P50 1514ms、P95 1560ms、峰值981MiB；四模型被API加载后的systemd内存峰值约1.26GiB，单worker、识别并发1保持。
+
+本次 `live` 小程序包指向 `https://agriapi.zchenh.xyz`，启用 `lazyCodeLoading=requiredComponents`，未引用的field-art.png不再打包；约0.67MiB，无单张超过200KiB的PNG。开发工具服务端口关闭，因此没有宣称模拟器/真机已验收。先导入live目录、重新编译并扫码；如果仍无法联网，核对微信后台request、uploadFile、downloadFile合法域名和本次扫码包版本。代码上传成功不等于联网验证通过。
