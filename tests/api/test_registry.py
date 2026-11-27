@@ -100,3 +100,14 @@ def test_model_labels_cannot_cross_crop(tmp_path):
     )
     model.settings = replace(model.settings, allow_experimental_models=True)
     assert model.metadata("wheat") is None
+
+@pytest.mark.parametrize(("environment", "expected"), [(None, False), ("0", False), ("1", True)])
+def test_environment_requires_explicit_experimental_model_opt_in(monkeypatch, environment, expected):
+    from app import config
+
+    # 不读取开发者本机 .env；单独验证未配置、明确关闭、明确启用三种启动方式。
+    monkeypatch.setattr(config, "load_dotenv", lambda *args, **kwargs: None)
+    monkeypatch.delenv("AGRIVISION_ALLOW_EXPERIMENTAL_MODELS", raising=False)
+    if environment is not None:
+        monkeypatch.setenv("AGRIVISION_ALLOW_EXPERIMENTAL_MODELS", environment)
+    assert config.Settings.from_env().allow_experimental_models is expected

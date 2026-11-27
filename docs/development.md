@@ -63,6 +63,16 @@ App 内测可用 [HBuilderX 真机运行](https://uniapp.dcloud.net.cn/tutorial/
 | `.\.venv\Scripts\python.exe scripts/verify_local_pipeline.py` | 默认检查健康信息、匿名业务拒绝和注册关闭；加 --username admin 检查实际识别、补图、选填资料与退出，并删除本次记录 |
 | `.\.venv\Scripts\python.exe scripts/smoke_ml.py` | 通过小规模合成数据检查 CPU 训练、评测、加载和识别接口 |
 
+本机 Windows 的测试临时文件统一放 `F:\Temp\AgriVision`。项目内 `.cache/tmp` 曾在普通文本目录重命名微复现中出现间歇 WinError 5；移到项目外 F 盘后，相同微复现和完整 ML 回归通过。尚未确认具体占用进程，不需要关闭安全软件，也没有给预处理加重试。下面三行仅设置当前 PowerShell 会话的临时目录，不新建 Python 环境，不改 `data` 工作图：
+
+```powershell
+New-Item -ItemType Directory -Path F:\Temp\AgriVision -Force | Out-Null
+$env:TEMP = 'F:\Temp\AgriVision'
+$env:TMP = $env:TEMP
+```
+
+设置后再运行表中的 pytest 命令。模型权重和训练缓存仍保留在项目已有目录。
+
 真实服务检查可加 `--username admin` 在终端隐藏输入密码，检查已登录流程。`--exercise-provider` 与 `--web` 会请求外部问答服务并消耗用量，日常回归用默认命令。 [真机和集成验收](validation.md)
 
 提交前运行 npm run test:frontend。其中的公开配置检查会扫描 Git 管理的文件，阻止具体格式的微信 AppID、常见提供商密钥、私钥和本机环境文件进入公开版本。真实设置保存在 .env、.env.wechat.local 或 secrets，示例配置只保留空字段和测试占位内容。

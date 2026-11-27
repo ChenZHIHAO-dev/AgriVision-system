@@ -120,7 +120,7 @@ def test_final_refit_failure_is_recorded_without_auto_activation_and_not_reteste
     values = {'features': clean[:, None, :].repeat(3, axis=1), 'targets': np.array([0, 1, 0, 1])}
     manifest = tmp_path / 'manifest.csv'; write_rows(manifest, original)
     args = SimpleNamespace(output=tmp_path / 'out', data_root=tmp_path, manifest=manifest,
-        batch_size=2, c_values=[.1, 1.], min_test_accuracy=.9, min_test_macro_f1=.9,
+        batch_size=2, c_values=[.1, 1.], min_test_accuracy=.95, min_test_macro_f1=.95,
         augmentation='light', seed=42)
     calls = []
     def encode(model, root, rows, labels, size, **kwargs):
@@ -144,3 +144,45 @@ def test_final_refit_failure_is_recorded_without_auto_activation_and_not_reteste
     assert again == result and len(calls) == 1
     with pytest.raises(ValueError, match='最终测试已经使用'):
         module.final_refit(args, 'swin_t', model, values, development, original, ['a', 'b'], config, {'r': 2})
+
+@pytest.mark.parametrize("field", ["min_test_accuracy", "min_test_macro_f1"])
+@pytest.mark.parametrize("value", [.94, 1.01, float("nan")])
+@pytest.mark.parametrize("entry", ["run", "final_refit"])
+def test_direct_entry_rejects_lowered_or_invalid_acceptance_before_io(field, value, entry):
+    # 仅提供验收字段；若先做数据IO/训练，会因缺少其它字段而失败。
+    args = SimpleNamespace(min_test_accuracy=.95, min_test_macro_f1=.95)
+    setattr(args, field, value)
+    with pytest.raises(ValueError, match=".95"):
+        if entry == "run":
+            module.run(args)
+        else:
+            module.final_refit(args, None, None, None, None, None, None, None, None)
+
+
+@pytest.mark.parametrize("value", [.95, .98, 1.])
+def test_acceptance_threshold_can_be_made_stricter(value):
+    module.validate_acceptance_thresholds(SimpleNamespace(min_test_accuracy=value, min_test_macro_f1=value))
+
+
+def cli_args():
+    result = ["cached_probe_cv"]
+    for name in ("data-root", "manifest", "labels", "cv-root", "reuse-probes", "output"):
+        result.extend(["--" + name, "unused-test-path"])
+    return result
+
+
+def test_cli_rejects_lowering_acceptance_before_run(monkeypatch):
+    monkeypatch.setattr("sys.argv", cli_args() + ["--min-test-accuracy", ".94"])
+    monkeypatch.setattr(module, "run", lambda _: pytest.fail("must reject before starting an experiment"))
+    with pytest.raises(SystemExit) as failure:
+        module.main()
+    assert failure.value.code == 2
+
+
+def test_cli_defaults_are_95_percent(monkeypatch):
+    seen = []
+    monkeypatch.setattr("sys.argv", cli_args())
+    monkeypatch.setattr(module, "run", seen.append)
+    module.main()
+    assert seen[0].min_test_accuracy == .95
+    assert seen[0].min_test_macro_f1 == .95

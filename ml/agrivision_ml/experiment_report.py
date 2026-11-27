@@ -39,6 +39,23 @@ def save_confusion(matrix, labels, output):
     canvas.print_png(output)
 
 
+def source_metrics(matrix, labels):
+    """来源可能只覆盖模型的部分类别，保留原全类指标并补充有真值类的指标。
+
+    全部预测列仍参与混淆矩阵，预测到无真值类别仍算错；只在额外的宏平均中
+    排除该来源没有真实样本的类别。这里不改变训练选型或全量评估的指标。
+    """
+    result = metrics(matrix)
+    present = np.asarray(result["counts"]) > 0
+    result.update({
+        "metric_scope": "all_model_classes",
+        "present_labels": [label for label, exists in zip(labels, present) if exists],
+        "present_class_macro_f1": float(np.asarray(result["f1"])[present].mean()),
+        "present_class_balanced_accuracy": float(np.asarray(result["recall"])[present].mean()),
+    })
+    return result
+
+
 @torch.inference_mode()
 def report(bundle, data_root, manifest, split="val", device="cuda"):
     """一次前向同时生成总体、逐类、各来源统计，逐图 CSV 能回到具体照片复核。"""
@@ -89,7 +106,7 @@ def report(bundle, data_root, manifest, split="val", device="cuda"):
         "split": split, "images": len(rows), "groups": len({row["group"] for row in rows}),
         "manifest_sha256": digest, "model_version": metadata["version"],
         "labels": predictor.labels, "nll": total_nll/len(rows),
-        "sources": {key: metrics(value) for key, value in by_source.items()},
+        "sources": {key: source_metrics(value, predictor.labels) for key, value in by_source.items()},
         "elapsed_seconds": perf_counter()-started,
         "selective": {"coverage": len(accepted)/len(rows), "accepted": len(accepted),
                       "accuracy": sum(row["correct"] for row in accepted)/max(len(accepted), 1)},

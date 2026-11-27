@@ -300,8 +300,19 @@ def run_folds(args, architecture, values, data_rows, folds, labels, config, reci
             'out_of_fold': probe.metrics(np.sum([r['outer']['confusion_matrix'] for r in results], axis=0))}
 
 
+def validate_acceptance_thresholds(args):
+    """允许提高验收线，不允许通过降低配置把较弱结果标成通过。
+
+    开发训练和指标记录仍可保留不达标的方法；验收配置仅决定候选是否达标。
+    run 和 final_refit 都调用此检查，直接 Python 调用也不能绕过命令行限制。
+    """
+    if any(not .95 <= score <= 1 for score in (args.min_test_accuracy, args.min_test_macro_f1)):
+        raise ValueError("内部验收 accuracy 和 Macro-F1 阈值必须在 .95 到 1 之间")
+
+
 def final_refit(args, architecture, model, values, development, original, labels, config, recipe):
     """从原始 train/val 重训头，独立 test 只验收一次；不把某个CV折改旗标发布。"""
+    validate_acceptance_thresholds(args)
     folder = args.output / 'final-refit'
     folder.mkdir(parents=True, exist_ok=True)
     result_path = folder / 'result.json'
@@ -360,6 +371,7 @@ def final_refit(args, architecture, model, values, development, original, labels
 
 
 def run(args):
+    validate_acceptance_thresholds(args)
     torch.set_num_threads(args.threads)
     config = json.loads(args.labels.read_text(encoding='utf-8-sig')); labels = list(config['labels'])
     original, development, folds, plan = load_plan(args, labels)
@@ -405,8 +417,10 @@ def main():
     args = parser.parse_args()
     if args.views < 0 or args.threads < 1 or args.batch_size < 1 or any(c <= 0 for c in args.c_values):
         parser.error('视图数非负；线程、批量和 C 必须为正数')
-    if any(not 0 <= score <= 1 for score in (args.min_test_accuracy, args.min_test_macro_f1)):
-        parser.error('验收值必须在0到1之间')
+    try:
+        validate_acceptance_thresholds(args)
+    except ValueError as exc:
+        parser.error(str(exc))
     run(args)
 
 
