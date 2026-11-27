@@ -39,6 +39,7 @@
       "minified": true
     },
     "usingComponents": true,
+    "lazyCodeLoading": "requiredComponents",
     "darkmode": true
   }
 }

@@ -1,5 +1,6 @@
 """训练、离线评估和单图推理必须把手机 EXIF 朝向解释为同一组像素。"""
 import hashlib
+from io import BytesIO
 
 import numpy as np
 from PIL import Image
@@ -60,4 +61,10 @@ def test_training_and_prediction_share_upright_pixels(tmp_path, orientation, ver
     scores = predictor.predict(path)
     assert scores[0]['id'] == 'leaf'
     assert torch.equal(predictor.model.received[0], actual)
+    # HTTP 作物识别上传传 BytesIO，和文件路径必须得到相同朝向/张量/分数。
+    stream = BytesIO(original)
+    stream.seek(7)
+    assert predictor.predict(stream) == scores
+    assert torch.equal(predictor.model.received[0], actual)
+    assert stream.tell() == 7 and not stream.closed
     assert path.read_bytes() == original

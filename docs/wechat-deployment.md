@@ -1,6 +1,6 @@
 # 网页、API 与微信小程序部署
 
-当前代码版本为 **1.5.0-beta.3**。主力是网页和微信小程序；App 保留构建能力，尚未做应用商店发布。小程序名称为 **宛田观叶**。
+当前代码版本为 **1.5.0-beta.6**。主力是网页和微信小程序；App 保留构建能力，尚未做应用商店发布。小程序名称为 **宛田观叶**。
 
 ## 已有环境与入口
 
@@ -21,7 +21,7 @@
 
 ## 登录和使用流程
 
-**联网模式全部业务需登录**，自助注册关闭，目前只有管理员内测。照片识别、上传、作物种类识别、问答、资料和历史都由后端校验会话；隐藏前端按钮不能代替鉴权。离线预览保留演示账户、演示图片回执和模拟回答。
+**联网模式全部业务需登录**，自助注册关闭，目前只有管理员内测。照片识别、上传、作物种类识别、问答和历史都由后端校验会话；参考资料和农业资讯无需登录；隐藏前端按钮不能代替鉴权。离线预览保留演示账户、演示图片回执和模拟回答。
 
 普通农业问题可以直接问。照片、作物、生育期和地区按需建议，均可跳过。保存补充资料不调用 AI；用户明确发消息才请求回答。对话中的照片与拍照页调用同一个图像识别模型，不由文字模型猜图。
 
@@ -48,7 +48,7 @@ npm run build:wechat
 npm run build:wechat -- --live
 ```
 
-导入 `apps/client/dist/wechat/live`。微信公众平台“开发管理 → 开发设置”中，将实际 API 域名登记到 request、uploadFile 和 downloadFile 合法域名。保持开发者工具的域名校验开启，用真机检查登录、上传与图片读取。换 API 域名需要重建联网包。 [微信网络说明](https://developers.weixin.qq.com/miniprogram/dev/framework/ability/network.html)
+导入 `F:\college\AgriVision\apps\client\dist\wechat\live`。`preview` 是离线演示工程，即使上传成功也不会连接云端模型；真实内测必须从 `live` 工程重新编译、预览或上传，不能继续扫码旧的 preview 版本。微信公众平台“开发管理 → 开发设置”中，将实际 API 域名登记到 request、uploadFile 和 downloadFile 合法域名。保持开发者工具的域名校验开启，用真机检查登录、上传与图片读取。换 API 域名需要重建联网包。 [微信网络说明](https://developers.weixin.qq.com/miniprogram/dev/framework/ability/network.html)
 
 小程序当前使用应用管理员账号；以后接微信身份时由服务端交换临时代码并签发本应用会话，不能把微信 AppSecret 放进小程序。 [微信登录流程](https://developers.weixin.qq.com/miniprogram/dev/framework/open-ability/login.html)
 

@@ -198,3 +198,45 @@ def test_experimental_crop_bundle_uses_explicit_runtime_switch(
     assert result["status"] == ("recognized" if ready else "model_unavailable")
     assert result["experimental"] is ready
     assert result["crop_id"] == ("wheat" if ready else None)
+
+
+def test_real_uploaded_bytes_load_model_and_return_crop_candidates(client, tmp_path):
+    """真实 HTTP→BytesIO→Predictor→网络，防止只 mock 时漏掉上传输入类型错误。"""
+    torch = pytest.importorskip("torch")
+    from ml.agrivision_ml.inference import Predictor
+    from ml.agrivision_ml.model import build_model
+
+    previous_threads = torch.get_num_threads()
+    torch.set_num_threads(2)
+    try:
+        runtime = client.app.state.crop_recognizer
+        runtime.settings = replace(runtime.settings, device="cpu", allow_experimental_models=True)
+        write_crop_bundle(client, input_size=64, resize="letterbox", temperature=1.,
+                          validated=False, development_ready=True, development_only=False,
+                          release_stage="admin_internal_preview")
+        # 小型真实网络的确定性分类头，避免下载权重或依赖随机分类碰巧成功。
+        model = build_model("mobilenet_v3_small", 3, input_size=64)
+        with torch.no_grad():
+            model.classifier[-1].weight.zero_()
+            model.classifier[-1].bias.copy_(torch.tensor([4., 0., -4.]))
+        torch.save(model.state_dict(), runtime.weights)
+        content = photo()
+        path = tmp_path / "crop.jpg"
+        path.write_bytes(content)
+        predictor = Predictor(runtime.bundle, "cpu")
+        direct = predictor.predict(path)
+        stream = BytesIO(content)
+        stream.seek(5)
+        assert predictor.predict(stream) == direct and stream.tell() == 5
+
+        response = upload(client, content)
+        assert response.status_code == 200
+        result = response.json()
+        assert result["status"] == "recognized"
+        assert result["crop_id"] == "rice"
+        assert result["experimental"] is True
+        assert result["model_version"] == "unit-crop-version"
+        assert result["candidates"] == direct
+        assert isinstance(runtime._cache[1], Predictor)
+    finally:
+        torch.set_num_threads(previous_threads)

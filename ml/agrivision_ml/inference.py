@@ -1,6 +1,7 @@
 # 单张照片推理和模型包装载入口。服务端复用 Predictor，命令行用它查看模型候选。
 import argparse
 import json
+from io import BytesIO
 from pathlib import Path
 import torch
 
@@ -56,7 +57,9 @@ class Predictor:
     def predict(self, path):
         # 原始手机照片可能以 EXIF 标记旋转/镜像。与训练、离线评估共用同一解码入口，
         # 不修改原文件；已经规范化的上传图不再发生几何变化。
-        with decode_rgb(Path(path).read_bytes()) as image:
+        # 上传接口传 BytesIO；getvalue 不改变调用方游标，路径调用保持原行为。
+        content = path.getvalue() if isinstance(path, BytesIO) else Path(path).read_bytes()
+        with decode_rgb(content) as image:
             tensor = self.transform(image).unsqueeze(0).to(self.device)
         scores = (self.model(tensor)/float(self.metadata.get('temperature',1.0))).softmax(1)[0].cpu().tolist()
         names = self.metadata["label_names"]

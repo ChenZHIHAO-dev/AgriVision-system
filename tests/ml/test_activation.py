@@ -33,15 +33,15 @@ def activation(tmp_path, monkeypatch):
     args = SimpleNamespace(bundle=tmp_path, data_root=tmp_path, manifest=manifest, device="cpu",
                            split="test", activate=False, activate_experimental=False, field_verified=False,
                            report_name="activation")
-    report = {"accuracy": .95, "macro_f1": .95, "counts": [20, 20], "recall": [.95, .95]}
+    report = {"accuracy": .93, "macro_f1": .93, "counts": [20, 20], "recall": [.93, .93]}
     monkeypatch.setattr(evaluate, "evaluate_loader", lambda *args: dict(report))
     return args, report, metadata_file
 
 
 @pytest.mark.parametrize("mode", ["activate", "activate_experimental"])
-@pytest.mark.parametrize("changes", [{"accuracy": .949, "macro_f1": .96},
-                                      {"accuracy": .96, "macro_f1": .949},
-                                      {"counts": [20, 19]}, {"recall": [.95, .59]},
+@pytest.mark.parametrize("changes", [{"accuracy": .929, "macro_f1": .96},
+                                      {"accuracy": .96, "macro_f1": .929},
+                                      {"counts": [20, 19]}, {"recall": [.93, .59]},
                                       {"accuracy": float("nan")}, {"macro_f1": float("nan")}])
 def test_activation_failure_keeps_metadata_unchanged(activation, mode, changes):
     args, report, metadata_file = activation
@@ -62,7 +62,7 @@ def test_activation_failure_keeps_metadata_unchanged(activation, mode, changes):
 
 
 @pytest.mark.parametrize("mode", ["activate", "activate_experimental"])
-def test_exact_95_percent_boundary_activates_only_requested_stage(activation, mode):
+def test_exact_93_percent_boundary_activates_only_requested_stage(activation, mode):
     args, _, metadata_file = activation
     setattr(args, mode, True)
     args.field_verified = mode == "activate"

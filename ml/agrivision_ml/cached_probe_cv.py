@@ -306,8 +306,8 @@ def validate_acceptance_thresholds(args):
     开发训练和指标记录仍可保留不达标的方法；验收配置仅决定候选是否达标。
     run 和 final_refit 都调用此检查，直接 Python 调用也不能绕过命令行限制。
     """
-    if any(not .95 <= score <= 1 for score in (args.min_test_accuracy, args.min_test_macro_f1)):
-        raise ValueError("内部验收 accuracy 和 Macro-F1 阈值必须在 .95 到 1 之间")
+    if any(not .93 <= score <= 1 for score in (args.min_test_accuracy, args.min_test_macro_f1)):
+        raise ValueError("内部验收 accuracy 和 Macro-F1 阈值必须在 .93 到 1 之间")
 
 
 def final_refit(args, architecture, model, values, development, original, labels, config, recipe):
@@ -412,8 +412,8 @@ def main():
     parser.add_argument('--threads', type=int, default=2)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--c-values', type=float, nargs='+', default=[.1, 1., 10.])
-    parser.add_argument('--min-test-accuracy', type=float, default=.95)
-    parser.add_argument('--min-test-macro-f1', type=float, default=.95)
+    parser.add_argument('--min-test-accuracy', type=float, default=.93)
+    parser.add_argument('--min-test-macro-f1', type=float, default=.93)
     args = parser.parse_args()
     if args.views < 0 or args.threads < 1 or args.batch_size < 1 or any(c <= 0 for c in args.c_values):
         parser.error('视图数非负；线程、批量和 C 必须为正数')

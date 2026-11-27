@@ -121,9 +121,4 @@ if __name__=='__main__':
     for crop in ['wheat','maize','peanut']:
         crop_icon(crop).save(STATIC/'icons'/f'{crop}.png', optimize=True)
     for crop in ['wheat','maize','peanut']:crop_art(crop).resize((240,276),Image.Resampling.LANCZOS).save(STATIC/'crops'/f'{crop}.png')
-    field=Image.new('RGBA',(900,650))
-    for i,(x,y,angle) in enumerate([(10,50,-18),(260,-60,9),(480,30,23)]):
-        plant=crop_art('wheat').resize((360,530)).rotate(angle,expand=True,resample=Image.Resampling.BICUBIC)
-        field.alpha_composite(plant,(x,y))
-    field.save(STATIC/'field-art.png')
     print('Generated botanical illustrations; use npm run icons for UI icons')
