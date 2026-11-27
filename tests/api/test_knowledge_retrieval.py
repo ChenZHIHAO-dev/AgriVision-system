@@ -14,7 +14,7 @@ def knowledge():
 
 
 @pytest.mark.parametrize("context", [None, "wheat"])
-@pytest.mark.parametrize("query", ["黄瓜霜霉病叶片症状", "番茄白粉病的叶片表现", "西红柿叶片有哪些病斑"])
+@pytest.mark.parametrize("query", ["番茄白粉病的叶片表现", "辣椒的叶片有哪些病害"])
 def test_unindexed_crop_does_not_retrieve_unrelated_crop_cards(knowledge, query, context):
     assert knowledge.search(query, context) == []
 
@@ -141,3 +141,76 @@ def test_leaf_rust_supplies_actual_guidance_and_bounded_decision_context(knowled
     limits = " ".join(card["evidence_limits"])
     assert all(term in limits for term in ("自生麦苗", "摘病叶", "喷雾方向", "全国统一"))
     assert "范围小" in text and "不能" in text
+
+
+@pytest.mark.parametrize("crop", ["cucumber", "tomato"])
+def test_mismatched_disease_reference_never_borrows_another_crop_card(knowledge, crop):
+    case = {"crop": crop, "disease_id": "wheat_leaf_rust", "evidence": {
+        "hypotheses": [{"disease_id": "peanut_leaf_spot"}]}}
+    assert knowledge.recognition_cards(case) == []
+    advice = knowledge.advice(crop, "wheat_leaf_rust")
+    assert advice["sources"] == [] and advice["products"] == []
+    assert "小麦" not in advice["summary"] and "叶锈" not in advice["summary"]
+
+
+@pytest.mark.parametrize(("crop", "disease_id", "query"), [
+    ("tomato", "tomato_early_blight", "番茄早疫病怎么管理"),
+    ('tomato', 'tomato_leaf_mold', '番茄叶霉病'),
+    ('tomato', 'tomato_septoria_leaf_spot', '番茄斑枯病'),
+    ('tomato', 'tomato_spider_mites', '番茄二斑叶螨危害'),
+    ('tomato', 'tomato_target_spot', '番茄靶斑病'),
+    ('tomato', 'tomato_mosaic', '番茄花叶病毒病'),
+    ('tomato', 'tomato_bacterial_spot', '番茄疮痂病'),
+    ('cucumber', 'cucumber_anthracnose', '黄瓜炭疽病'),
+    ('cucumber', 'cucumber_gummy_stem_blight', '黄瓜蔓枯病'),
+    ('cucumber', 'cucumber_bacterial_wilt', '黄瓜细菌性萎蔫病（来源标签）'),
+    ("tomato", "tomato_late_blight", "番茄晚疫病有什么症状"),
+    ("tomato", "tomato_yellow_leaf_curl", "番茄黄化曲叶病毒病"),
+    ("cucumber", "cucumber_downy_mildew", "黄瓜霜霉病"),
+    ("cucumber", "cucumber_powdery_mildew", "黄瓜白粉病"),
+])
+def test_vegetable_reference_follows_actual_crop_and_evidence(knowledge, crop, disease_id, query):
+    card = knowledge.search(query, crop)[0]
+    assert card["id"] == disease_id and card["crop"] == crop
+    case = {"crop": crop, "disease_id": disease_id, "evidence": {
+        "hypotheses": [{"disease_id": disease_id}]}}
+    assert card in knowledge.recognition_cards(case)
+    assert knowledge.advice(crop, disease_id)["sources"] == card["sources"]
+    sources = {source["url"] for source in card["sources"]}
+    assert sources and card["evidence_limits"]
+    for item in card["management_evidence"]:
+        assert set(item["source_urls"]) <= sources
+        assert all(0 <= i < len(card["actions"]) for i in item["action_indexes"])
+    for source in card["sources"]:
+        assert source["publisher"] and source["region"] and source["accessed_at"]
+        assert source["date"] or source["date_note"]
+
+
+@pytest.mark.parametrize("context", [None, "wheat"])
+def test_named_new_crop_overrides_old_conversation_context(knowledge, context):
+    cards = knowledge.search("黄瓜霜霉病叶片症状", context)
+    assert cards and all(card["crop"] in {"cucumber", "general"} for card in cards)
+    assert cards[0]["id"] == "cucumber_downy_mildew"
+
+
+def test_cucumber_bacterial_wilt_keeps_region_and_pathogen_boundary(knowledge):
+    card = knowledge.get("cucumber_bacterial_wilt")
+    assert all("美国" in source["region"] for source in card["sources"])
+    assert any("Erwinia tracheiphila" in source["region"] for source in card["sources"])
+    assert {"黄瓜枯萎病", "细菌性角斑病"}.isdisjoint(card["keywords"])
+    limits = " ".join(card["evidence_limits"])
+    assert "尚未核实" in limits and "尖孢镰刀菌" in limits
+    assert knowledge.advice("cucumber", card["id"])["products"] == []
+
+
+@pytest.mark.parametrize("crop", ["tomato", "cucumber"])
+def test_vegetable_model_disease_labels_have_specific_reference(knowledge, crop):
+    import json
+
+    labels = json.loads((ROOT / "configs" / "labels" / f"{crop}.json").read_text(encoding="utf-8"))["labels"]
+    for disease_id, title in labels.items():
+        if disease_id == "healthy":
+            continue
+        card = knowledge.get(disease_id)
+        assert card and card["crop"] == crop and card["title"] == title
+        assert card["sources"] and card["management_evidence"]

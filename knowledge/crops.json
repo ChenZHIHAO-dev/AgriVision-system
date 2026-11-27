@@ -1,0 +1,85 @@
+{
+  "wheat": {
+    "name": "小麦",
+    "aliases": [
+      "麦子"
+    ],
+    "caption": "叶片 · 麦穗",
+    "icon": "wheat",
+    "stages": [
+      "苗期",
+      "返青起身期",
+      "拔节孕穗期",
+      "抽穗扬花期",
+      "灌浆成熟期"
+    ],
+    "demo_card": "wheat_stripe_rust",
+    "illustration": "crops/wheat.png"
+  },
+  "maize": {
+    "name": "玉米",
+    "aliases": [
+      "苞谷",
+      "包谷"
+    ],
+    "caption": "叶片观察",
+    "icon": "maize",
+    "stages": [
+      "苗期",
+      "拔节期",
+      "大喇叭口期",
+      "抽雄吐丝期",
+      "灌浆成熟期"
+    ],
+    "demo_card": "maize_southern_rust",
+    "illustration": "crops/maize.png"
+  },
+  "peanut": {
+    "name": "花生",
+    "aliases": [
+      "落花生"
+    ],
+    "caption": "叶片观察",
+    "icon": "peanut",
+    "stages": [
+      "苗期",
+      "开花下针期",
+      "结荚期",
+      "饱果成熟期"
+    ],
+    "demo_card": "peanut_leaf_spot",
+    "illustration": "crops/peanut.png"
+  },
+  "cucumber": {
+    "name": "黄瓜",
+    "aliases": [
+      "胡瓜"
+    ],
+    "caption": "叶片观察",
+    "icon": "leaf",
+    "stages": [
+      "苗期",
+      "伸蔓期",
+      "开花结果期",
+      "采收期"
+    ],
+    "demo_card": null,
+    "illustration": "icons/ui/leaf-light.png"
+  },
+  "tomato": {
+    "name": "番茄",
+    "aliases": [
+      "西红柿"
+    ],
+    "caption": "叶片观察",
+    "icon": "leaf",
+    "stages": [
+      "苗期",
+      "开花期",
+      "结果期",
+      "采收期"
+    ],
+    "demo_card": null,
+    "illustration": "icons/ui/leaf-light.png"
+  }
+}

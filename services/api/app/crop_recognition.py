@@ -66,6 +66,8 @@ class CropRecognizer:
         metadata = self.metadata()
         return {
             "ready": metadata is not None,
+            "labels": metadata["labels"] if metadata else [],
+            "label_names": metadata["label_names"] if metadata else {},
             "version": metadata["version"] if metadata else None,
             "experimental": bool(metadata and metadata.get("validated") is not True),
         }

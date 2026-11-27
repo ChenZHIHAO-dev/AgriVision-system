@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { asset } from '../lib/assets'
+import { crops } from '../lib/crops'
 import { resolvedTheme } from '../lib/theme'
 const props = withDefaults(
   defineProps<{ name: string; size?: number; white?: boolean; tone?: 'default' | 'white' }>(),
   { size: 22, white: false, tone: 'default' },
 )
 const source = computed(() => {
-  if (['wheat', 'maize', 'peanut'].includes(props.name))
-    return asset('icons/' + props.name + '.png')
+  const name = crops.find((crop) => crop.id === props.name)?.icon || props.name
+  // 旧的三张作物位图保留；新增作物复用随主题切换的植物图标。
+  if (['wheat', 'maize', 'peanut'].includes(name)) return asset('icons/' + name + '.png')
   const tone =
     props.tone === 'white'
       ? 'white'
@@ -17,7 +19,7 @@ const source = computed(() => {
           ? 'inverse'
           : 'white'
         : resolvedTheme.value
-  return asset('icons/ui/' + props.name + '-' + tone + '.png')
+  return asset('icons/ui/' + name + '-' + tone + '.png')
 })
 </script>
 <template>

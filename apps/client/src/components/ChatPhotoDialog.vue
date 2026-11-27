@@ -75,16 +75,18 @@ function confirm() {
   margin-bottom: 10px;
 }
 .photo-crop-choices {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 .photo-crop-choices > button {
-  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  white-space: nowrap;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 48px;
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -112,5 +114,10 @@ function confirm() {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.7;
+}
+@media (max-width: 360px) {
+  .photo-crop-choices {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 </style>

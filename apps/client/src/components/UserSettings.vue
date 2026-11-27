@@ -61,7 +61,7 @@ const emit = defineEmits<{ back: [] }>()
     ><view class="panel settings-card about-card"
       ><text class="settings-section-title">关于 AgriVision</text><text>版本 {{ appVersion }}</text
       ><text class="settings-description"
-        >面向小麦、玉米与花生的田间记录、初步识别与种植问答。</text
+        >记录作物田间情况，提供照片辅助识别与种植问答。</text
       ></view
     ></view
   >

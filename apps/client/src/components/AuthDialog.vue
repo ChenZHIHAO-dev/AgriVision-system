@@ -10,16 +10,17 @@ const props = withDefaults(defineProps<{ reason?: string; continueCaseId?: strin
 const emit = defineEmits<{ close: []; success: [result: AuthSuccess] }>()
 const preview = dataMode() === 'preview'
 const focusTarget = ref('')
-// H5 的焦点由浏览器管理，不把 @focus 再回绑成一次程序化聚焦。
-let nativeAutoFocus = true
-// #ifdef H5
-nativeAutoFocus = false
-// #endif
+// 被动记录实际焦点与主动“下一项”请求分开；点击输入不能再回写 focus=true，
+// 否则原生输入组件会重复聚焦/避让，账号与密码切换时键盘和弹层一起跳动。
+const passwordRequested = ref(false)
 function blurField(field: string) {
   if (focusTarget.value === field) focusTarget.value = ''
+  if (field === 'auth-password') passwordRequested.value = false
 }
 function focusPassword() {
-  focusTarget.value = 'auth-password'
+  // #ifndef H5
+  passwordRequested.value = true
+  // #endif
   // #ifdef H5
   const field = document.getElementById('auth-password')
   const input =
@@ -104,7 +105,7 @@ async function usePreview() {
           v-model="username"
           id="auth-username"
           aria-label="账号"
-          :focus="nativeAutoFocus && focusTarget === 'auth-username'"
+          :focus="false"
           @focus="focusTarget = 'auth-username'"
           @blur="blurField('auth-username')"
           :adjust-position="false"
@@ -122,7 +123,7 @@ async function usePreview() {
             v-model="password"
             id="auth-password"
             aria-label="密码"
-            :focus="nativeAutoFocus && focusTarget === 'auth-password'"
+            :focus="passwordRequested"
             @focus="focusTarget = 'auth-password'"
             @blur="blurField('auth-password')"
             :adjust-position="false"

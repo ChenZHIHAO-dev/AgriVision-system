@@ -203,6 +203,53 @@ GBIF 与 iNaturalist 原图及许可已完成本轮采集，另补花生、水�
 
 已有 GBIF/iNaturalist 继续按物种学名、观察 ID、**照片自身许可**与地点补充，优先国内栽培观察和可辨识器官。先统计每类整株/叶/花/果实及来源缺口再定采集量，避免某水果全是货架近照、另一作物全是田间远景。仅有背景、混杂主体或无法区分的局部留待审核，不通过增强制造确定类别。新增可下载候选尚未完成图像审核；本轮只核验入口与元数据，没有自动联系作者或下载重复巨包。
 
+## 黄瓜叶片数据（2026-11-27 已准备）
+
+固定路径为 `data/cucumber/sources`（原包/原图）、`data/cucumber/review`（审计/筛选表）、`data/cucumber/prepared`（唯一工作集）。已下载并完整解码 **5,043 张**，未发现坏文件；不下载作者另发的 6,400 张增强包。原图仍留在来源目录，图谱 PPT 仅作病名/器官参考，不视作图片训练授权。
+
+| 来源与原始许可 | 实际取得 | 本轮处理 |
+| --- | --- | --- |
+| [Cucumber Disease Recognition Dataset v1](https://data.mendeley.com/datasets/y6d3z6f8z9/1)，CC BY 4.0；[原论文](https://pmc.ncbi.nlm.nih.gov/articles/PMC10338290/) | 孟加拉国 Jashore 田间，`Original Image.zip` 563,738,444 字节通过官方 SHA-256；解压 **1,289 张**，论文写 1,280，差额来自 Pythium Fruit Rot 文件夹实际 169 张，其余 7 类各 160 | 选炭疽、细菌性萎蔫、霜霉、蔓枯和健康参考 800 张；果实腐烂/健康果实 489 张不纳入叶片模型。叶片精确重复 1 张、抽查明显黄化的健康参考 1 张排除，工作集留 798 |
+| [kaushigihanml/Cucumber Leaf Disease Dataset](https://www.kaggle.com/datasets/kaushigihanml/cucumber-leaf-disease-dataset)，发布页元数据 Apache 2.0 | **3,754 张**：霜霉 1,307、白粉 1,201、健康 1,246；完整 ZIP 506,212,978 字节，保存本地 SHA-256 与逐成员 CRC；采集地区、真实植株 ID 和增强历史未公布 | 原作者 train/test 合并后重新按组划分；`IMG_1234/IMG_E1234` 保守同组，表示疑似同帧编辑关系而非植株身份。去除 1 张精确重复及 391 张近重复标签冲突候选，工作集留 3,362；大量白底摘叶/萎蔫叶，不能当成国内田间实拍 |
+
+分层目视抽查 **64 张**（官方叶片 5 类各 8、Kaggle 3 类各 8），样本未见明显数字水印/拼图，**不等于全量人工审核或重新鉴定病原**。已排除的 `Fresh Leaf (160).jpg` 可在筛选表查到原因。共有 11 张精确像素重复（其中 9 张属于本轮已排除的果实），并有 36 个近重复跨标签冲突组、391 张叶片暂缓；近重复由既有 dHash 规则提出，不据此宣布所有照片必然同株或标注错误，后续可人工复核。不会根据模型测试成绩删除难图。
+
+`prepared/manifest.csv` 最终 **4,160 张、3,285 组**，训练 2,908 / 验证 633 / 测试 619；分组与文件哈希在三个集合间均无交叉。组来自保守文件编号关系与近重复合并，不能当作 3,285 株独立植物。`sources.csv` 保留来源路径、许可、原标签、地区与审核依据；只有来源标签接纳和上述抽查，未声称逐图人工诊断。
+
+| 规范 ID / 展示名 | 图数 | train / val / test |
+| --- | ---: | --- |
+| `cucumber_downy_mildew` / 黄瓜霜霉病 | 1,381 | 962 / 213 / 206 |
+| `cucumber_powdery_mildew` / 黄瓜白粉病 | 1,068 | 746 / 164 / 158 |
+| `cucumber_anthracnose` / 黄瓜炭疽病 | 160 | 112 / 24 / 24 |
+| `cucumber_gummy_stem_blight` / 黄瓜蔓枯病 | 160 | 112 / 24 / 24 |
+| `cucumber_bacterial_wilt` / 黄瓜细菌性萎蔫病（来源标签） | 159 | 110 / 24 / 25 |
+| `healthy` / 健康参考 | 1,232 | 866 / 184 / 182 |
+
+细菌性萎蔫 **不映射成枯萎病或细菌性角斑病**；蔓枯样本为作者归入该类的叶部表现，未把器官改成根。小类只有一个来源、每类约 160 张，白粉目前只有背景单一的 Kaggle 来源；这是类别/来源覆盖限制，简单在线增强不能补出新病种或独立地区。当前随机组划分用于内部基线，不能据此承诺全国田间准确率；后续优先补国内在田叶片、角斑/靶斑及混合症状，做独立来源诊断。
+
+| 仍未进入训练的可靠线索或排除项 | 核验结果与后续动作 |
+| --- | --- |
+| [孟加拉 Plant Leaf Freshness v3](https://data.mendeley.com/datasets/n67gctmjyj/3)，CC BY 4.0 | 官方称黄瓜 1,626 张，目录有 Anthracnose lesions / Downy mildew / Fresh leaf；本次官方文件 API 多次返回 502，只有元数据，**未取得的数量不计入工作集**。可恢复官方接口后下载黄瓜原图子目录，先排查与现有来源重叠，再作为另一来源 |
+| [山东寿光黄瓜论文](https://link.springer.com/article/10.1186/s12870-025-06841-y)链接的 [tg3z7xxkdb v1](https://data.mendeley.com/datasets/tg3z7xxkdb/1)，CC BY 4.0 | 论文称 4,740 张、只公开部分；实际 `original.rar` 已读取目录为 Alternaria_Boltch / Brown_Spot / Grey_spot 等，与论文黄瓜类别不符。已停止续传、保留 hold 说明，不能把论文数量或地点套到此包；需要作者明确文件与寄主对应后再处理 |
+| [ECA-SegFormer 国内研究](https://www.mdpi.com/2077-0472/13/8/1513) | 山西太谷 1,558 张，含霜霉/白粉/靶斑/角斑；尚未确认可直接下载的完整授权原包，作为申请线索，不虚报已下载 |
+| [LS-ASPP 国内研究](https://link.springer.com/article/10.1186/s12859-024-05890-8) | 新疆实验数据 200 张：白粉 48、角斑 88、霜霉 64；作者明示原始图像不公开，处理数据可按合理请求申请。暂不计入训练，不自动联系作者 |
+| [kareem3egm 黄瓜库](https://www.kaggle.com/datasets/kareem3egm/cucumber-plant-diseases-dataset) | 元数据许可 Unknown、仅 healthy/sick；未下载，不把“有病”猜成具体病类 |
+
+执行入口只有 `ml/agrivision_ml/preprocessing/cucumber_sources.py`，中文注释说明来源适配、HTTP 分段续传、手工决定和分组边界；图像解码/EXIF、RGB、1024 长边工作图、去重与划分复用现有模块。`configs/datasets/cucumber.json` 管来源与原标签映射，`configs/labels/cucumber.json` 管输出 ID/中文名。以下均在 `F:\college\AgriVision` PowerShell 执行：
+
+```powershell
+# 下载指定发布包；同一路径续传，官方包校验 SHA-256，不下载增强包。
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.preprocessing.cucumber_sources --download
+# 完整审计，并生成可编辑筛选表；此开关只接纳作者标签作内部实验。
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.preprocessing.cucumber_sources --audit --check --accept-source-labels
+# 查看目前筛选结果，保留人工 drop，不生成新工作图。
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.preprocessing.cucumber_sources --check
+# 首次生成固定工作集。本轮已完成，不必重复运行，也不要另建 01/02 副本。
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.preprocessing.cucumber_sources --output data/cucumber/prepared
+```
+
+这一步没有训练、没有离线增强副本。新增适配及复用边界的 9 项测试通过，包括人工排除不被覆盖、未映射果实不误纳入、同帧编辑组、断点续传长度/分段边界校验。后续训练读取固定 manifest，在内存中在线增强；原 test 保持独立，来源隔离评估与内部随机组评估分开报告。
+
 ## 人工筛选与标签对应
 
 图片文件名是稳定哈希或源照片 ID，**不是类别编码**。标签来自 CSV 同行的 `label`，图片由 `path` 关联，`source`、`raw_labels`、`note` 和来源表用于追溯。小麦筛选 path 相对 `data/wheat/review`；最终训练 manifest 的 path 相对各自 `prepared/images`。外测清单使用自己的 data-root 约定，不混用。
@@ -258,3 +305,18 @@ Excel 编辑保存 CSV UTF-8。`decision=keep` 表示入选、`drop` 表示排�
 | 小麦叶锈病 | [AHDB小麦部分](https://ahdb.org.uk/knowledge-library/brown-rust-in-cereals)支持及时巡查、发病且气象有利时防控、抗性品种与控氮；[全国农技中心2026春防方案](https://ny.zibo.gov.cn/art/2026/3/22/art_980_2992638.html)提供分区分期锈病管理方向 | 不把“范围小”当作延后用药依据，不推荐无出处的摘在田病叶或固定正反面喷法；自生麦苗管理与摘病叶不同，综合锈病指标不等于全国叶锈病统一阈值 |
 
 所有第三方数据许可独立于本项目代码的非商业许可。原图、权重和个人凭据不推送公开仓库；来源元数据、下载/审计代码和汇总结果可追溯。公开或商业使用训练产物前仍需核对各来源条款，尤其 MSWDD 的用途许可与 PlantVillage 的署名/相同方式共享说明。
+
+
+## 番茄叶片数据（2026-11-27 实际取得）
+
+- 主源：[PlantVillage 作者仓库](https://github.com/spMohanty/PlantVillage-Dataset)，只取原始 `raw/color` 番茄，按固定Git commit/blob校验；[作者数据卡](https://huggingface.co/datasets/mohanty/PlantVillage)声明 CC BY-SA 3.0。数据自身沿用原许可，不被本项目非商用软件许可替代。
+- 实取18,160张，全部256×256，0坏图、14同像素重复。作者叶ID匹配11,411张；其余未知采集身份只补像素/感知近重复检查，不能宣称全部是独立植株。80张分层目视抽样未见明显水印/拼图，未做全库逐图病名复核。
+- 固定 `data/tomato/prepared`：17,490图/9,167组；train12,323、val2,577、test2,590；路径/文件SHA/采集组无跨划分交叉。原图保留 `sources`，筛选及逐图溯源在 `review`，不为实验复制图片。
+- 十类：番茄疮痂病、早疫病、晚疫病、叶霉病、斑枯病、二斑叶螨危害、靶斑病、黄化曲叶病毒病、花叶病毒病、健康参考。叶螨属于虫害，不能把十类写成十种病。灰霉、白粉、根腐、脐腐、裂果等图谱条目未被本包支持。
+- 工作集SHA：`8189553ac6a6b04b7022180306838f3303b6b5e91c7d6c9b74826e07fcbc299f`。叶片受控背景是重要域限制，内部高分不等于田间高分。
+
+独立来源：[台湾番茄叶数据](https://data.mendeley.com/datasets/ngdgg79rzb/1)，CC BY4.0，下载48MB包，仅取作者622张无增强分支；4,976张增强副本未提取，也未下载其PV五折复制包。六类中仅疮痂、晚疫、健康与本轮对应，原314张支持图经全量联系图可见标记筛查后暂缓1张截断文字边框图，剩313张（110/97/106）。未按模型对错筛图；未做病理确诊。其余黑霉、灰叶斑、白粉不硬映射，不支持的灰叶斑抽样中还发现水印。
+
+`data/tomato/evaluation/taiwan-supported.csv` 与PV未检出像素/近重复交叉；`taiwan-audit.json`保留未知采集ID、质量检查范围及限制；人工排除记录在 `review/taiwan-quality-review.csv`，重跑审计保留。模型仍输出全部十类，外测只有三类真值，结果只能称部分标签外域诊断。冻结ConvNeXt-Tiny320内部test98.42%，该外域313张26.52%；不把两者混为一个验收成绩，不用其错例调整原固定模型后重新宣称独立测试。
+
+两份用户PPT作为需求与病名查阅线索，不直接提取图片训练、不作权威标签依据。灰霉/白粉/果实和生理问题后续需有明确授权、正确作物与可靠病名的原图再扩类。

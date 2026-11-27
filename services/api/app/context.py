@@ -1,12 +1,7 @@
 import re
 
-from .knowledge import CROP_NAMES, query_crop_scope
-
-STAGES = {
-    'wheat':['苗期','返青起身期','拔节孕穗期','抽穗扬花期','灌浆成熟期'],
-    'maize':['苗期','拔节期','大喇叭口期','抽雄吐丝期','灌浆成熟期'],
-    'peanut':['苗期','开花下针期','结荚期','饱果成熟期'],
-}
+from .crops import CROP_NAMES, STAGES
+from .knowledge import query_crop_scope
 
 
 def fill_explicit_context(case, text):

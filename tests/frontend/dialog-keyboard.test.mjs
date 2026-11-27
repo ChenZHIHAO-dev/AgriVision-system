@@ -7,7 +7,7 @@ import { build } from 'esbuild'
 import { parse, compileScript } from '@vue/compiler-sfc'
 import { Window } from 'happy-dom'
 
-function browserSource(source) {
+function browserSource(source, native = false) {
   const enabled = [true]
   return source
     .split('\n')
@@ -16,72 +16,80 @@ function browserSource(source) {
       if (!directive) return enabled.at(-1)
       if (directive[1] === 'endif') enabled.pop()
       else {
-        const h5 = directive[2].includes('H5')
+        const h5 = native ? !directive[2].includes('H5') : directive[2].includes('H5')
         enabled.push(enabled.at(-1) && (directive[1] === 'ifdef' ? h5 : !h5))
       }
       return false
     })
     .join('\n')
 }
-const compiled = await build({
-  stdin: {
-    contents:
-      "export {default as AuthDialog} from './apps/client/src/components/AuthDialog.vue'; export {default as ContentReference} from './apps/client/src/components/ContentReference.vue'; export {useWorkspaceViewport} from './apps/client/src/lib/viewport.ts'; export {createBrowserViewportTracker,createDialogViewportTracker} from './apps/client/src/lib/mobileChrome.ts'; export {createApp,h,nextTick} from 'vue'",
-    resolveDir: process.cwd(),
-  },
-  bundle: true,
-  write: false,
-  platform: 'node',
-  format: 'cjs',
-  define: { 'process.env.NODE_ENV': '"test"' },
-  plugins: [
-    {
-      name: 'browser-dialog',
-      setup(builder) {
-        builder.onLoad({ filter: /[\\/]lib[\\/]viewport\.ts$/ }, async ({ path }) => ({
-          contents: browserSource(await readFile(path, 'utf8')),
-          loader: 'ts',
-        }))
-        builder.onLoad({ filter: /[\\/]lib[\\/]auth\.ts$/ }, () => ({
-          contents: 'export const auth={login:async()=>{throw new Error("test must not submit")}}',
-          loader: 'js',
-        }))
-        builder.onLoad({ filter: /[\\/]lib[\\/]api\.ts$/ }, () => ({
-          contents: 'export const dataMode=()=>"live"',
-          loader: 'js',
-        }))
-        builder.onLoad({ filter: /\.vue$/ }, async ({ path: filename }) => {
-          if (filename.endsWith('AppIcon.vue'))
-            return { contents: 'export default {render:()=>null}', loader: 'js' }
-          const { descriptor } = parse(
-            browserSource(await readFile(filename, 'utf8')).replaceAll(
-              ':focus=',
-              ':data-native-focus=',
-            ),
-          )
-          return {
-            contents: compileScript(descriptor, {
-              id: 'browser-dialog',
-              inlineTemplate: true,
-              templateOptions: {
-                compilerOptions: { isCustomElement: (tag) => ['view', 'text'].includes(tag) },
-              },
-            }).content,
-            loader: 'ts',
-            resolveDir: path.dirname(filename),
-          }
-        })
-      },
+async function compileTarget(native = false) {
+  return build({
+    stdin: {
+      contents:
+        "export {default as UiDialog} from './apps/client/src/components/UiDialog.vue'; export {default as AuthDialog} from './apps/client/src/components/AuthDialog.vue'; export {default as ContentReference} from './apps/client/src/components/ContentReference.vue'; export {useWorkspaceViewport} from './apps/client/src/lib/viewport.ts'; export {createBrowserViewportTracker,createDialogViewportTracker} from './apps/client/src/lib/mobileChrome.ts'; export {createApp,h,nextTick} from 'vue'",
+      resolveDir: process.cwd(),
     },
-  ],
-})
-function load() {
+    bundle: true,
+    write: false,
+    platform: 'node',
+    format: 'cjs',
+    define: { 'process.env.NODE_ENV': '"test"' },
+    plugins: [
+      {
+        name: 'browser-dialog',
+        setup(builder) {
+          builder.onLoad({ filter: /[\\/]lib[\\/]viewport\.ts$/ }, async ({ path }) => ({
+            contents: browserSource(await readFile(path, 'utf8'), native),
+            loader: 'ts',
+          }))
+          builder.onLoad({ filter: /[\\/]lib[\\/]auth\.ts$/ }, () => ({
+            contents:
+              'export const auth={login:async()=>{throw new Error("test must not submit")}}',
+            loader: 'js',
+          }))
+          builder.onLoad({ filter: /[\\/]lib[\\/]api\.ts$/ }, () => ({
+            contents: 'export const dataMode=()=>"live"',
+            loader: 'js',
+          }))
+          builder.onLoad({ filter: /\.vue$/ }, async ({ path: filename }) => {
+            if (filename.endsWith('AppIcon.vue'))
+              return { contents: 'export default {render:()=>null}', loader: 'js' }
+            const { descriptor } = parse(
+              browserSource(await readFile(filename, 'utf8'), native).replaceAll(
+                ':focus=',
+                ':data-native-focus=',
+              ),
+            )
+            return {
+              contents: compileScript(descriptor, {
+                id: 'browser-dialog',
+                inlineTemplate: true,
+                templateOptions: {
+                  compilerOptions: {
+                    isCustomElement: (tag) => ['view', 'text', 'scroll-view'].includes(tag),
+                  },
+                },
+              }).content,
+              loader: 'ts',
+              resolveDir: path.dirname(filename),
+            }
+          })
+        },
+      },
+    ],
+  })
+}
+const compiled = await compileTarget()
+const nativeCompiled = await compileTarget(true)
+function load(native = false) {
   const module = { exports: {} }
-  new Function('module', 'exports', 'require', compiled.outputFiles[0].text)(
-    module,
-    module.exports,
-    createRequire(import.meta.url),
-  )
+  new Function(
+    'module',
+    'exports',
+    'require',
+    (native ? nativeCompiled : compiled).outputFiles[0].text,
+  )(module, module.exports, createRequire(import.meta.url))
   return module.exports
 }
 test('browser keyboard preserves its canvas through focus switches and the dismissal tail', () => {
@@ -309,4 +317,107 @@ test('modal background isolation holds through close animation and supports orie
     const rotated = isolate({ height: 375, visual: 375, top: 0, inset: 0 }, 812, true, false)
     assert.equal(rotated.height, 375)
   }
+})
+
+test('native tap does not feed observed focus back into programmatic focus or replay visible-field scrolling', async () => {
+  await mounted(async ({ host, nextTick }) => {
+    const callbacks = new Map()
+    let passwordTop = 180
+    let frameHeight = 340
+    Object.assign(uni, {
+      onKeyboardHeightChange: (fn) => callbacks.set('keyboard', fn),
+      onWindowResize: (fn) => callbacks.set('resize', fn),
+      offKeyboardHeightChange: () => {},
+      offWindowResize: () => {},
+      createSelectorQuery() {
+        const selectors = []
+        const query = {
+          in: () => query,
+          select(selector) {
+            selectors.push(selector)
+            return query
+          },
+          boundingClientRect: () => query,
+          scrollOffset: () => query,
+          exec(done) {
+            done(
+              selectors.map(
+                (selector) =>
+                  ({
+                    '.dialog-frame': { height: frameHeight },
+                    '.dialog-heading': { height: 60 },
+                    '.dialog-footer': { height: 60 },
+                    '.dialog-body-inner': { height: 400 },
+                    '.dialog-body': { top: 70, bottom: 288, scrollTop: 0 },
+                    '#auth-username': { top: 80, bottom: 124 },
+                    '#auth-password': { top: passwordTop, bottom: passwordTop + 44 },
+                  })[selector],
+              ),
+            )
+          },
+        }
+        return query
+      },
+    })
+    const api = load(true)
+    const target = document.createElement('div')
+    host.append(target)
+    const app = api.createApp(api.AuthDialog)
+    // 浏览器DOM没有微信组件；只模拟其属性/插槽，尺寸和滚动查询由上面的uni桩提供。
+    app.component('scroll-view', {
+      inheritAttrs: false,
+      setup(_props, { attrs, slots }) {
+        return () => api.h('native-scroll', attrs, slots.default?.())
+      },
+    })
+
+    app.mount(target)
+    const settle = async () => {
+      for (let i = 0; i < 8; i++) await api.nextTick()
+    }
+    await settle()
+    const username = target.querySelector('#auth-username'),
+      password = target.querySelector('#auth-password')
+    for (let i = 0; i < 3; i++) {
+      username.dispatchEvent(new window.Event('focus'))
+      await settle()
+      assert.equal(username.getAttribute('data-native-focus'), 'false')
+      username.dispatchEvent(new window.Event('blur'))
+      password.dispatchEvent(new window.Event('focus'))
+      await settle()
+      assert.equal(password.getAttribute('data-native-focus'), 'false')
+      callbacks.get('keyboard')({ height: 300, duration: 0.25 })
+      await settle()
+      assert.equal(target.querySelector('native-scroll').getAttribute('scroll-top'), '0')
+      password.dispatchEvent(new window.Event('blur'))
+      await settle()
+    }
+    passwordTop = 320
+    password.dispatchEvent(new window.Event('focus'))
+    await settle()
+    assert.equal(target.querySelector('native-scroll').getAttribute('scroll-top'), '76')
+    // 程序滚到76后，用户手动滚回0；不能锁住滚动，也必须允许下次再次发76。
+    target
+      .querySelector('native-scroll')
+      .dispatchEvent(new window.CustomEvent('scroll', { detail: { scrollTop: 0 } }))
+    await settle()
+    assert.equal(target.querySelector('native-scroll').getAttribute('scroll-top'), '0')
+    password.dispatchEvent(new window.Event('blur'))
+    await settle()
+    password.dispatchEvent(new window.Event('focus'))
+    await settle()
+    assert.equal(target.querySelector('native-scroll').getAttribute('scroll-top'), '76')
+    password.dispatchEvent(new window.Event('blur'))
+    await settle()
+    username.dispatchEvent(new window.Event('confirm'))
+    await settle()
+    assert.equal(password.getAttribute('data-native-focus'), 'true')
+    // 首帧测量340，过渡结束变260；结束事件必须重算正文218→138，不能停留旧尺寸。
+    frameHeight = 260
+    target.querySelector('.dialog-backdrop').dispatchEvent(new window.Event('transitionend'))
+    await settle()
+    assert.equal(target.querySelector('native-scroll').style.height, '138px')
+    app.unmount()
+    await nextTick()
+  })
 })

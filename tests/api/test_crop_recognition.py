@@ -69,7 +69,7 @@ def test_authenticated_crop_upload_without_weights_returns_no_guess_or_record(cl
 
     monkeypatch.setattr(client.app.state.registry, "predict", unexpected)
     monkeypatch.setattr(client.app.state.chat, "answer", unexpected)
-    assert client.get("/api/meta").json()["crop_recognition"] == {"ready": False, "version": None, "experimental": False}
+    assert client.get("/api/meta").json()["crop_recognition"] == {"ready": False, "version": None, "experimental": False, "labels": [], "label_names": {}}
     response = upload(client)
     assert response.status_code == 200
     assert response.json() == {
@@ -116,7 +116,7 @@ def test_crop_upload_reuses_validation_and_skips_prediction_for_blurry_photo(cli
 ])
 def test_wrong_task_and_unreleased_bundles_stay_unavailable(client, overrides):
     write_crop_bundle(client, **overrides)
-    assert client.get("/api/meta").json()["crop_recognition"] == {"ready": False, "version": None, "experimental": False}
+    assert client.get("/api/meta").json()["crop_recognition"] == {"ready": False, "version": None, "experimental": False, "labels": [], "label_names": {}}
     assert upload(client).json()["status"] == "model_unavailable"
 
 
@@ -149,7 +149,8 @@ def test_independent_crop_model_supports_more_taxa_than_disease_models(
 
     monkeypatch.setattr(inference, "Predictor", FakePredictor)
     assert client.get("/api/meta").json()["crop_recognition"] == {
-        "ready": True, "version": "unit-crop-version", "experimental": False
+        "ready": True, "version": "unit-crop-version", "experimental": False,
+        "labels": metadata["labels"], "label_names": metadata["label_names"],
     }
     result = upload(client).json()
     assert result["status"] == status
@@ -193,6 +194,8 @@ def test_experimental_crop_bundle_uses_explicit_runtime_switch(
         "ready": ready,
         "version": "unit-crop-version" if ready else None,
         "experimental": ready,
+        "labels": metadata["labels"] if ready else [],
+        "label_names": metadata["label_names"] if ready else {},
     }
     result = upload(client).json()
     assert result["status"] == ("recognized" if ready else "model_unavailable")
@@ -240,3 +243,93 @@ def test_real_uploaded_bytes_load_model_and_return_crop_candidates(client, tmp_p
         assert isinstance(runtime._cache[1], Predictor)
     finally:
         torch.set_num_threads(previous_threads)
+
+
+@pytest.mark.parametrize(("crop", "name", "alias", "stage"), [
+    ("cucumber", "黄瓜", "胡瓜", "伸蔓期"),
+    ("tomato", "番茄", "西红柿", "结果期"),
+])
+def test_new_crop_without_bundle_keeps_real_availability_and_context(client, crop, name, alias, stage):
+    from app.context import fill_explicit_context
+    from app.crops import CROP_NAMES, STAGES
+    from app.schemas import ConsultationRequest
+
+    meta = client.get("/api/meta").json()
+    states = {item["crop"]: item for item in meta["models"]}
+    assert list(states) == list(CROP_NAMES)
+    assert states[crop]["ready"] is False and states[crop]["version"] is None
+    assert states[crop]["labels"] == [] and states[crop]["label_names"] == {}
+    assert stage in meta["stages"][crop] == STAGES[crop]
+    assert ConsultationRequest.model_json_schema()["properties"]["crop"]["anyOf"][0]["enum"] == list(CROP_NAMES)
+    context = {"crop": None, "stage": "不清楚", "images": []}
+    fill_explicit_context(context, alias + stage + "叶子发黄")
+    assert context["crop"] == crop and context["crop_name"] == name and context["stage"] == stage
+
+    record = client.post("/api/cases", data={"crop": crop, "stage": stage},
+                         files={"file": ("leaf.jpg", photo(), "image/jpeg")})
+    assert record.status_code == 201
+    saved = record.json()
+    assert saved["crop"] == crop and saved["crop_name"] == name and saved["stage"] == stage
+    assert saved["status"] == "needs_model" and saved["disease_id"] is None
+    assert saved["candidates"] == [] and saved["model_version"] is None
+    assert saved["advice"]["sources"] == []
+    demo = client.post("/api/cases/demo", json={"crop": crop}).json()
+    assert name in demo["title"] and demo["is_demo"]
+    assert demo["disease_id"] is None and demo["candidates"] == []
+    assert demo["advice"]["sources"] == [] and demo["advice"]["products"] == []
+    assert client.post("/api/consultations", json={"crop": crop, "stage": stage}).status_code == 201
+    assert client.post("/api/consultations", json={"crop": "rice"}).status_code == 422
+    assert client.post("/api/consultations", json={}).status_code == 201
+    assert client.post("/api/consultations", json={"crop": crop, "stage": "x" * 41}).status_code == 422
+
+
+@pytest.mark.parametrize(("crop", "name"), [("cucumber", "黄瓜"), ("tomato", "番茄")])
+def test_species_confirmation_routes_to_its_own_new_disease_bundle(client, monkeypatch, crop, name):
+    from ml.agrivision_ml import inference
+
+    identity = write_crop_bundle(client, labels=[crop, "rice"], label_names={crop: name, "rice": "水稻"})
+    folder = client.app.state.registry.settings.models / crop
+    folder.mkdir()
+    disease = crop + "_leaf_spot"
+    disease_meta = {**identity, "task": "disease_identification", "crop": crop,
+                    "labels": [disease, "healthy"], "label_names": {disease: "测试叶斑标签", "healthy": "健康参考"},
+                    "version": "test-" + crop, "validated": False, "development_ready": True}
+    (folder / "metadata.json").write_text(json.dumps(disease_meta), encoding="utf-8")
+    (folder / "weights.pt").write_bytes(b"test-placeholder-never-loaded")
+    registry = client.app.state.registry
+    registry.settings = replace(registry.settings, allow_experimental_models=True)
+    invoked = []
+
+    class FakePredictor:
+        def __init__(self, bundle, _device):
+            self.crop = bundle.name
+            self.metadata = identity if self.crop == "crop-identification" else disease_meta
+        def predict(self, image):
+            # 独立物种识别使用内存；病害服务复用已保存且有归属的工作图。
+            if self.crop == "crop-identification":
+                assert isinstance(image, BytesIO)
+            else:
+                assert isinstance(image, Path) and image.is_file()
+            invoked.append(self.crop)
+            labels = self.metadata["labels"]
+            return [{"id": key, "name": self.metadata["label_names"][key], "score": score}
+                    for key, score in zip(labels, [.98, .02])]
+
+    monkeypatch.setattr(inference, "Predictor", FakePredictor)
+    candidates = upload(client).json()
+    assert candidates["crop_id"] == crop
+    state = next(item for item in client.get("/api/meta").json()["models"] if item["crop"] == crop)
+    assert state["ready"] and state["experimental"] and state["version"] == "test-" + crop
+    assert state["labels"] == [disease, "healthy"] and state["label_names"] == disease_meta["label_names"]
+    response = client.post("/api/cases", data={"crop": candidates["crop_id"]},
+                           files={"file": ("leaf.jpg", photo(), "image/jpeg")})
+    assert response.status_code == 201
+    saved = response.json()
+    assert saved["crop"] == crop and saved["disease_id"] == disease
+    assert saved["model_version"] == "test-" + crop and saved["experimental"]
+    assert saved["advice"]["sources"] == []  # 新病名无资料卡时不冒用其他作物。
+    retry = client.post("/api/cases/" + saved["id"] + "/retry")
+    assert retry.status_code == 200 and retry.json()["crop"] == crop
+    assert invoked == ["crop-identification", crop, crop]
+    changed = client.post("/api/cases/" + saved["id"] + "/context", json={"crop": "wheat"})
+    assert changed.status_code == 409

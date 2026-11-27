@@ -11,7 +11,7 @@ const root = process.cwd()
 const compiled = await build({
   stdin: {
     contents:
-      "export { default as Dialog } from './apps/client/src/components/ChatPhotoDialog.vue'; export { chatPhotoContext } from './apps/client/src/lib/chatPhoto.ts'; export { default as PhotoCapture } from './apps/client/src/components/PhotoCapture.vue'; export { compactPageHeader, desktopPhotoUpload } from './apps/client/src/lib/platformChrome.ts'; export { createApp, h, ref, nextTick } from 'vue'",
+      "export { default as Dialog } from './apps/client/src/components/ChatPhotoDialog.vue'; export { chatPhotoContext } from './apps/client/src/lib/chatPhoto.ts'; export { default as CropIdentificationDialog } from './apps/client/src/components/CropIdentificationDialog.vue'; export { default as ScopeDialog } from './apps/client/src/components/RecognitionScopeDialog.vue'; export { default as PhotoCapture } from './apps/client/src/components/PhotoCapture.vue'; export { compactPageHeader, desktopPhotoUpload } from './apps/client/src/lib/platformChrome.ts'; export { createApp, h, ref, nextTick } from 'vue'",
     resolveDir: root,
   },
   bundle: true,
@@ -120,6 +120,12 @@ test('unknown crop dialog requires an explicit choice and offers a text-only exi
     const confirm = () => host.querySelector('.button.primary')
     assert.equal(confirm().disabled, true)
     assert.equal(host.querySelectorAll('[aria-pressed="true"]').length, 0)
+    assert.deepEqual(
+      [...host.querySelectorAll('.photo-crop-choices button')].map((button) =>
+        button.textContent.trim(),
+      ),
+      ['小麦', '玉米', '花生', '黄瓜', '番茄'],
+    )
     confirm().click()
     assert.deepEqual(chosen, [])
     host.querySelectorAll('.photo-crop-choices button')[1].click()
@@ -127,6 +133,15 @@ test('unknown crop dialog requires an explicit choice and offers a text-only exi
     assert.equal(confirm().disabled, false)
     confirm().click()
     assert.deepEqual(chosen, ['maize'])
+    for (const [index, crop] of [
+      [3, 'cucumber'],
+      [4, 'tomato'],
+    ]) {
+      host.querySelectorAll('.photo-crop-choices button')[index].click()
+      await nextTick()
+      confirm().click()
+      assert.equal(chosen.at(-1), crop)
+    }
     busy.value = true
     await nextTick()
     assert.equal(confirm().disabled, true)
@@ -171,7 +186,8 @@ test('the central photo area and icon activate upload; phone keeps camera and al
   const { createApp, h, ref, nextTick, PhotoCapture } = load()
   const desktop = ref(true),
     busy = ref(false),
-    calls = []
+    calls = [],
+    scopes = []
   const host = document.createElement('div')
   document.body.append(host)
   const app = createApp({
@@ -183,11 +199,16 @@ test('the central photo area and icon activate upload; phone keeps camera and al
         loading: false,
         desktopWeb: desktop.value,
         onCapture: (x) => calls.push(x),
+        onScope: (kind) => scopes.push(kind),
       }),
   })
   try {
     app.mount(host)
     const area = host.querySelector('.capture-upload-area')
+    host.querySelector('[aria-label="查看小麦识别范围"]').click()
+    host.querySelector('[aria-label="查看作物识别范围"]').click()
+    assert.deepEqual(scopes, ['disease', 'crop'])
+    assert.deepEqual(calls, [])
     assert.equal(area.tagName, 'BUTTON')
     assert.ok(area.getAttribute('aria-label').includes('电脑'))
     area.querySelector('.capture-guide-icon').click()
@@ -215,5 +236,124 @@ test('the central photo area and icon activate upload; phone keeps camera and al
     await window.happyDOM.close()
     for (const [name, value] of originals)
       value ? Object.defineProperty(globalThis, name, value) : delete globalThis[name]
+  }
+})
+
+test('confirmed tomato and cucumber enter disease flow only when their own model is ready', async () => {
+  const window = new Window(),
+    originals = new Map()
+  for (const name of ['window', 'document', 'Element', 'SVGElement', 'HTMLElement', 'Node']) {
+    originals.set(name, Object.getOwnPropertyDescriptor(globalThis, name))
+    Object.defineProperty(globalThis, name, {
+      configurable: true,
+      value: name === 'window' ? window : window[name],
+    })
+  }
+  const { createApp, h, ref, nextTick, CropIdentificationDialog } = load()
+  const crop = ref('tomato'),
+    modelReady = ref(false),
+    calls = []
+  const host = document.createElement('div')
+  document.body.append(host)
+  const app = createApp({
+    render: () =>
+      h(CropIdentificationDialog, {
+        ready: true,
+        diagnosisModels: [{ crop: crop.value, ready: modelReady.value }],
+        desktopWeb: true,
+        busy: false,
+        photo: '',
+        error: '',
+        result: {
+          status: 'recognized',
+          crop_id: crop.value,
+          candidates: [{ id: crop.value, name: crop.value, score: 0.98 }],
+        },
+        onSelect: (value) => calls.push(value),
+      }),
+  })
+  try {
+    app.mount(host)
+    assert.equal(host.querySelector('.button.primary'), null)
+    assert.equal(host.querySelectorAll('.crop-lookup-manual .button.quiet').length, 5)
+    modelReady.value = true
+    await nextTick()
+    host.querySelector('.button.primary').click()
+    assert.equal(calls.at(-1), 'tomato')
+    crop.value = 'cucumber'
+    await nextTick()
+    host.querySelector('.button.primary').click()
+    assert.equal(calls.at(-1), 'cucumber')
+    crop.value = 'rice'
+    await nextTick()
+    assert.equal(host.querySelector('.button.primary'), null)
+  } finally {
+    app.unmount()
+    await window.happyDOM.close()
+    for (const [name, original] of originals)
+      original ? Object.defineProperty(globalThis, name, original) : delete globalThis[name]
+  }
+})
+
+test('range dialog shows only actual model labels, separates healthy, and explains unavailable scope', async () => {
+  const window = new Window(),
+    originals = new Map()
+  for (const name of ['window', 'document', 'Element', 'SVGElement', 'HTMLElement', 'Node']) {
+    originals.set(name, Object.getOwnPropertyDescriptor(globalThis, name))
+    Object.defineProperty(globalThis, name, {
+      configurable: true,
+      value: name === 'window' ? window : window[name],
+    })
+  }
+  const { createApp, h, ref, nextTick, ScopeDialog } = load()
+  const kind = ref('disease'),
+    model = ref({
+      ready: true,
+      version: 'fixture',
+      experimental: true,
+      labels: ['tomato_spot', 'healthy'],
+      label_names: { tomato_spot: '测试番茄叶斑', healthy: '健康参考' },
+    })
+  const host = document.createElement('div')
+  document.body.append(host)
+  const app = createApp({
+    render: () => h(ScopeDialog, { kind: kind.value, title: '范围', model: model.value }),
+  })
+  try {
+    app.mount(host)
+    assert.deepEqual(
+      [...host.querySelectorAll('.scope-label-list .scope-label')].map((e) => e.textContent),
+      ['测试番茄叶斑'],
+    )
+    assert.deepEqual(
+      [...host.querySelectorAll('.scope-label')].map((e) => e.textContent),
+      ['测试番茄叶斑', '健康参考'],
+    )
+    assert.ok(host.textContent.includes('超出范围的照片也可能被误判'))
+    model.value = { ...model.value, ready: false }
+    await nextTick()
+    assert.equal(host.querySelector('.scope-label'), null)
+    assert.ok(host.textContent.includes('暂未接入'))
+    model.value = { ready: true, version: 'old-backend' }
+    await nextTick()
+    assert.ok(host.textContent.includes('尚未提供模型类别清单'))
+    kind.value = 'crop'
+    model.value = {
+      ready: true,
+      version: 'fixture',
+      labels: ['rice', 'grape'],
+      label_names: { rice: '水稻', grape: '葡萄' },
+    }
+    await nextTick()
+    assert.deepEqual(
+      [...host.querySelectorAll('.scope-label')].map((e) => e.textContent),
+      ['水稻', '葡萄'],
+    )
+    assert.ok(!host.textContent.includes('小麦'))
+  } finally {
+    app.unmount()
+    await window.happyDOM.close()
+    for (const [name, original] of originals)
+      original ? Object.defineProperty(globalThis, name, original) : delete globalThis[name]
   }
 })

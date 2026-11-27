@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "plantvillage-tomato-color",
+      "crop": "tomato",
+      "provider": "github",
+      "repository": "spMohanty/PlantVillage-Dataset",
+      "url": "https://github.com/spMohanty/PlantVillage-Dataset",
+      "license": "CC BY-SA 3.0",
+      "license_evidence": "https://huggingface.co/datasets/mohanty/PlantVillage",
+      "paper": "https://doi.org/10.3389/fpls.2016.01419",
+      "region": "source-wide controlled collection; per-image field/site unknown",
+      "part": "leaf",
+      "default_review": "review",
+      "label_map": {
+        "Tomato___Bacterial_spot": "tomato_bacterial_spot",
+        "Tomato___Early_blight": "tomato_early_blight",
+        "Tomato___Late_blight": "tomato_late_blight",
+        "Tomato___Leaf_Mold": "tomato_leaf_mold",
+        "Tomato___Septoria_leaf_spot": "tomato_septoria_leaf_spot",
+        "Tomato___Spider_mites Two-spotted_spider_mite": "tomato_spider_mites",
+        "Tomato___Target_Spot": "tomato_target_spot",
+        "Tomato___Tomato_Yellow_Leaf_Curl_Virus": "tomato_yellow_leaf_curl",
+        "Tomato___Tomato_mosaic_virus": "tomato_mosaic",
+        "Tomato___healthy": "healthy"
+      },
+      "notes": [
+        "只下载raw/color原始彩色图，不下载grayscale/segmented或再增强副本。",
+        "离体受控背景叶片；不代表手机田间照片独立验收。",
+        "同叶关系以作者leaf-map实际匹配为准；匹配失败留空，不由文件名虚构采集ID。",
+        "作者病类是图像标签，病原与国内适用性未逐图复核；PPT仅病名参考，不用于自动标图。",
+        "叶螨是虫害危害类别，不作为病原病害。"
+      ],
+      "visual_review": {
+        "sample_count": 80,
+        "method": "10个原类各按排序等距抽8张，人工查看10张联系表",
+        "finding": "80张抽样未见数字文字水印或拼图；均为离体叶片/受控背景，有光照差异和少量模糊。不等同于全库逐图人工病名审核。",
+        "reviewed_on": "2026-11-27"
+      }
+    }
+  ],
+  "external_sources": [
+    {
+      "id": "mendeley-ngdgg79rzb-v1-taiwan",
+      "url": "https://data.mendeley.com/datasets/ngdgg79rzb/1",
+      "license": "CC BY 4.0",
+      "region": "Taiwan",
+      "part": "leaf",
+      "selected_branch": "taiwan/Preprocessed data",
+      "role": "external_diagnostic_only_not_training",
+      "label_map": {
+        "Bacterial spot": "tomato_bacterial_spot",
+        "Late blight": "tomato_late_blight",
+        "health": "healthy"
+      },
+      "hold_labels": {
+        "Black mold": "作者黑霉病不等同于PV叶霉，缺病原依据，暂不映射",
+        "Gray spot": "灰叶斑不是Septoria斑枯病，当前模型不支持",
+        "powdery mildew": "白粉病当前PV十类不含该类"
+      },
+      "notes": [
+        "作者622张无增强分支，统一缩放227×227；不是拍摄原始分辨率。",
+        "另有4976张增强分支，本项目未解压/未使用。",
+        "作者Train/Test只作来源字段；本项目两者均未参与拟合，作为独立来源部分标签诊断。",
+        "没有作者叶/株ID，近重复组不冒称独立植株身份。"
+      ]
+    }
+  ]
+}

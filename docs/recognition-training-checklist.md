@@ -1,8 +1,12 @@
 # 识别模型：数据处理、训练与验收清单
 
-更新于 2026-11-27。所有命令使用 Windows 本机现有的 `.venv`。四项任务分别使用 `data/wheat/prepared`、`data/maize/prepared`、`data/peanut/prepared`、`data/crop-identification/prepared`；每项只维护一份工作图，增强在内存中进行。
+更新于 2026-11-27。所有命令使用 Windows 本机现有的 `.venv`。六项任务分别使用 `data/wheat/prepared`、`data/maize/prepared`、`data/peanut/prepared`、`data/tomato/prepared`、`data/cucumber/prepared`、`data/crop-identification/prepared`；每项只维护一份工作图，增强在内存中进行。
 
 第 1–8 节以已经完成的小麦流程说明操作；第 9 节是小麦分组验证，第 10 节是玉米/花生训练及外域诊断，第 11 节是作物种类识别，第 12 节是玉米田间开发对照。各模型的真实结果统一更新在本清单，权重、曲线与逐图报告保存在对应 `artifacts/experiments` 目录。内部高分、田间诊断和云端已启用状态分别注明。
+
+**当前验收目标（2026-11-27最新调整）：内部完整留出集 accuracy 和 Macro-F1 均至少90%。** 历史实验中的95%/93%是当时目标，不修改已有实测分数。逐类至少20张、召回至少60%的基本检查继续保留，避免总体高分掩盖完全不能识别的类别。整体准确率不是单张照片的置信度门限：拒识参数仍只用验证集校准；不明确时显示候选并建议清晰近照或换角度补拍。国内田间表现另报，不能由内部90%推定。
+
+新增番茄/黄瓜仍各只有一个 `data/tomato/prepared`、`data/cucumber/prepared` 工作目录；原图放各作物 `sources`，筛选放 `review`。范围列表只读取实际部署包，不把仅在PPT出现或尚未有可靠图片的病类写成已支持。
 
 ## 0. 先看运行顺序
 
@@ -872,3 +876,38 @@ Invoke-Item F:\college\AgriVision\artifacts\experiments\crop-identification-fine
 原作物开发包保持不变，新包为 artifacts/models/crop-identification，保存 weights.pt、metadata.json、evaluation-holdout.json、release-record.json。93%为整体门槛，不是每类保证；花生/水稻召回仍约88%。明确候选的覆盖率84.47%、接受部分准确率98.78%，不能替代全量94.22%。
 
 数据扩展优先增加独立田间来源、拍摄条件和可靠标签，不堆同一照片的增强副本。新数据来源及许可核对集中更新 data-sources.md。
+
+
+## 14. 番茄与黄瓜：新作物内测流程
+
+本轮沿用同一个虚拟环境，不新建数据01/02目录。首先从来源入口下载、审计、去重复并分组形成固定prepared；完成后训练只读此目录。原始数据许可、人工审查范围见data-sources.md。已经生成的prepared不要重复执行prepare，也不要在正在训练时修改筛选表或图片。
+
+番茄数据入口（本轮已执行，供理解与后续新来源维护）：
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.preprocessing.tomato_source --download --audit
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.preprocessing.tomato_source --accept-source-labels --prepare
+```
+
+第一条下载和逐图审计；第二条明确按作者标签进入内部实验，仍不冒称人工逐张确诊，并生成data/tomato/prepared。黄瓜对应的入口为preprocessing.cucumber_sources，具体选项见其--help和数据来源文档。
+
+本轮模型方法是冻结ImageNet预训练ConvNeXt-Tiny骨干，仅拟合多类逻辑回归头，约28M参数；不冒称端到端微调。全训练图先固定变换读取一次，再各做两次轻增强读取，增强图只在内存中；GPU提特征，CPU拟合分类头。训练头C=0.1/1/10只按val选，最终test不参与选C。原图数量不会因三视图变成三倍。
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.linear_probe --data-root data/tomato/prepared/images --manifest data/tomato/prepared/manifest.csv --labels data/tomato/prepared/labels.json --output artifacts/experiments/tomato-convnext-probe --architecture convnext_tiny --input-size 320 --views 2 --augmentation light --batch-size 16 --threads 4 --device cuda
+```
+
+黄瓜同一命令将tomato替为cucumber即可。本轮已运行，目录中的features.npz是特征而非增强照片；配方或代码改变会拒绝混用旧缓存。进度条显示完整固定/增强批次数。本方法没有端到端epoch曲线，结果保留probe-search.json（各C与验证指标）、probe-result.json与混淆矩阵；不要伪造loss/epoch图。若需要微调，再使用第7节的train.py，它逐epoch保存loss/acc曲线。
+
+```powershell
+.\.venv\Scripts\python.exe -m ml.agrivision_ml.calibrate --bundle artifacts/experiments/tomato-convnext-probe/bundle --data-root data/tomato/prepared/images --manifest data/tomato/prepared/manifest.csv --device cuda
+```
+
+只用val校准温度及单图不确定门限，不使用test调门限。之后由internal_preview核对原清单、全量留出指标、来源哈希，独立导出到artifacts/models/tomato；原实验包不修改身份，发布包是管理员内测，不声称田间验收。阈值校准与90%整体目标不是同一个概念。
+
+| 作物/候选 | 固定数据 | 内部test准确率 / Macro-F1 | 独立来源 | 状态 |
+| --- | --- | --- | --- | --- |
+| 番茄 ConvNeXt-Tiny320冻结迁移 | 17,490图、10类 | 98.42% / 98.08%，2,590图 | 台湾三类313图26.52%，尚有明显域差异 | 本地内测包已导出；待云机CPU与接口验收 |
+| 黄瓜 ConvNeXt-Tiny320冻结迁移 | 4,160图、6类 | 97.74% / 94.01%，619图 | 暂无完整独立外域验证；炭疽召回87.5%、蔓枯83.33% | 本地内测包已导出；待接口验收 |
+
+云机2 vCPU的独立串行测试：番茄热推理中位806.5ms/P95 828.9ms；黄瓜819.5ms/P95 869.3ms。两任务独立进程峰值均约508MiB，不等于全部模型合并后的进程内存。固定验证示例各类第一张：番茄10/10，黄瓜4/6；保留两个错例，没有换图提高展示结果。这是部署兼容性检查，不是新的准确率评估。

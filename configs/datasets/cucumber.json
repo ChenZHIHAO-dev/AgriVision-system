@@ -1,0 +1,73 @@
+{
+  "crop": "cucumber",
+  "sources": [
+    {
+      "id": "mendeley-y6d3z6f8z9-v1",
+      "crop": "cucumber",
+      "provider": "mendeley",
+      "dataset_id": "y6d3z6f8z9",
+      "version": 1,
+      "url": "https://data.mendeley.com/datasets/y6d3z6f8z9/1",
+      "license": "CC-BY-4.0",
+      "region": "Bangladesh; Basundia, Jashore; field collected May 2022",
+      "part": "leaf",
+      "default_review": "review",
+      "label_map": {
+        "Anthracnose": "cucumber_anthracnose",
+        "Bacterial Wilt": "cucumber_bacterial_wilt",
+        "Downy Mildew": "cucumber_downy_mildew",
+        "Gummy Stem Blight": "cucumber_gummy_stem_blight",
+        "Fresh Leaf": "healthy",
+        "Fresh leaves": "healthy"
+      },
+      "hold_labels": {
+        "Belly Rot": "果实病变不纳入本轮叶片模型",
+        "Pythium Fruit Rot": "果实病变不纳入本轮叶片模型",
+        "Fresh Cucumber": "果实不纳入本轮叶片模型"
+      },
+      "notes": "Only Original Image.zip. Authors report 1280 original images vs 6400 augmented; actual archive counts audited separately. No published plant IDs.",
+      "visual_review": "2026-11-27: 40 sampled leaf images (8 per selected class) inspected; no evident digital watermarks/collages in this sample, field closeups/mixed leaves. Labels accepted from authors, not independently diagnosed. Fresh Leaf (160).jpg shows marked yellowing and is manually held out."
+    },
+    {
+      "id": "kaggle-kaushigihanml",
+      "crop": "cucumber",
+      "provider": "kaggle",
+      "url": "https://www.kaggle.com/datasets/kaushigihanml/cucumber-leaf-disease-dataset",
+      "license": "Apache-2.0 (publisher metadata)",
+      "region": "unknown; publication does not document capture location",
+      "part": "leaf",
+      "default_review": "review",
+      "label_map": {
+        "Downy_mildew": "cucumber_downy_mildew",
+        "Powdery_mildew": "cucumber_powdery_mildew",
+        "Healthy_leaves": "healthy"
+      },
+      "visual_review": "2026-11-27: 24 sampled images (8/class) inspected; no evident digital watermark/collage in samples. Many detached/wilted white-background leaves; not exhaustive verification. Original capture/plant IDs and augmentation history undocumented."
+    },
+    {
+      "id": "mendeley-tg3z7xxkdb-v1",
+      "crop": "cucumber",
+      "provider": "mendeley",
+      "url": "https://data.mendeley.com/datasets/tg3z7xxkdb/1",
+      "license": "CC-BY-4.0",
+      "region": "unknown; paper-location cannot be attached to mismatched archive",
+      "part": "unknown",
+      "default_review": "hold",
+      "hold_reason": "原包目录Alternaria_Boltch/Brown_Spot/Grey_spot等与黄瓜论文所列病类不匹配，下载已停止；不推断寄主或映射标签",
+      "label_map": {}
+    },
+    {
+      "id": "mendeley-n67gctmjyj-v3",
+      "crop": "cucumber",
+      "provider": "mendeley",
+      "url": "https://data.mendeley.com/datasets/n67gctmjyj/3",
+      "license": "CC-BY-4.0",
+      "region": "Bangladesh",
+      "part": "leaf",
+      "default_review": "hold",
+      "hold_reason": "官方目录可查，但文件接口重复返回502，尚未取得完整原图",
+      "label_map": {},
+      "notes": "Official page says 1626 cucumber images; folder names Anthracnose lesions, Downy mildew, Fresh leaf. Candidate only, not counted as downloaded."
+    }
+  ]
+}

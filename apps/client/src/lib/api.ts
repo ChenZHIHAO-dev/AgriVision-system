@@ -3,7 +3,8 @@ import { asset } from './assets'
 import { ApiError, apiBase, dataMode, errorText, serverRequest, sessionHeaders } from './transport'
 export { ApiError, apiBase, setApiBase, dataMode, setDataMode, clientId } from './transport'
 export type { DataMode } from './transport'
-export type Crop = 'wheat' | 'maize' | 'peanut'
+import { crops, type Crop } from './crops'
+export type { Crop } from './crops'
 export type ChatModel = 'deepseek-flash' | 'deepseek-v4-pro'
 export interface DocumentAttachment {
   id: string
@@ -142,17 +143,22 @@ export interface CropIdentification {
   model_version: string | null
   quality_issues: string[]
 }
+export interface ModelScope {
+  ready: boolean
+  version: string | null
+  experimental?: boolean
+  // 兼容旧服务暂未提供范围；不得用本地资料卡补造模型标签。
+  labels?: string[]
+  label_names?: Record<string, string>
+}
 export interface Meta {
-  crop_recognition?: { ready: boolean; version: string | null; experimental?: boolean }
+  crop_recognition?: ModelScope
   version: string
-  models: {
+  models: (ModelScope & {
     crop: Crop
     name: string
-    ready: boolean
     classes: number
-    version: string | null
-    experimental?: boolean
-  }[]
+  })[]
   deepseek_configured: boolean
   knowledge_count: number
   product_count: number
@@ -215,5 +221,7 @@ export function imageUrl(record: CaseRecord, imageId?: string) {
   const provided = record.images.find((image) => image.id === id)?.url
   return provided?.startsWith('/api/')
     ? apiBase() + provided
-    : asset(record.crop ? 'crops/' + record.crop + '.png' : 'icons/ui/leaf-light.png')
+    : asset(
+        crops.find((crop) => crop.id === record.crop)?.illustration || 'icons/ui/leaf-light.png',
+      )
 }

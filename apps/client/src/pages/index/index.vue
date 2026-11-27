@@ -54,6 +54,7 @@ import {
 } from '../../lib/chatActions'
 import ScanProgress from '../../components/ScanProgress.vue'
 import PhotoCapture from '../../components/PhotoCapture.vue'
+import RecognitionScopeDialog from '../../components/RecognitionScopeDialog.vue'
 import CropIdentificationDialog from '../../components/CropIdentificationDialog.vue'
 import DashboardHome from '../../components/DashboardHome.vue'
 import NavigationDock from '../../components/NavigationDock.vue'
@@ -119,6 +120,7 @@ const crop = ref<Crop>('wheat'),
   stage = ref('不清楚'),
   note = ref('')
 const selectedPhoto = ref<{ path: string; crop: Crop } | null>(null)
+const recognitionScope = ref<'disease' | 'crop' | null>(null)
 const cropLookup = ref<{
   busy: boolean
   photo: string
@@ -342,6 +344,7 @@ const appStyle = computed(() => {
     height: height + 'px',
     '--app-height': height + 'px',
     '--visual-height': Math.max(160, height - keyboardHeight.value) + 'px',
+    '--dialog-keyboard-duration': keyboardDuration.value + 'ms',
     '--dialog-safe-top': drawerSafeTop.value + 'px',
     '--dialog-safe-bottom': (keyboardHeight.value > 0 ? 0 : nativeBottomInset.value) + 'px',
     '--mobile-safe-top': mobileSafeTop.value + 'px',
@@ -1784,6 +1787,7 @@ function newFromDrawer() {
                 @crop="chooseCrop"
                 @capture="choosePhoto"
                 @identify-crop="openCropLookup"
+                @scope="recognitionScope = $event"
                 @resume="openPhotoConsultation"
             /></template>
 
@@ -1916,6 +1920,21 @@ function newFromDrawer() {
         </button>
       </template>
     </UiDialog>
+    <RecognitionScopeDialog
+      v-if="recognitionScope"
+      :kind="recognitionScope"
+      :title="
+        recognitionScope === 'crop'
+          ? '作物识别范围'
+          : (crops.find((item) => item.id === crop)?.name || '') + '识别范围'
+      "
+      :model="
+        recognitionScope === 'crop'
+          ? meta?.crop_recognition
+          : meta?.models.find((item) => item.crop === crop)
+      "
+      @close="recognitionScope = null"
+    />
     <CropIdentificationDialog
       v-if="cropLookup"
       :ready="!!meta?.crop_recognition?.ready"

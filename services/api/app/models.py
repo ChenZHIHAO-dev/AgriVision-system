@@ -5,7 +5,7 @@ import sys
 
 from ml.agrivision_ml import architecture_available
 
-from .knowledge import CROP_NAMES
+from .crops import CROP_NAMES
 
 
 class ModelRegistry:
@@ -45,11 +45,15 @@ class ModelRegistry:
         statuses = []
         for crop, name in CROP_NAMES.items():
             metadata = self.metadata(crop) or {}
+            ready = bool(metadata) and torch_available
             statuses.append({
                 "crop": crop,
                 "name": name,
-                "ready": bool(metadata) and torch_available,
+                "ready": ready,
                 "classes": len(metadata.get("labels", [])),
+                # 范围来自当前通过校验的模型包，不能把计划中的类别当成已开放能力。
+                "labels": metadata.get("labels", []) if ready else [],
+                "label_names": metadata.get("label_names", {}) if ready else {},
                 "version": metadata.get("version"),
                 "experimental": bool(metadata.get("development_ready")) and not metadata.get("validated"),
             })
@@ -72,9 +76,9 @@ class ModelRegistry:
             candidates = cached[1].predict(image_path)
             top = candidates[0]
             accepted = top["score"] >= metadata["threshold"] and top["score"] - candidates[1]["score"] >= metadata["margin"]
-            disease_id = top["id"] if accepted and top["id"] not in {"healthy","wheat_other"} else None
+            disease_id = top["id"] if accepted and top["id"] not in {"healthy", crop + "_other"} else None
             title = "未发现已支持病害的明显特征" if accepted and top["id"] == "healthy" else ("疑似" + top["name"] if accepted else "需要补充信息后再判断")
-            if top['id']=='wheat_other':
+            if top['id'] == crop + '_other':
                 accepted=False
                 title='可能属于本版未覆盖的症状，请补充资料复核'
             experimental = bool(metadata.get('development_ready')) and not metadata.get('validated',False)

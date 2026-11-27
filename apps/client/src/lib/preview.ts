@@ -10,17 +10,11 @@ import type {
 import { asset } from './assets'
 import { dataMode } from './transport'
 import type { User } from './auth'
-import { stages } from './options'
+import { crops, cropNames, exampleIds, mentionedCrops, stages } from './crops'
 import { fullVersion } from './appInfo'
 import knowledgeData from '../../../../knowledge/cards.json'
 
 export const previewCards = knowledgeData as KnowledgeCard[]
-const cropNames = { wheat: '小麦', maize: '玉米', peanut: '花生' }
-const exampleIds = {
-  wheat: 'wheat_stripe_rust',
-  maize: 'maize_southern_rust',
-  peanut: 'peanut_leaf_spot',
-}
 let guestRecords: CaseRecord[] = []
 let accountRecords: CaseRecord[] = []
 let previewUser: User | null = null
@@ -93,7 +87,9 @@ function create(data: Record<string, string>, demo = false): CaseRecord {
     updated_at: stamp(),
     is_demo: demo,
     status: demo ? 'demo' : 'needs_model',
-    title: card ? `${card.title} · 演示样例` : '图片已保存，等待模型接入',
+    title: demo
+      ? `${card?.title || cropNames[crop] + '田间观察'} · 演示样例`
+      : '图片已保存，等待模型接入',
     disease_id: card?.id || null,
     model_version: null,
     candidates: [],
@@ -130,10 +126,13 @@ function reply(record: CaseRecord, text: string): Message {
     )
   const declinedPhoto = /不拍|不上传|不提供照片|没有(?:照片|图片)|不方便拍|先不(?:拍|传)/.test(text)
   const photoQuestion = !declinedPhoto && /怎么拍|如何拍|拍清|拍摄方法|拍哪些|照片.*模糊/.test(text)
-  let card = previewCards.find((item) => item.id === record.disease_id)
+  // 明确提到另一作物时隔离旧记录资料，不能把小麦演示病名带到番茄回答中。
+  const scope = mentionedCrops(text)
+  const selected = scope.length ? scope : record.crop ? [record.crop] : []
   const scoped = previewCards.filter(
-    (item) => !record.crop || item.crop === record.crop || item.crop === 'general',
+    (item) => !selected.length || selected.includes(item.crop as Crop) || item.crop === 'general',
   )
+  let card = scoped.find((item) => item.id === record.disease_id)
   card =
     scoped.find(
       (item) =>
@@ -169,7 +168,7 @@ function reply(record: CaseRecord, text: string): Message {
       .join('\n')}`
   else
     answer =
-      '先把田间情况记录清楚 🌱\n\n• 症状出现在叶片、麦穗还是根茎部？\n• 大约出现了多久，是零星还是成片发生？\n• 近期是否施过药、灌过水或遇到连续降雨？\n\n以上是田间观察要点。离线预览只提供资料参考，不连接 AI 问答服务。'
+      '先把田间情况记录清楚 🌱\n\n• 症状出现在叶片、果实还是茎部？\n• 大约出现了多久，是零星还是成片发生？\n• 近期是否施过药、灌过水或遇到连续降雨？\n\n以上是田间观察要点。离线预览只提供资料参考，不连接 AI 问答服务。'
   return {
     role: 'assistant',
     text: answer,
@@ -235,9 +234,12 @@ export async function previewRequest(
         crop: crop as Crop,
         name,
         ready: false,
+        labels: [],
+        label_names: {},
         classes: 0,
         version: null,
       })),
+      crop_recognition: { ready: false, version: null, labels: [], label_names: {} },
       knowledge_count: previewCards.length,
       product_count: 0,
       deepseek_configured: false,
@@ -328,12 +330,10 @@ export async function previewRequest(
     if (!data.text?.trim()) throw new Error('请输入问题')
     const general = isGeneralQuestion(data.text)
     if (!general && !record.crop) {
-      const mentions = (Object.entries(cropNames) as [Crop, string][]).filter(([, name]) =>
-        data.text.includes(name),
-      )
+      const mentions = mentionedCrops(data.text)
       if (mentions.length === 1) {
-        record.crop = mentions[0][0]
-        record.crop_name = mentions[0][1]
+        record.crop = mentions[0]
+        record.crop_name = cropNames[record.crop]
         record.title = record.crop_name + '种植问答'
       }
     }
@@ -489,6 +489,6 @@ export function previewImage(record: CaseRecord, id?: string) {
   return (
     record.images.find((image) => image.id === id)?.url ||
     record.images[record.images.length - 1]?.url ||
-    asset(record.crop ? `crops/${record.crop}.png` : 'icons/ui/leaf-light.png')
+    asset(crops.find((crop) => crop.id === record.crop)?.illustration || 'icons/ui/leaf-light.png')
   )
 }

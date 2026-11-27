@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { crops } from '../lib/crops'
 import AppIcon from './AppIcon.vue'
 import { imageUrl, type Crop, type Meta, type CaseRecord } from '../lib/api'
 const props = defineProps<{
@@ -18,28 +19,31 @@ const emit = defineEmits<{
   result: []
   'retry-upload': []
   'identify-crop': []
+  scope: [kind: 'disease' | 'crop']
 }>()
-const choices: [Crop, string][] = [
-  ['wheat', '小麦'],
-  ['maize', '玉米'],
-  ['peanut', '花生'],
-]
 const ready = computed(() => props.models.some((item) => item.crop === props.crop && item.ready))
 const scope = computed(() => {
   if (props.loading) return '正在准备识别服务…'
   if (ready.value) return '已开放照片识别'
-  return props.crop === 'wheat'
-    ? '图片识别暂不可用，仍可询问 AI。'
-    : '该作物暂未开放图片识别，可先询问 AI。'
+  return '该作物暂未开放图片识别，可先询问 AI。'
 })
 </script>
 <template>
   <view class="photo-page" :class="{ 'photo-desktop': desktopWeb }">
     <view class="photo-panel">
-      <text class="photo-field-label">照片中的作物</text>
+      <view class="photo-field-heading">
+        <text class="photo-field-label">照片中的作物</text>
+        <button
+          class="scope-info-button"
+          :aria-label="'查看' + (crops.find((item) => item.id === crop)?.name || '') + '识别范围'"
+          @click="emit('scope', 'disease')"
+        >
+          <AppIcon name="info" :size="18" />
+        </button>
+      </view>
       <view class="crop-choices" role="group" aria-label="选择照片中的作物">
         <button
-          v-for="[id, name] in choices"
+          v-for="{ id, name } in crops"
           :key="id"
           :disabled="busy"
           :class="{ selected: crop === id }"
@@ -49,10 +53,19 @@ const scope = computed(() => {
           <AppIcon :name="id" :size="25" /><text>{{ name }}</text>
         </button>
       </view>
-      <button class="crop-lookup-link" :disabled="busy" @click="emit('identify-crop')">
-        <AppIcon name="leaf" :size="17" /><text>不确定作物？识别作物</text
-        ><AppIcon name="right" :size="15" />
-      </button>
+      <view class="crop-lookup-row">
+        <button class="crop-lookup-link" :disabled="busy" @click="emit('identify-crop')">
+          <AppIcon name="leaf" :size="17" /><text>不确定作物？识别作物</text
+          ><AppIcon name="right" :size="15" />
+        </button>
+        <button
+          class="scope-info-button"
+          aria-label="查看作物识别范围"
+          @click="emit('scope', 'crop')"
+        >
+          <AppIcon name="info" :size="18" />
+        </button>
+      </view>
       <view class="camera-stage">
         <button
           class="capture-upload-area"
@@ -66,7 +79,7 @@ const scope = computed(() => {
           <text class="camera-title">{{ desktopWeb ? '上传电脑照片' : '拍照识别' }}</text>
           <text class="camera-description">{{
             desktopWeb
-              ? '选择叶片或麦穗等异常部位的清晰近照，尽量使用原图'
+              ? '选择叶片等异常部位的清晰近照，尽量使用原图'
               : '建议在光线充足时，清晰拍摄异常部位'
           }}</text>
           <view class="capture-prompt" aria-hidden="true">
@@ -128,23 +141,51 @@ const scope = computed(() => {
   border-radius: 20px;
   overflow: hidden;
 }
+.photo-field-heading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 8px 18px 4px;
+}
+.scope-info-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  color: var(--muted);
+  border-radius: 12px;
+}
+.scope-info-button:active {
+  background: var(--pressed);
+}
+.crop-lookup-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  margin-top: 4px;
+}
 .photo-field-label {
   display: block;
-  margin: 18px 18px 10px;
   font-size: 13px;
   font-weight: 600;
   color: var(--muted);
 }
 .crop-choices {
-  display: flex;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
   background: var(--subtle);
   padding: 4px;
   margin: 0 16px;
   border-radius: 14px;
 }
 .crop-choices > button {
-  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -167,7 +208,7 @@ const scope = computed(() => {
   gap: 8px;
   min-height: 44px;
   padding: 4px 12px;
-  margin: 4px auto 0;
+  margin: 0;
   border-radius: 12px;
   color: var(--accent);
   font-size: 13px;
@@ -393,6 +434,11 @@ const scope = computed(() => {
   }
   .album-button {
     padding-inline: 8px;
+  }
+}
+@media (max-width: 360px) {
+  .crop-choices {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>

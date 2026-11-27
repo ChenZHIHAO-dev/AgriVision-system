@@ -41,7 +41,8 @@ const emit = defineEmits<{ close: []; choose: [source: 'camera' | 'album']; crop
 </template>
 <style scoped>
 .intake-crops {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 7px;
   margin: 9px 0 18px;
   background: var(--subtle);
@@ -49,7 +50,9 @@ const emit = defineEmits<{ close: []; choose: [source: 'camera' | 'album']; crop
   border-radius: 12px;
 }
 .intake-crops > button {
-  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  white-space: nowrap;
   padding: 10px 8px;
   border-radius: 9px;
   font-size: 13px;
@@ -112,5 +115,10 @@ const emit = defineEmits<{ close: []; choose: [source: 'camera' | 'album']; crop
   color: var(--muted);
   font-size: 11px;
   line-height: 1.9;
+}
+@media (max-width: 360px) {
+  .intake-crops {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 </style>

@@ -2,7 +2,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints
 
-Crop = Literal["wheat", "maize", "peanut"]
+from .crops import Crop
 
 
 class CropCandidate(BaseModel):

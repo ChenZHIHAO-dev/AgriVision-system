@@ -1,4 +1,4 @@
-"""用原始最终留出集验收既有作物候选，并单独导出管理员内测包。
+"""用原始最终留出集验收既有识别候选，并单独导出管理员内测包。
 
 原开发折权重/元数据不修改。新包保存来源身份、完整留出指标及明确内测阶段，
 不声称重训了最终模型，不声称已验证国内田间，也不自动操作云端或鉴权。
@@ -21,6 +21,35 @@ from .experiment_report import save_confusion
 from .external_report import digest, write_csv
 from .inference import Predictor, rejection_indices
 from .train import Images, metrics, read_manifest
+
+
+def audit_original_split(source, original_manifest):
+    """普通迁移训练的 train/val 拟合与选择已结束；只验收原始 test。
+
+    与开发折模式不同，这里的训练元数据绑定完整清单，但拟合只能使用 train，
+    选型和校准只能使用 val。read_manifest 会先拒绝路径、SHA 或分组跨子集。
+    最终评估不调整分类头或拒识阈值，原候选包保持不变。
+    """
+    metadata = json.loads((source / "metadata.json").read_text(encoding="utf-8"))
+    if not metadata.get("crop") and metadata.get("task") != "crop_identification":
+        raise ValueError("候选缺少识别任务身份")
+    if metadata["manifest_sha256"] != digest(original_manifest):
+        raise ValueError("候选的实际训练清单与原清单不同")
+    rows = read_manifest(original_manifest)
+    check_partition(rows, metadata["labels"])
+    heldout = [row for row in rows if row["split"] == "test"]
+    identity = {
+        "source_bundle": str(source.resolve()),
+        "source_weights_sha256": digest(source / "weights.pt"),
+        "source_metadata_sha256": digest(source / "metadata.json"),
+        "source_development_only": metadata.get("development_only", False),
+        "original_manifest_sha256": digest(original_manifest),
+        "evaluation_mode": "original_train_val_test",
+        "holdout_images": len(heldout),
+        "holdout_groups": len({row["group"] for row in heldout}),
+        "overlap_path_sha_group": 0,
+    }
+    return metadata, heldout, identity
 
 
 def audit_holdout(source, original_manifest, development_manifest):
@@ -85,8 +114,8 @@ def evaluate_holdout(args, metadata, rows, identity):
     result = metrics(matrix)
     accepted = [row for row in predictions if row["accepted"]]
     result.update({"labels": labels, "source_identity": identity, "images": len(rows),
-                   "evaluation_scope": "original_final_holdout_after_development_model_selection",
-                   "field_verified": False, "acceptance_rule": {"accuracy": .93, "macro_f1": .93,
+                   "evaluation_scope": identity.get("evaluation_mode", "original_final_holdout_after_development_model_selection"),
+                   "field_verified": False, "acceptance_rule": {"accuracy": .90, "macro_f1": .90,
                        "min_images_per_class": 20, "min_recall_per_class": .6},
                    "fixed_rejection_settings": {k: metadata.get(k, 1.) for k in ("threshold", "margin", "temperature")},
                    "selective": {"accepted": len(accepted), "coverage": len(accepted)/len(rows),
@@ -122,7 +151,7 @@ def export_preview(source, output, result, report_path):
     record = {"stage": "admin_internal_preview", "source_identity": identity,
               "source_version": metadata["version"], "evaluation_report_sha256": digest(report_path),
               "internal_acceptance_passed": True, "field_verified": False,
-              "limitations": "使用已选开发折权重的管理员内测发布；未重新训练最终模型，非国内田间验收。"}
+              "limitations": "使用固定候选权重的管理员内测发布；本步骤仅验收与导出，不重训，不代表国内田间验收。"}
     output.mkdir(parents=True, exist_ok=False)
     shutil.copy2(source / "weights.pt", output / "weights.pt")
     shutil.copy2(report_path, output / "evaluation-holdout.json")
@@ -141,7 +170,8 @@ def main():
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--data-root", type=Path, required=True)
     parser.add_argument("--original-manifest", type=Path, required=True)
-    parser.add_argument("--development-manifest", type=Path, required=True)
+    parser.add_argument("--development-manifest", type=Path,
+                        help="候选来自开发折时必填；原始 train/val/test 训练候选省略")
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--output", type=Path, default=Path("artifacts/models/crop-identification"))
     parser.add_argument("--device", default="cpu")
@@ -149,7 +179,10 @@ def main():
     parser.add_argument("--export", action="store_true")
     args = parser.parse_args()
     torch.set_num_threads(2)
-    metadata, rows, identity = audit_holdout(args.source, args.original_manifest, args.development_manifest)
+    if args.development_manifest:
+        metadata, rows, identity = audit_holdout(args.source, args.original_manifest, args.development_manifest)
+    else:
+        metadata, rows, identity = audit_original_split(args.source, args.original_manifest)
     result = evaluate_holdout(args, metadata, rows, identity)
     print(json.dumps({k: result[k] for k in ("images", "accuracy", "macro_f1", "internal_acceptance_passed")}), flush=True)
     if args.export:

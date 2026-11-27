@@ -1,9 +1,9 @@
 {
   "name": "宛田观叶",
   "appid": "__UNI__AGRIVISION",
-  "description": "拍摄或上传小麦叶片照片，查看常见叶片病害的初步识别结果，了解症状特征和田间观察方法。",
+  "description": "拍摄或上传作物照片，查看已开放作物模型的辅助识别结果，了解症状特征和田间观察方法。",
   "versionName": "1.5.0",
-  "versionCode": 155,
+  "versionCode": 156,
   "transformPx": false,
   "vueVersion": "3",
   "uniStatistics": {

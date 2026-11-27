@@ -11,9 +11,12 @@ export default defineConfig({
     proxy: { '/api': 'http://127.0.0.1:8000' },
     fs: {
       strict: true,
-      allow: ['./', '../../node_modules', '../../knowledge/cards.json'].map((path) =>
-        fileURLToPath(new URL(path, import.meta.url)),
-      ),
+      allow: [
+        './',
+        '../../node_modules',
+        '../../knowledge/cards.json',
+        '../../knowledge/crops.json',
+      ].map((path) => fileURLToPath(new URL(path, import.meta.url))),
     },
   },
 })

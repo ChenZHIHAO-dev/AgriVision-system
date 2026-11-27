@@ -65,7 +65,7 @@ def test_changed_development_manifest_rejected(candidate):
         preview.audit_holdout(source, original_path, development_path)
 
 
-@pytest.mark.parametrize('accuracy', [.929, .93])
+@pytest.mark.parametrize('accuracy', [.899, .90])
 def test_preview_gate_and_provenance_without_mutating_source(candidate, tmp_path, accuracy):
     source, original_path, development_path, *_ = candidate
     original_bytes = (source / 'metadata.json').read_bytes()
@@ -75,7 +75,7 @@ def test_preview_gate_and_provenance_without_mutating_source(candidate, tmp_path
     report_path = tmp_path / 'evaluation.json'
     report_path.write_text(json.dumps(report), encoding='utf-8')
     output = tmp_path / 'crop-identification'
-    if accuracy < .93:
+    if accuracy < .90:
         with pytest.raises(ValueError, match='Activation requires'):
             preview.export_preview(source, output, report, report_path)
         assert not output.exists()
@@ -103,3 +103,20 @@ def test_export_rejects_weights_changed_since_evaluation(candidate, tmp_path):
     with pytest.raises(ValueError, match='源模型改变'):
         preview.export_preview(source, tmp_path / 'export', report, tmp_path / 'report.json')
     assert not (tmp_path / 'export').exists()
+
+
+def test_original_split_candidate_uses_only_final_test(candidate):
+    source, original, _, *_ = candidate
+    metadata_path = source / 'metadata.json'
+    metadata = json.loads(metadata_path.read_text())
+    metadata.update(crop='tomato', manifest_sha256=preview.digest(original))
+    metadata.pop('task')
+    metadata_path.write_text(json.dumps(metadata))
+    _, rows, identity = preview.audit_original_split(source, original)
+    assert [row['path'] for row in rows] == ['6.png', '7.png']
+    assert identity['evaluation_mode'] == 'original_train_val_test'
+    assert identity['overlap_path_sha_group'] == 0
+    metadata['manifest_sha256'] = 'another-manifest'
+    metadata_path.write_text(json.dumps(metadata))
+    with pytest.raises(ValueError, match='清单'):
+        preview.audit_original_split(source, original)

@@ -4,6 +4,7 @@ import { build } from 'esbuild'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { readFileSync } from 'node:fs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const bundle = (mode) =>
@@ -374,4 +375,38 @@ test('expired credentials clear locally without automatically repeating a paid q
   assert.equal(app.user.value, null)
   assert.equal(app.accessToken(), '')
   assert.equal(app.requests.length, previous)
+})
+
+test('new crops in preview keep model availability honest and never borrow wheat demo evidence', async () => {
+  const app = await demoMember()
+  const meta = await app.previewRequest('/api/meta', 'GET')
+  assert.deepEqual(
+    meta.models.map((model) => model.crop),
+    ['wheat', 'maize', 'peanut', 'cucumber', 'tomato'],
+  )
+  assert.ok(meta.models.every((model) => !model.ready))
+  for (const [crop, name, alias] of [
+    ['cucumber', '黄瓜', '胡瓜'],
+    ['tomato', '番茄', '西红柿'],
+  ]) {
+    const demo = await app.previewRequest('/api/cases/demo', 'POST', { crop })
+    assert.equal(demo.crop_name, name)
+    assert.equal(demo.disease_id, null)
+    assert.ok(app.previewImage(demo).endsWith('icons/ui/leaf-light.png'))
+    assert.deepEqual(demo.advice.sources, [])
+    const empty = await app.previewRequest('/api/consultations', 'POST', {})
+    const filled = await app.previewRequest('/api/cases/' + empty.id + '/messages', 'POST', {
+      text: alias + '叶片发黄',
+    })
+    assert.equal(filled.crop, crop)
+    const wheat = await app.previewRequest('/api/cases/demo', 'POST', { crop: 'wheat' })
+    const reply = await app.previewRequest('/api/cases/' + wheat.id + '/messages', 'POST', {
+      text: alias + '白粉病是什么？',
+    })
+    assert.doesNotMatch(reply.messages.at(-1).text, /小麦条锈病/)
+    // 新作物已有真实资料时可以引用，但来源必须属于该作物，不能借小麦卡。
+    const cards = JSON.parse(readFileSync(path.join(root, 'knowledge/cards.json'), 'utf8'))
+    const allowed = new Set(cards.filter((card) => card.crop === crop).flatMap((card) => card.sources.map((source) => source.url)))
+    assert.ok(reply.messages.at(-1).sources.every((source) => allowed.has(source.url)))
+  }
 })

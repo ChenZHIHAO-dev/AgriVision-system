@@ -35,10 +35,12 @@ const status = computed(() => {
   if (!props.ready || props.result?.status === 'model_unavailable')
     return '作物识别模型尚未开放。你可以手动选择作物。'
   if (props.result?.status === 'service_error') return '作物识别暂时不可用，请重试或手动选择。'
-  if (props.result?.status === 'needs_retake') return '照片不够清晰，请在光线充足处补拍整株。'
+  if (props.result?.status === 'needs_retake')
+    return '照片不够清晰，可在光线充足处拍近一些，或换个角度补充整株特征。'
   if (accepted.value && !diagnosisReady.value) return '此作物目前仅可查看作物识别结果。'
   if (accepted.value) return '确认作物后，再拍摄异常部位识别症状。'
-  if (props.result?.status === 'uncertain') return '暂未确认作物，可补拍或手动选择。'
+  if (props.result?.status === 'uncertain')
+    return '暂未确认作物，可换角度补拍清晰近照，或直接手动选择。'
   return '拍摄整株，尽量保留叶、茎、穗或果实特征。'
 })
 </script>

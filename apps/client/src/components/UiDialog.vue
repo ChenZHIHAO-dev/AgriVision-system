@@ -34,12 +34,13 @@ const nativeBodyHeight = ref<number>()
 const nativeBodyStyle = computed(() =>
   nativeBodyHeight.value === undefined ? undefined : { height: nativeBodyHeight.value + 'px' },
 )
-const scrollTarget = ref('')
+const nativeScrollTop = ref(0)
 let disposed = false
 let measureQueued = false
-let remeasureTimer: ReturnType<typeof setTimeout> | undefined
+let revealAfterMeasure = false
 
-function measureNativeBody() {
+function measureNativeBody(reveal = false) {
+  revealAfterMeasure ||= reveal
   if (!component || !uni.createSelectorQuery || disposed || measureQueued) return
   measureQueued = true
   nextTick(() => {
@@ -58,36 +59,62 @@ function measureNativeBody() {
         Math.floor(frame.height - heading.height - (footer?.height || 0) - 2),
       )
       const nextHeight = content.height > available ? available : undefined
-      if (nextHeight !== nativeBodyHeight.value) {
+      const changed = nextHeight !== nativeBodyHeight.value
+      const shouldReveal = revealAfterMeasure || changed
+      revealAfterMeasure = false
+      if (changed) {
         nativeBodyHeight.value = nextHeight
-        if (nextHeight !== undefined && props.focusTarget) nativeReveal()
       }
+      if (shouldReveal && nextHeight !== undefined && props.focusTarget) nextTick(nativeReveal)
     })
   })
 }
 
 function nativeReveal() {
   const target = props.focusTarget
-  scrollTarget.value = ''
-  nextTick(() => (scrollTarget.value = target))
+  if (!component || !target || nativeBodyHeight.value === undefined) return
+  const query = uni.createSelectorQuery().in(component)
+  query.select('.dialog-body').boundingClientRect()
+  query.select('#' + target).boundingClientRect()
+  query.select('.dialog-body').scrollOffset(() => {})
+  query.exec(([body, field, offset]) => {
+    if (disposed || target !== props.focusTarget || !body || !field) return
+    // 已可见的账号/密码切换不滚动；只有真正被正文裁切时才请求原生滚动。
+    // 只补足被遮挡的距离，不把每个输入框强行对齐到正文顶端。
+    const delta =
+      field.top < body.top
+        ? field.top - body.top
+        : field.bottom > body.bottom
+          ? field.bottom - body.bottom
+          : 0
+    if (delta && offset) nativeScrollTop.value = Math.max(0, offset.scrollTop + delta)
+  })
 }
 function nativeResize() {
-  measureNativeBody()
-  if (props.focusTarget) nativeReveal()
-  // The page's native keyboard inset settles after the first resize event.
-  clearTimeout(remeasureTimer)
-  remeasureTimer = setTimeout(measureNativeBody, 180)
+  measureNativeBody(true)
 }
-onUpdated(measureNativeBody)
+function nativeScroll(event: { detail: { scrollTop: number } }) {
+  // 与原生真实位置同步；用户手动滚回后，同一个避让目标也能再次下发。
+  // 单纯滚动不触发焦点避让，否则会把用户主动滚动又拉回去。
+  nativeScrollTop.value = event.detail.scrollTop
+}
+onUpdated(() => measureNativeBody())
 // #endif
 
+function nativeTransitionFinished() {
+  // #ifndef H5
+  // CSS 使用系统键盘时长；动画结束后按最终正文高度检查输入框，不用固定延时猜测。
+  nativeResize()
+  // #endif
+}
 function revealFocus() {
   // #ifdef H5
   if (revealing) return
   revealing = true
   nextTick(() => {
     const root = document.querySelector<HTMLElement>('[data-modal-id="' + id + '"]')
-    // 浏览器负责原生焦点避让；这里只补足弹窗正文内部的滚动。
+    // 只监听正文实际尺寸变化，避免在 visualViewport 的 CSS 更新前滚一次、
+    // ResizeObserver 更新后又滚一次。焦点切换只补足被裁切的正文。
     // 收键盘后不再按旧 focusTarget 把已经失焦的输入框滚回屏内。
     revealDialogInput(root, document.activeElement)
     revealing = false
@@ -146,7 +173,6 @@ onMounted(async () => {
   // #ifdef H5
   previous = document.activeElement as HTMLElement
   document.addEventListener('keydown', keyboard)
-  window.visualViewport?.addEventListener('resize', revealFocus)
   await nextTick()
   syncModalInert()
   const body = document.querySelector<HTMLElement>('[data-modal-id="' + id + '"] .dialog-body')
@@ -168,7 +194,6 @@ onUnmounted(() => {
   // #ifdef H5
   bodyObserver?.disconnect()
   document.removeEventListener('keydown', keyboard)
-  window.visualViewport?.removeEventListener('resize', revealFocus)
   nextTick(() => {
     syncModalInert()
     if (previous?.isConnected) previous.focus({ preventScroll: true })
@@ -176,14 +201,17 @@ onUnmounted(() => {
   // #endif
   // #ifndef H5
   disposed = true
-  clearTimeout(remeasureTimer)
   uni.offKeyboardHeightChange(nativeResize)
   uni.offWindowResize(nativeResize)
   // #endif
 })
 </script>
 <template>
-  <view class="dialog-backdrop" :class="{ 'floating-backdrop': floating }">
+  <view
+    class="dialog-backdrop"
+    :class="{ 'floating-backdrop': floating }"
+    @transitionend="nativeTransitionFinished"
+  >
     <view class="dialog-scrim" aria-hidden="true" @click="emit('close')" />
     <view class="dialog-frame">
       <view
@@ -218,7 +246,8 @@ onUnmounted(() => {
           :scroll-y="nativeBodyHeight !== undefined"
           class="dialog-body"
           :style="nativeBodyStyle"
-          :scroll-into-view="scrollTarget"
+          :scroll-top="nativeScrollTop"
+          @scroll="nativeScroll"
         >
           <view class="dialog-body-inner"><slot /></view>
         </scroll-view>
@@ -232,6 +261,7 @@ onUnmounted(() => {
 <style scoped>
 /* #ifdef MP-WEIXIN || APP-PLUS */
 .dialog-backdrop {
+  transition: height var(--dialog-keyboard-duration, 0ms) ease-out;
   padding-top: calc(var(--dialog-safe-top, 0px) + 8px);
   padding-bottom: calc(var(--dialog-safe-bottom, 0px) + 8px);
   padding-right: 12px;
@@ -257,18 +287,6 @@ onUnmounted(() => {
 .dialog-card .dialog-footer {
   padding-top: 10px;
   padding-bottom: 12px;
-}
-.keyboard-open .dialog-card .dialog-heading {
-  padding-top: 4px;
-  padding-bottom: 4px;
-}
-.keyboard-open .dialog-card .dialog-subtitle,
-.keyboard-open .dialog-card .dialog-footer :deep(.guest-link) {
-  display: none;
-}
-.keyboard-open .dialog-card .dialog-footer {
-  padding-top: 6px;
-  padding-bottom: 6px;
 }
 /* #endif */
 /* #ifdef H5 */

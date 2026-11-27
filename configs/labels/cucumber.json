@@ -1,0 +1,11 @@
+{
+  "crop": "cucumber",
+  "labels": {
+    "cucumber_downy_mildew": "黄瓜霜霉病",
+    "cucumber_powdery_mildew": "黄瓜白粉病",
+    "cucumber_anthracnose": "黄瓜炭疽病",
+    "cucumber_gummy_stem_blight": "黄瓜蔓枯病",
+    "cucumber_bacterial_wilt": "黄瓜细菌性萎蔫病（来源标签）",
+    "healthy": "健康参考"
+  }
+}

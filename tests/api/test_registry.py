@@ -48,10 +48,14 @@ def test_status_reads_each_crop_metadata_once(tmp_path, monkeypatch):
     monkeypatch.setattr(model, "metadata", tracked_metadata)
     states = {state["crop"]: state for state in model.status()}
 
-    assert crops_read == ["wheat", "maize", "peanut"]
+    assert crops_read == ["wheat", "maize", "peanut", "cucumber", "tomato"]
     assert states["wheat"]["version"] == "test-bundle"
     assert states["wheat"]["classes"] == 3 and states["wheat"]["experimental"]
-    assert all(not states[crop]["ready"] for crop in ("maize", "peanut"))
+    assert states["wheat"]["labels"] == ["wheat_stripe_rust", "healthy", "wheat_other"]
+    assert states["wheat"]["label_names"]["healthy"] == "健康参考"
+    assert all(states[crop]["labels"] == [] and states[crop]["label_names"] == {}
+               for crop in ("maize", "peanut", "cucumber", "tomato"))
+    assert all(not states[crop]["ready"] for crop in ("maize", "peanut", "cucumber", "tomato"))
 
 
 @pytest.mark.parametrize('allowed', [False, True])

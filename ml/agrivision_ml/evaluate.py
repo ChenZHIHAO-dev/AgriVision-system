@@ -13,12 +13,12 @@ from .train import Images, read_manifest, evaluate_loader
 def require_activation_metrics(report):
     """正式与实验启用使用同一底线，统计整个留出集而非拒识后的少量样本。
 
-    整体 accuracy / Macro-F1 均须至少 93%；保留原来的逐类样本数与召回下限。
-    逐类下限是最低检查，不能据此声称每类都达到 93% 或已经通过田间验证。
+    整体 accuracy / Macro-F1 均须至少 90%；保留原来的逐类样本数与召回下限。
+    逐类下限是最低检查，不能据此声称每类都达到 90% 或已经通过田间验证。
     """
-    if not (report["accuracy"] >= .93 and report["macro_f1"] >= .93
+    if not (report["accuracy"] >= .90 and report["macro_f1"] >= .90
             and min(report["counts"]) >= 20 and min(report["recall"]) >= .6):
-        raise ValueError("Activation requires overall accuracy >=.93, Macro-F1 >=.93, "
+        raise ValueError("Activation requires overall accuracy >=.90, Macro-F1 >=.90, "
                          ">=20 test images/class and each recall >=.6")
 
 

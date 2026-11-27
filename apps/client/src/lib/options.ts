@@ -1,14 +1,4 @@
-import type { Crop } from './api'
-export const crops: { id: Crop; name: string; caption: string }[] = [
-  { id: 'wheat', name: '小麦', caption: '叶片 · 麦穗' },
-  { id: 'maize', name: '玉米', caption: '叶部病害 · 虫害' },
-  { id: 'peanut', name: '花生', caption: '叶斑 · 根茎' },
-]
-export const stages: Record<Crop, string[]> = {
-  wheat: ['不清楚', '暂不确定', '苗期', '返青起身期', '拔节孕穗期', '抽穗扬花期', '灌浆成熟期'],
-  maize: ['不清楚', '暂不确定', '苗期', '拔节期', '大喇叭口期', '抽雄吐丝期', '灌浆成熟期'],
-  peanut: ['不清楚', '暂不确定', '苗期', '开花下针期', '结荚期', '饱果成熟期'],
-}
+export { crops, stages } from './crops'
 export const regions: Record<string, Record<string, string[]>> = {
   河南省: {
     南阳市: [

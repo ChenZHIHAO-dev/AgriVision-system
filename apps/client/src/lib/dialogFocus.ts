@@ -5,6 +5,8 @@ export function revealDialogInput(root: HTMLElement | null, target: Element | nu
   if (!body?.contains(target) || body.clientHeight <= 0) return
   const bounds = body.getBoundingClientRect()
   const field = target.getBoundingClientRect()
+  // 已完整可见时不为了留白再滚动；切换账号/密码不会产生额外的微小跳动。
+  if (field.top >= bounds.top && field.bottom <= bounds.bottom) return
   const fieldHeight = field.bottom - field.top
   const padding = Math.min(12, Math.max(0, (body.clientHeight - fieldHeight) / 2))
   const delta =

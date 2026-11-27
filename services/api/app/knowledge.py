@@ -5,14 +5,10 @@ from pathlib import Path
 
 from .schemas import Product
 
-CROP_NAMES = {"wheat": "小麦", "maize": "玉米", "peanut": "花生"}
-CROP_ALIASES = {
-    "wheat": ("麦子",),
-    "maize": ("苞谷", "包谷"),
-    "peanut": ("落花生",),
-}
+from .crops import CROP_NAMES, CROP_ALIASES
+
 CROPS_OUTSIDE_LIBRARY = (
-    "黄瓜", "番茄", "西红柿", "水稻", "稻谷", "大豆", "油菜",
+    "水稻", "稻谷", "大豆", "油菜",
     "辣椒", "白菜", "马铃薯", "土豆", "西瓜", "棉花", "大麦", "高粱",
 )
 CONTEXT_WORDS = (
@@ -104,7 +100,10 @@ class Knowledge:
         ids = [item["disease_id"] for item in case.get("evidence", {}).get("hypotheses", [])]
         if case.get("disease_id"):
             ids.insert(0, case["disease_id"])
-        return [card for identifier in dict.fromkeys(ids) if (card := self.get(identifier))]
+        return [
+            card for identifier in dict.fromkeys(ids)
+            if (card := self.get(identifier)) and card["crop"] == case.get("crop")
+        ]
 
     def matching_products(self, crop, disease_id, stage=""):
         # Only reviewed, unexpired label records can become user-facing products.
@@ -119,7 +118,7 @@ class Knowledge:
 
     def advice(self, crop, disease_id, demo=False, stage=""):
         card = self.get(disease_id) if disease_id else None
-        if card is None:
+        if card is None or card["crop"] not in (crop, "general"):
             return {
                 "summary": "补充作物症状和拍摄信息，便于在这条记录中核对观察线索。",
                 "actions": ["补一张症状近照和一张整株照片", "记录出现时间、田间分布及近期用药", "可以向 AI 询问相关病虫害资料"],

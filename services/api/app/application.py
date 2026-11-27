@@ -23,6 +23,7 @@ from .crop_recognition import CropRecognizer
 from .evidence import aggregate_images
 from .imaging import prepare_image
 from .intake import optional_context_response
+from .crops import DEMO_CARDS
 from .knowledge import CROP_NAMES, Knowledge, crop_scope_conflicts, query_crop_scope
 from .models import ModelRegistry
 from .recognition import recognition_state
@@ -63,7 +64,7 @@ def create_app(settings=None):
     case_locks = {}
     lock_guard = Lock()
 
-    app = FastAPI(title="AgriVision API", version="1.5.0-beta.6")
+    app = FastAPI(title="AgriVision API", version="1.5.0-beta.7")
     app.add_middleware(RequestBodyLimit, max_upload=settings.max_upload)
     # 注册顺序与原实现一致：CORS 在最外层，其次鉴权/额度，再检查请求体。
     app.add_middleware(AccountScopeMiddleware, auth=auth, settings=settings)
@@ -236,12 +237,9 @@ def create_app(settings=None):
     @app.post("/api/cases/demo", status_code=201)
     def demo(request: Request, body: DemoRequest, x_client_id: str = Header(default="")):
         client = owner(x_client_id)
-        disease = {
-            "wheat": "wheat_stripe_rust",
-            "maize": "maize_southern_rust",
-            "peanut": "peanut_leaf_spot",
-        }[body.crop]
-        card = knowledge.get(disease)
+        # 没有核验资料卡的作物只演示记录流程，不借用其他作物的病名。
+        disease = DEMO_CARDS[body.crop]
+        card = knowledge.get(disease) if disease else None
         case = base_case(
             body.crop,
             stage="演示阶段",
@@ -251,7 +249,7 @@ def create_app(settings=None):
             {
                 "is_demo": True,
                 "status": "demo",
-                "title": card["title"] + " · 演示样例",
+                "title": (card["title"] if card else CROP_NAMES[body.crop] + "田间观察") + " · 演示样例",
                 "disease_id": disease,
             }
         )

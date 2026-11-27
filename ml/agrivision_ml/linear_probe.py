@@ -1,4 +1,4 @@
-"""冻结 ImageNet 骨干的线性分类基线：用 CPU 缓存特征，再比较分类头。
+"""冻结 ImageNet 骨干的线性分类基线：用 CPU/GPU 缓存特征，再比较分类头。
 
 这是与全量微调不同的便宜对照，并不冒充端到端训练。增强只对训练图进行；
 验证和测试只用固定变换。输出沿用 Predictor 的模型包，方便与完整微调比较。
@@ -78,7 +78,7 @@ def prediction_metrics(truth, predicted, classes):
 
 
 @torch.inference_mode()
-def encode(model, root, rows, labels, size, *, training=False, augmentation='light', batch_size=16):
+def encode(model, root, rows, labels, size, *, training=False, augmentation='light', batch_size=16, device='cpu'):
     """复用训练模块的图像变换和 SHA 校验；只存特征张量，不存增强图片副本。"""
     dataset = Images(root, rows, labels, size, training, resize='letterbox', augmentation=augmentation)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
@@ -86,7 +86,8 @@ def encode(model, root, rows, labels, size, *, training=False, augmentation='lig
     for images, truth in tqdm(loader, desc='增强特征' if training else '固定特征', unit='batch'):
         # ViT 的 CLS 输出可能只是全体 patch token 的视图。独立复制小型特征，
         # 让这一批的大型 token 存储立即释放，不随 vectors 累积到整个数据集结束。
-        vectors.append(model(images).cpu().numpy().copy())
+        # 只把当前批送到指定设备；特征立即拷回 CPU，避免整套数据占满显存。
+        vectors.append(model(images.to(device)).cpu().numpy().copy())
         targets.append(truth.numpy())
     return np.concatenate(vectors), np.concatenate(targets)
 
@@ -122,7 +123,7 @@ def feature_cache(args, model, rows, labels):
                               ('model.py', 'augmentation.py', 'train.py'))]
     identity = dict(manifest=digest(args.manifest), labels=digest(args.labels), architecture=args.architecture,
                     input_size=args.input_size, views=args.views, augmentation=args.augmentation,
-                    seed=args.seed, torch=torch.__version__, torchvision=torchvision.__version__,
+                    seed=args.seed, device=getattr(args, 'device', 'cpu'), torch=torch.__version__, torchvision=torchvision.__version__,
                     pillow=PIL.__version__, numpy=np.__version__, backbone_sha256=backbone_digest(model),
                     code={p.name: digest(p) for p in files})
     cache = args.output / 'features.npz'
@@ -142,7 +143,7 @@ def feature_cache(args, model, rows, labels):
         selected = [row for row in rows if row['split'] == split]
         if not selected:
             raise ValueError(f'{split} 划分没有照片')
-        vectors, target = encode(model, args.data_root, selected, labels, args.input_size, batch_size=args.batch_size)
+        vectors, target = encode(model, args.data_root, selected, labels, args.input_size, batch_size=args.batch_size, device=getattr(args, 'device', 'cpu'))
         if split == 'train':
             all_vectors, all_targets = [vectors], [target]
             for view in range(args.views):
@@ -150,7 +151,7 @@ def feature_cache(args, model, rows, labels):
                 random.seed(args.seed + view)
                 np.random.seed(args.seed + view)
                 augmented, augmented_target = encode(model, args.data_root, selected, labels, args.input_size,
-                    training=True, augmentation=args.augmentation, batch_size=args.batch_size)
+                    training=True, augmentation=args.augmentation, batch_size=args.batch_size, device=getattr(args, 'device', 'cpu'))
                 all_vectors.append(augmented)
                 all_targets.append(augmented_target)
             vectors, target = np.concatenate(all_vectors), np.concatenate(all_targets)
@@ -183,6 +184,7 @@ def run(args):
         if {row['label'] for row in rows if row['split'] == split} != set(labels):
             raise ValueError(f'{split} 没有覆盖全部类别')
     model = build_model(args.architecture, len(labels), pretrained=True).eval().requires_grad_(False)
+    model.to(getattr(args, 'device', 'cpu'))
     replace_head(model, args.architecture, nn.Identity())
     data = feature_cache(args, model, rows, labels)
     candidates, best, best_score = [], None, -1.0
@@ -202,7 +204,7 @@ def run(args):
             best, best_score = classifier, validation['macro_f1']
     if best is None:
         raise RuntimeError('分类头未收敛，请检查特征或增加迭代次数；不发布半成品')
-    model = install_head(model, args.architecture, best, len(labels))
+    model = install_head(model.cpu(), args.architecture, best, len(labels))
     bundle = args.output / 'bundle'
     bundle.mkdir(exist_ok=True)
     torch.save(model.state_dict(), bundle / 'weights.pt')
@@ -217,7 +219,7 @@ def run(args):
         label_names=config['labels'], input_size=args.input_size, normalization='imagenet', resize='letterbox',
         augmentation=args.augmentation, version=datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S'),
         threshold=.7, margin=.12, temperature=1., validated=False, development_only=True,
-        manifest_sha256=digest(args.manifest), seed=args.seed, pretrained=True, device='cpu', precision='fp32',
+        manifest_sha256=digest(args.manifest), seed=args.seed, pretrained=True, device=getattr(args, 'device', 'cpu'), precision='fp32',
         release_stage='development', method='frozen_imagenet_linear_probe', validation=validation,
         feature_cache=json.loads((args.output / 'features.json').read_text(encoding='utf-8')),
         training_config={key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()})
@@ -238,6 +240,8 @@ def main():
     parser.add_argument('--augmentation', choices=['light', 'field'], default='light')
     parser.add_argument('--batch-size', type=int, default=16)
     parser.add_argument('--threads', type=int, default=2)
+    parser.add_argument('--device', choices=['cpu', 'cuda'], default='cpu',
+                        help='冻结骨干提取特征的设备；分类头仍在 CPU 拟合，部署包可在 CPU 加载')
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--c-values', nargs='+', type=float, default=[.1, 1., 10.])
     args = parser.parse_args()
